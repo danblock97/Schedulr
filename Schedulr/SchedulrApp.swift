@@ -6,12 +6,22 @@
 //
 
 import SwiftUI
+import Foundation
 
 @main
 struct SchedulrApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    do {
+                        try SupabaseManager.shared.startFromInfoPlist()
+                    } catch {
+                        #if DEBUG
+                        print("Supabase init error:", error.localizedDescription)
+                        #endif
+                    }
+                }
         }
     }
 }

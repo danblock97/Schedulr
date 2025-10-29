@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Supabase
 
 struct ContentView: View {
     var body: some View {
@@ -14,6 +15,14 @@ struct ContentView: View {
                 .imageScale(.large)
                 .foregroundStyle(.tint)
             Text("Hello, world!")
+            Button("Ping Supabase") {
+                Task {
+                    _ = SupabaseManager.shared.client
+                    #if DEBUG
+                    print("Supabase client ready")
+                    #endif
+                }
+            }
         }
         .padding()
     }
