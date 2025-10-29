@@ -30,16 +30,25 @@ private struct RootContainer: View {
     @StateObject private var authVM = AuthViewModel()
     @StateObject private var onboardingVM = OnboardingViewModel()
     @State private var showOnboarding: Bool = false
+    @State private var routingInProgress: Bool = false
 
     var body: some View {
         ZStack {
             // Ensure a full-screen background behind all content
             Color(.systemBackground).ignoresSafeArea()
-            if authVM.isAuthenticated {
-                ContentView()
-                    .environmentObject(authVM)
-                    .zIndex(0)
-            } else {
+            switch authVM.phase {
+            case .authenticated:
+                if routingInProgress {
+                    // Hold a neutral background to prevent flashing main UI before onboarding decision
+                    Color(.systemBackground)
+                        .ignoresSafeArea()
+                        .zIndex(0)
+                } else {
+                    ContentView()
+                        .environmentObject(authVM)
+                        .zIndex(0)
+                }
+            default:
                 AuthView(viewModel: authVM)
                     .zIndex(0)
             }
@@ -62,29 +71,42 @@ private struct RootContainer: View {
             }
             // Determine initial auth state before splash hides
             authVM.loadInitialSession()
-            // Pre-check onboarding if already signed in
-            if authVM.isAuthenticated {
-                showOnboarding = await onboardingVM.needsOnboarding()
+            // Do not pre-check onboarding here to avoid race with async auth validation.
+            // Keep splash until auth phase leaves .checking (with a safety timeout).
+            var remainingChecks = 20 // ~2.0s max at 100ms intervals
+            while authVM.phase == .checking && remainingChecks > 0 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                remainingChecks -= 1
             }
-            // Simulate small delay so the splash is visible; remove if undesired.
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            withAnimation(.easeInOut(duration: 0.35)) {
-                showSplash = false
-            }
+            withAnimation(.easeInOut(duration: 0.35)) { showSplash = false }
         }
         .onOpenURL { url in
+            #if DEBUG
+            print("[Auth] onOpenURL ->", url.absoluteString)
+            #endif
             Task { await authVM.handleOpenURL(url) }
         }
-        .onChange(of: authVM.isAuthenticated) { _, isAuthed in
-            guard isAuthed else { showOnboarding = false; return }
-            Task { @MainActor in
-                showOnboarding = await onboardingVM.needsOnboarding()
+        .onChange(of: authVM.phase) { _, phase in
+            switch phase {
+            case .authenticated:
+                routingInProgress = true
+                Task { @MainActor in
+                    showOnboarding = await onboardingVM.needsOnboarding()
+                    // If onboarding is needed, keep routingInProgress true so we don't flash main UI underneath.
+                    routingInProgress = showOnboarding
+                }
+            default:
+                routingInProgress = false
+                showOnboarding = false
             }
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingFlowView(viewModel: onboardingVM)
                 .onAppear {
-                    onboardingVM.onFinished = { showOnboarding = false }
+                    onboardingVM.onFinished = {
+                        showOnboarding = false
+                        routingInProgress = false
+                    }
                 }
         }
     }

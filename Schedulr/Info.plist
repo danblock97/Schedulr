@@ -30,6 +30,7 @@
     <!-- OAuth and Google placeholders -->
     <key>SUPABASE_OAUTH_CALLBACK_SCHEME</key>
     <string>$(SUPABASE_OAUTH_CALLBACK_SCHEME)</string>
+    <!-- Note: Ensure Supabase magic link redirect_to uses this scheme and the path you expect, e.g. schedulr://auth-callback -->
     
     <!-- Optional: If you later use GoogleSignIn SDK directly -->
     <key>GIDClientID</key>

@@ -47,13 +47,15 @@ final class OnboardingViewModel: ObservableObject {
 
     // MARK: - Gating
     func needsOnboarding() async -> Bool {
-        guard let session = try? await client.auth.session else { return false }
+        // Only consider onboarding when authenticated
+        guard let session = try? await client.auth.session, session != nil else { return false }
         do {
             // Does users row exist?
             let user = try await fetchUser(uid: session.user.id)
             // If missing or missing display name, show onboarding
             return user == nil || (user?.display_name?.isEmpty ?? true)
         } catch {
+            // If there is an auth session but the user row cannot be fetched, show onboarding
             return true
         }
     }

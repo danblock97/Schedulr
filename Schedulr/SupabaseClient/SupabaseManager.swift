@@ -61,9 +61,14 @@ final class SupabaseManager {
         // Redirect handling is performed via onOpenURL -> client.auth.handle(url).
         // Use basic initializer; SDK defaults to PKCE on Apple platforms. If needed, you can
         // provide explicit auth configuration in the future.
+        // Prefer implicit flow for email magic links to avoid PKCE flow-state issues on iOS.
+        // PKCE remains supported for OAuth via handle(url).
         self.client = SupabaseClient(
             supabaseURL: configuration.url,
-            supabaseKey: configuration.anonKey
+            supabaseKey: configuration.anonKey,
+            options: .init(
+                auth: .init(flowType: .implicit)
+            )
         )
     }
 
