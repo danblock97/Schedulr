@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 import Supabase
 
 @MainActor
@@ -46,7 +47,7 @@ final class OnboardingViewModel: ObservableObject {
 
     // MARK: - Gating
     func needsOnboarding() async -> Bool {
-        guard let session = client.auth.session else { return false }
+        guard let session = try? await client.auth.session else { return false }
         do {
             // Does users row exist?
             let user = try await fetchUser(uid: session.user.id)
@@ -83,16 +84,17 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     // MARK: - DB helpers
-    private func currentUID() throws -> UUID {
-        guard let uid = client.auth.session?.user.id else { throw NSError(domain: "Onboarding", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing session"]) }
-        return uid
+    private func currentUID() async throws -> UUID {
+        guard let session = try? await client.auth.session else {
+            throw NSError(domain: "Onboarding", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing session"]) }
+        return session.user.id
     }
 
     private func fetchUser(uid: UUID) async throws -> DBUser? {
         let rows: [DBUser] = try await client.database
             .from("users")
             .select()
-            .eq("id", uid)
+            .eq("id", value: uid)
             .limit(1)
             .execute()
             .value
@@ -100,22 +102,22 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     private func ensureUserRow() async throws -> DBUser {
-        let uid = try currentUID()
+        let uid = try await currentUID()
         if let existing = try await fetchUser(uid: uid) { return existing }
         let insert = DBUser(id: uid, display_name: nil, avatar_url: nil, created_at: nil, updated_at: nil)
-        _ = try await client.database.from("users").insert(values: insert).execute()
+        _ = try await client.database.from("users").insert(insert).execute()
         return try await fetchUser(uid: uid) ?? insert
     }
 
     private func updateUser(displayName: String? = nil, avatarURL: URL? = nil) async throws {
-        let uid = try currentUID()
+        let uid = try await currentUID()
         var update = DBUserUpdate()
         if let displayName { update.display_name = displayName }
         if let avatarURL { update.avatar_url = avatarURL.absoluteString }
         _ = try await client.database
             .from("users")
-            .update(values: update)
-            .eq("id", uid)
+            .update(update)
+            .eq("id", value: uid)
             .execute()
     }
 
@@ -125,17 +127,16 @@ final class OnboardingViewModel: ObservableObject {
         isUploadingAvatar = true
         defer { isUploadingAvatar = false }
         do {
-            let uid = try currentUID()
+            let uid = try await currentUID()
             _ = try await ensureUserRow()
             guard let data = pickedImageData, !data.isEmpty else { return }
             let fileName = "\(uid.uuidString)/avatar_\(Int(Date().timeIntervalSince1970)).jpg"
             // Overwrite if exists
-            _ = try await client.storage.from(avatarsBucket).upload(path: fileName, file: data, options: .init(upsert: true, contentType: "image/jpeg"))
+            _ = try await client.storage.from(avatarsBucket).upload(path: fileName, file: data, options: .init(contentType: "image/jpeg", upsert: true))
             // Get a public URL (bucket should be public)
-            if let url = client.storage.from(avatarsBucket).getPublicURL(path: fileName) {
-                avatarPublicURL = url
-                try await updateUser(avatarURL: url)
-            }
+            let url = try client.storage.from(avatarsBucket).getPublicURL(path: fileName)
+            avatarPublicURL = url
+            try await updateUser(avatarURL: url)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -147,7 +148,6 @@ final class OnboardingViewModel: ObservableObject {
         isSavingName = true
         defer { isSavingName = false }
         do {
-            let uid = try currentUID()
             _ = try await ensureUserRow()
             let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
@@ -167,7 +167,7 @@ final class OnboardingViewModel: ObservableObject {
         isHandlingGroup = true
         defer { isHandlingGroup = false }
         do {
-            let uid = try currentUID()
+            let uid = try await currentUID()
             _ = try await ensureUserRow()
 
             switch groupMode {
@@ -179,13 +179,13 @@ final class OnboardingViewModel: ObservableObject {
                 let payload = DBGroupInsert(name: name, created_by: uid)
                 let groups: [DBGroup] = try await client.database
                     .from("groups")
-                    .insert(values: payload)
+                    .insert(payload)
                     .select()
                     .execute().value
                 if let group = groups.first {
                     // Ensure membership as owner in case trigger wasn't installed
                     let member = DBGroupMember(group_id: group.id, user_id: uid, role: "owner", joined_at: nil)
-                    _ = try? await client.database.from("group_members").insert(values: member).execute()
+                    _ = try? await client.database.from("group_members").insert(member).execute()
                 }
             case .join:
                 let slug = extractSlug(from: joinInput)
@@ -193,12 +193,12 @@ final class OnboardingViewModel: ObservableObject {
                 let found: [DBGroup] = try await client.database
                     .from("groups")
                     .select()
-                    .eq("invite_slug", slug)
+                    .eq("invite_slug", value: slug)
                     .limit(1)
                     .execute().value
                 guard let group = found.first else { throw NSError(domain: "Onboarding", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid invite link"]) }
                 let member = DBGroupMember(group_id: group.id, user_id: uid, role: "member", joined_at: nil)
-                _ = try await client.database.from("group_members").insert(values: member).execute()
+                _ = try await client.database.from("group_members").insert(member).execute()
             }
         } catch {
             errorMessage = error.localizedDescription

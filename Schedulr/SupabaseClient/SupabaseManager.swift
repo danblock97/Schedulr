@@ -40,7 +40,9 @@ struct SupabaseConfiguration {
         let service = value("SUPABASE_SERVICE_ROLE_KEY")
         let scheme = value("SUPABASE_OAUTH_CALLBACK_SCHEME")
 
-        guard let url = URL(string: urlString) else { throw SupabaseConfigError.invalidURL(urlString) }
+        guard let url = URL(string: urlString), url.scheme != nil, url.host != nil else {
+            throw SupabaseConfigError.invalidURL(urlString)
+        }
         return SupabaseConfiguration(url: url, anonKey: anon, serviceRoleKey: service, oauthCallbackScheme: scheme)
     }
 }
@@ -55,15 +57,13 @@ final class SupabaseManager {
 
     func start(configuration: SupabaseConfiguration) {
         self.configuration = configuration
-        // Configure Auth with PKCE and our custom URL scheme to support OAuth and magic links.
-        let authConfig = AuthClient.Configuration(
-            flowType: .pkce,
-            urlScheme: configuration.oauthCallbackScheme ?? "schedulr"
-        )
+        // Initialize client with default options (PKCE flow is the default on Apple platforms).
+        // Redirect handling is performed via onOpenURL -> client.auth.handle(url).
+        // Use basic initializer; SDK defaults to PKCE on Apple platforms. If needed, you can
+        // provide explicit auth configuration in the future.
         self.client = SupabaseClient(
             supabaseURL: configuration.url,
-            supabaseKey: configuration.anonKey,
-            options: .init(auth: authConfig)
+            supabaseKey: configuration.anonKey
         )
     }
 

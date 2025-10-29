@@ -125,7 +125,7 @@ struct AuthView: View {
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 12)
             }
-            .frame(maxWidth: 520)
+            .frame(maxWidth: .infinity)
             .padding(.top, 40)
         }
         .onAppear { viewModel.loadInitialSession() }
@@ -159,4 +159,3 @@ private struct BubbleBackground: View {
 #Preview {
     AuthView(viewModel: AuthViewModel())
 }
-

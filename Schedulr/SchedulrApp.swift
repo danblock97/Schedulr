@@ -24,22 +24,25 @@ private struct RootContainer: View {
     @State private var showOnboarding: Bool = false
 
     var body: some View {
-        ZStack {
-            if authVM.isAuthenticated {
-                ContentView()
-                    .environmentObject(authVM)
-                    .zIndex(0)
-            } else {
-                AuthView(viewModel: authVM)
-                    .zIndex(0)
-            }
+        GeometryReader { proxy in
+            ZStack {
+                if authVM.isAuthenticated {
+                    ContentView()
+                        .environmentObject(authVM)
+                        .zIndex(0)
+                } else {
+                    AuthView(viewModel: authVM)
+                        .zIndex(0)
+                }
 
-            if showSplash {
-                SplashView(isVisible: $showSplash)
-                    .transition(.opacity)
-                    .zIndex(1)
+                if showSplash {
+                    SplashView(isVisible: $showSplash)
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
             }
-        }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .ignoresSafeArea()
         .task {
             // Initialize services and then dismiss the splash.
             do {
@@ -75,6 +78,7 @@ private struct RootContainer: View {
                 .onAppear {
                     onboardingVM.onFinished = { showOnboarding = false }
                 }
+        }
         }
     }
 }

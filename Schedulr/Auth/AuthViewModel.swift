@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Combine
 import Supabase
 
 @MainActor
@@ -19,12 +20,20 @@ final class AuthViewModel: ObservableObject {
     private var client: SupabaseClient? { SupabaseManager.shared.client }
 
     func loadInitialSession() {
-        // Best-effort check; session may be nil until OAuth completes.
-        isAuthenticated = (client?.auth.session != nil)
+        // Best-effort async check; session may be nil until OAuth completes.
+        Task { [weak self] in
+            guard let self, let client = self.client else { return }
+            let session = try? await client.auth.session
+            await MainActor.run { self.isAuthenticated = (session != nil) }
+        }
     }
 
     func refreshAuthState() {
-        isAuthenticated = (client?.auth.session != nil)
+        Task { [weak self] in
+            guard let self, let client = self.client else { return }
+            let session = try? await client.auth.session
+            await MainActor.run { self.isAuthenticated = (session != nil) }
+        }
     }
 
     func handleOpenURL(_ url: URL) async {
@@ -45,7 +54,7 @@ final class AuthViewModel: ObservableObject {
 
         guard let client else { return }
         do {
-            // With urlScheme configured in SupabaseManager, redirect handling should work automatically.
+            // OAuth sign-in; redirect is handled via onOpenURL + client.auth.handle(url).
             try await client.auth.signInWithOAuth(provider: .google)
             // The session will be set after redirect returns and handleOpenURL is called.
         } catch {

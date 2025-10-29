@@ -27,6 +27,7 @@ struct SplashView: View {
 
             logoImageView()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .opacity(isVisible ? 1 : 0)
         .animation(.easeInOut(duration: 0.35), value: isVisible)
     }
