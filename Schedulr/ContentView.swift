@@ -9,6 +9,7 @@ import SwiftUI
 import Supabase
 
 struct ContentView: View {
+    @EnvironmentObject private var authVM: AuthViewModel
     var body: some View {
         VStack {
             Image(systemName: "globe")
@@ -22,6 +23,9 @@ struct ContentView: View {
                     print("Supabase client ready")
                     #endif
                 }
+            }
+            Button("Sign Out") {
+                Task { await authVM.signOut() }
             }
         }
         .padding()

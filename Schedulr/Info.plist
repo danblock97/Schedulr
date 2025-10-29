@@ -26,6 +26,41 @@
     <string>$(SUPABASE_ANON_KEY)</string>
     <key>SUPABASE_SERVICE_ROLE_KEY</key>
     <string>$(SUPABASE_SERVICE_ROLE_KEY)</string>
+    
+    <!-- OAuth and Google placeholders -->
+    <key>SUPABASE_OAUTH_CALLBACK_SCHEME</key>
+    <string>$(SUPABASE_OAUTH_CALLBACK_SCHEME)</string>
+    
+    <!-- Optional: If you later use GoogleSignIn SDK directly -->
+    <key>GIDClientID</key>
+    <string>$(GOOGLE_CLIENT_ID)</string>
+    <key>REVERSED_CLIENT_ID</key>
+    <string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
+
+    <!-- URL Schemes for OAuth redirect handling (Supabase, and optional Google reversed client ID) -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>supabase.oauth.callback</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>schedulr</string>
+                <string>$(SUPABASE_OAUTH_CALLBACK_SCHEME)</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>google.reversed.client.id</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Photo library access for choosing profile avatar -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>We use your photo to set a cute profile avatar.</string>
 </dict>
 </plist>
-

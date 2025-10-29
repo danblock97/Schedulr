@@ -22,6 +22,8 @@ struct SupabaseConfiguration {
     let anonKey: String
     // Not for client use in production; present for completeness/testing.
     let serviceRoleKey: String?
+    // URL scheme used for OAuth / magic-link redirects (must exist in Info.plist URL Types)
+    let oauthCallbackScheme: String?
 
     // Loads from the app bundle's Info.plist.
     // Provide these via Build Settings -> Info.plist Preprocessor or .xcconfig.
@@ -36,9 +38,10 @@ struct SupabaseConfiguration {
         guard let urlString = value("SUPABASE_URL") else { throw SupabaseConfigError.missingValue("SUPABASE_URL") }
         guard let anon = value("SUPABASE_ANON_KEY") else { throw SupabaseConfigError.missingValue("SUPABASE_ANON_KEY") }
         let service = value("SUPABASE_SERVICE_ROLE_KEY")
+        let scheme = value("SUPABASE_OAUTH_CALLBACK_SCHEME")
 
         guard let url = URL(string: urlString) else { throw SupabaseConfigError.invalidURL(urlString) }
-        return SupabaseConfiguration(url: url, anonKey: anon, serviceRoleKey: service)
+        return SupabaseConfiguration(url: url, anonKey: anon, serviceRoleKey: service, oauthCallbackScheme: scheme)
     }
 }
 
@@ -52,7 +55,16 @@ final class SupabaseManager {
 
     func start(configuration: SupabaseConfiguration) {
         self.configuration = configuration
-        self.client = SupabaseClient(supabaseURL: configuration.url, supabaseKey: configuration.anonKey)
+        // Configure Auth with PKCE and our custom URL scheme to support OAuth and magic links.
+        let authConfig = AuthClient.Configuration(
+            flowType: .pkce,
+            urlScheme: configuration.oauthCallbackScheme ?? "schedulr"
+        )
+        self.client = SupabaseClient(
+            supabaseURL: configuration.url,
+            supabaseKey: configuration.anonKey,
+            options: .init(auth: authConfig)
+        )
     }
 
     func startFromInfoPlist() throws {
@@ -60,4 +72,3 @@ final class SupabaseManager {
         start(configuration: config)
     }
 }
-
