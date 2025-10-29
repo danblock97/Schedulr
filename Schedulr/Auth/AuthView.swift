@@ -36,7 +36,7 @@ struct AuthView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
-                .padding(.top, 20)
+                // Remove extra top padding to better center content
 
                 VStack(spacing: 12) {
                     HStack {
@@ -118,16 +118,16 @@ struct AuthView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Spacer(minLength: 10)
-
                 Text("By continuing, you agree to our Terms & Privacy Policy")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 12)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 40)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
         .onAppear { viewModel.loadInitialSession() }
     }
 }

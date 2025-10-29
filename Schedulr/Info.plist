@@ -19,7 +19,7 @@
     <key>CFBundleVersion</key>
     <string>1</string>
 
-    <!-- Supabase configuration populated via build settings / xcconfig -->
+    <!-- Supabase configuration populated via build settings -->
     <key>SUPABASE_URL</key>
     <string>$(SUPABASE_URL)</string>
     <key>SUPABASE_ANON_KEY</key>
@@ -62,5 +62,11 @@
     <!-- Photo library access for choosing profile avatar -->
     <key>NSPhotoLibraryUsageDescription</key>
     <string>We use your photo to set a cute profile avatar.</string>
+
+    <!-- Ensure full-screen launch to avoid letterboxing on tall iPhones -->
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+    <key>UIRequiresFullScreen</key>
+    <true/>
 </dict>
 </plist>

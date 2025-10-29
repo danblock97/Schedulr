@@ -10,10 +10,18 @@ import Foundation
 
 @main
 struct SchedulrApp: App {
-    var body: some Scene {
+    @SceneBuilder var body: some Scene {
+        #if os(macOS)
         WindowGroup {
             RootContainer()
         }
+        .defaultSize(width: 1200, height: 800)
+        .windowResizability(.contentSize)
+        #else
+        WindowGroup {
+            RootContainer()
+        }
+        #endif
     }
 }
 
@@ -24,25 +32,25 @@ private struct RootContainer: View {
     @State private var showOnboarding: Bool = false
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                if authVM.isAuthenticated {
-                    ContentView()
-                        .environmentObject(authVM)
-                        .zIndex(0)
-                } else {
-                    AuthView(viewModel: authVM)
-                        .zIndex(0)
-                }
-
-                if showSplash {
-                    SplashView(isVisible: $showSplash)
-                        .transition(.opacity)
-                        .zIndex(1)
-                }
+        ZStack {
+            // Ensure a full-screen background behind all content
+            Color(.systemBackground).ignoresSafeArea()
+            if authVM.isAuthenticated {
+                ContentView()
+                    .environmentObject(authVM)
+                    .zIndex(0)
+            } else {
+                AuthView(viewModel: authVM)
+                    .zIndex(0)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .ignoresSafeArea()
+
+            if showSplash {
+                SplashView(isVisible: $showSplash)
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+        }
+        .ignoresSafeArea()
         .task {
             // Initialize services and then dismiss the splash.
             do {
@@ -78,7 +86,6 @@ private struct RootContainer: View {
                 .onAppear {
                     onboardingVM.onFinished = { showOnboarding = false }
                 }
-        }
         }
     }
 }
