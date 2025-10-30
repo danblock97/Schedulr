@@ -297,6 +297,7 @@ final class CalendarSyncManager: ObservableObject {
             let created_at: Date?
             let updated_at: Date?
             let synced_at: Date?
+            let notes: String?
             let users: UserInfo?
 
             struct UserInfo: Decodable {
@@ -344,6 +345,7 @@ final class CalendarSyncManager: ObservableObject {
                 created_at: row.created_at,
                 updated_at: row.updated_at,
                 synced_at: row.synced_at,
+                notes: row.notes,
                 user: user
             )
         }

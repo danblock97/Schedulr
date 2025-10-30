@@ -18,6 +18,7 @@ struct CalendarRootView: View {
     @State private var selectedDate: Date = Date()
     @State private var preferences = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
     @State private var isLoadingPrefs = false
+    @State private var showingEditor = false
 
     var body: some View {
         NavigationStack {
@@ -60,7 +61,22 @@ struct CalendarRootView: View {
                 }
             }
             .navigationTitle("Calendar")
-            .toolbar { refreshButton }
+            .toolbar {
+                refreshButton
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if let gid = viewModel.selectedGroupID {
+                        Button {
+                            showingEditor = true
+                        } label: { Image(systemName: "plus") }
+                        .disabled(calendarSync.isRefreshing)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingEditor) {
+                if let gid = viewModel.selectedGroupID {
+                    EventEditorView(groupId: gid, members: viewModel.members)
+                }
+            }
             .task { await loadPreferences() }
         }
     }

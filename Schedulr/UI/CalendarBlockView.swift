@@ -508,6 +508,7 @@ extension Date {
             created_at: Date(),
             updated_at: Date(),
             synced_at: Date(),
+            notes: nil,
             user: DBUser(id: UUID(), display_name: "John Doe", avatar_url: nil, created_at: Date(), updated_at: Date())
         )
     ]
@@ -516,6 +517,6 @@ extension Date {
         sampleEvents[0].user_id: ("John Doe", .blue)
     ]
 
-    return CalendarBlockView(events: sampleEvents, members: sampleMembers)
+    CalendarBlockView(events: sampleEvents, members: sampleMembers)
         .padding()
 }
