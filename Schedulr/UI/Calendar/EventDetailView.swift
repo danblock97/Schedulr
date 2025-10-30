@@ -8,17 +8,32 @@ struct EventDetailView: View {
     @State private var attendees: [Attendee] = []
     @State private var isLoading = true
     @State private var showingEditor = false
+    @State private var showingDeleteConfirm = false
+    @State private var isDeleting = false
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var calendarSync: CalendarSyncManager
 
     var body: some View {
         List {
             Section {
                 HStack(alignment: .top, spacing: 12) {
-                    Circle().fill((member?.color ?? .blue).opacity(0.9)).frame(width: 12, height: 12)
+                    Circle().fill(eventColor.opacity(0.9)).frame(width: 12, height: 12)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(event.title.isEmpty ? "Busy" : event.title)
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                         if let name = member?.name {
                             Text(name).font(.system(size: 14)).foregroundStyle(.secondary)
+                        }
+                        if let catName = event.category?.name {
+                            HStack(spacing: 6) {
+                                Circle().fill(eventColor).frame(width: 8, height: 8)
+                                Text(catName)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(6)
+                            }
                         }
                     }
                 }
@@ -69,13 +84,35 @@ struct EventDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Edit") { showingEditor = true }
+                Menu {
+                    Button("Edit", systemImage: "pencil") { showingEditor = true }
+                    Button(role: .destructive) {
+                        showingDeleteConfirm = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
             }
+        }
+        .confirmationDialog("Delete this event?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { deleteEvent() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove the event for everyone in the group if you created it.")
         }
         .sheet(isPresented: $showingEditor) {
             EventEditorView(groupId: event.group_id, members: [], existingEvent: event)
         }
         .task { await loadAttendees() }
+    }
+
+    private var eventColor: Color {
+        if let c = event.effectiveColor {
+            return Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
+        }
+        return member?.color ?? .blue
     }
 
     private func timeRange(_ e: CalendarEventWithUser) -> String {
@@ -95,6 +132,24 @@ extension EventDetailView {
             if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
                 try? await CalendarEventService.shared.updateMyStatus(eventId: event.id, status: status, currentUserId: uid)
                 await loadAttendees()
+            }
+        }
+    }
+
+    private func deleteEvent() {
+        Task {
+            guard !isDeleting else { return }
+            isDeleting = true
+            defer { isDeleting = false }
+            do {
+                if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
+                    try await CalendarEventService.shared.deleteEvent(eventId: event.id, currentUserId: uid, originalEventId: event.original_event_id)
+                    // Refresh the calendar to remove the deleted event from the UI
+                    try? await calendarSync.fetchGroupEvents(groupId: event.group_id)
+                    dismiss()
+                }
+            } catch {
+                // Swallow error for now; could show toast/alert
             }
         }
     }

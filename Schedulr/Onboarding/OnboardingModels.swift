@@ -42,6 +42,31 @@ struct ColorComponents: Codable, Equatable {
     var alpha: Double
 }
 
+// MARK: - Event Categories
+
+struct EventCategory: Codable, Identifiable, Equatable {
+    let id: UUID
+    let user_id: UUID
+    let group_id: UUID?
+    let name: String
+    let color: ColorComponents
+    let created_at: Date?
+    let updated_at: Date?
+}
+
+struct EventCategoryInsert: Encodable {
+    var user_id: UUID
+    var group_id: UUID?
+    var name: String
+    var color: ColorComponents
+}
+
+struct EventCategoryUpdate: Encodable {
+    var name: String?
+    var color: ColorComponents?
+    var group_id: UUID?
+}
+
 struct DBCalendarEvent: Codable, Identifiable, Equatable {
     let id: UUID
     let user_id: UUID
@@ -59,6 +84,7 @@ struct DBCalendarEvent: Codable, Identifiable, Equatable {
     let updated_at: Date?
     let synced_at: Date?
     let notes: String?
+    let category_id: UUID?
 }
 
 struct DBCalendarEventInsert: Encodable {
@@ -74,6 +100,7 @@ struct DBCalendarEventInsert: Encodable {
     var calendar_name: String?
     var calendar_color: ColorComponents?
     var notes: String?
+    var category_id: UUID?
 }
 
 struct CalendarEventWithUser: Codable, Identifiable, Equatable {
@@ -93,11 +120,18 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable {
     let updated_at: Date?
     let synced_at: Date?
     let notes: String?
+    let category_id: UUID?
     let user: DBUser?
+    let category: EventCategory?
 
     struct UserInfo: Codable, Equatable {
         let id: UUID
         let display_name: String?
         let avatar_url: String?
+    }
+    
+    // Computed property to get the effective color (category color takes precedence)
+    var effectiveColor: ColorComponents? {
+        category?.color ?? calendar_color
     }
 }

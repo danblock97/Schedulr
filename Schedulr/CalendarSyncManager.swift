@@ -298,18 +298,30 @@ final class CalendarSyncManager: ObservableObject {
             let updated_at: Date?
             let synced_at: Date?
             let notes: String?
+            let category_id: UUID?
             let users: UserInfo?
+            let event_categories: CategoryInfo?
 
             struct UserInfo: Decodable {
                 let id: UUID
                 let display_name: String?
                 let avatar_url: String?
             }
+            
+            struct CategoryInfo: Decodable {
+                let id: UUID
+                let user_id: UUID
+                let group_id: UUID?
+                let name: String
+                let color: ColorComponents
+                let created_at: Date?
+                let updated_at: Date?
+            }
         }
 
         let rows: [EventRow] = try await client
             .from("calendar_events")
-            .select("*, users(id, display_name, avatar_url)")
+            .select("*, users(id, display_name, avatar_url), event_categories(*)")
             .eq("group_id", value: groupId)
             .gte("end_date", value: start)
             .lte("start_date", value: end)
@@ -329,6 +341,18 @@ final class CalendarSyncManager: ObservableObject {
                 )
             }
 
+            let category = row.event_categories.map { catInfo in
+                EventCategory(
+                    id: catInfo.id,
+                    user_id: catInfo.user_id,
+                    group_id: catInfo.group_id,
+                    name: catInfo.name,
+                    color: catInfo.color,
+                    created_at: catInfo.created_at,
+                    updated_at: catInfo.updated_at
+                )
+            }
+            
             return CalendarEventWithUser(
                 id: row.id,
                 user_id: row.user_id,
@@ -346,7 +370,9 @@ final class CalendarSyncManager: ObservableObject {
                 updated_at: row.updated_at,
                 synced_at: row.synced_at,
                 notes: row.notes,
-                user: user
+                category_id: row.category_id,
+                user: user,
+                category: category
             )
         }
     }

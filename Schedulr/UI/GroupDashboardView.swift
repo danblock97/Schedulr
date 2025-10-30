@@ -566,24 +566,31 @@ struct GroupDashboardView: View {
     }
 
     private var upcomingDisplayEvents: [DisplayEvent] {
-        if !calendarPrefs.dedupAllDay { return filteredEvents.map { DisplayEvent(base: $0, sharedCount: 1) } }
-        let cal = Calendar.current
-        let groups = Dictionary(grouping: filteredEvents) { ev -> String in
-            let day = cal.startOfDay(for: ev.start_date)
-            let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let key = "\(day.timeIntervalSince1970)#\(ev.is_all_day ? "1" : "0")#\(title)"
-            return key
-        }
+        // Always deduplicate events: group identical events by normalized title + time range
         var result: [DisplayEvent] = []
-        for (_, arr) in groups {
-            if let first = arr.first {
-                if first.is_all_day {
-                    result.append(DisplayEvent(base: first, sharedCount: arr.count))
-                } else {
-                    result.append(contentsOf: arr.map { DisplayEvent(base: $0, sharedCount: 1) })
-                }
+        let calendar = Calendar.current
+        
+        let groups = Dictionary(grouping: filteredEvents) { ev -> String in
+            let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ev.is_all_day {
+                // For all-day events, group by day + title
+                let day = calendar.startOfDay(for: ev.start_date)
+                return "allday:\(day.timeIntervalSince1970):\(title)"
+            } else {
+                // For timed events, group by start/end time (within 1 minute tolerance) + title
+                let startRounded = round(ev.start_date.timeIntervalSince1970 / 60) * 60
+                let endRounded = round(ev.end_date.timeIntervalSince1970 / 60) * 60
+                return "timed:\(startRounded):\(endRounded):\(title)"
             }
         }
+        
+        for (_, arr) in groups {
+            if let first = arr.first {
+                // Always show with shared count if multiple users have the same event
+                result.append(DisplayEvent(base: first, sharedCount: arr.count))
+            }
+        }
+        
         return result.sorted { a, b in
             if a.base.start_date == b.base.start_date { return a.base.end_date < b.base.end_date }
             return a.base.start_date < b.base.start_date
@@ -656,11 +663,11 @@ private struct UpcomingEventRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Circle()
-                .fill((memberColor ?? defaultColor).opacity(0.9))
+                .fill(dotColor.opacity(0.9))
                 .frame(width: 12, height: 12)
                 .overlay(
                     Circle()
-                        .fill((memberColor ?? defaultColor).opacity(0.25))
+                        .fill(dotColor.opacity(0.25))
                         .frame(width: 24, height: 24)
                         .blur(radius: 4)
                 )
@@ -691,10 +698,10 @@ private struct UpcomingEventRow: View {
                     HStack(spacing: 6) {
                         Image(systemName: "person.fill")
                             .font(.system(size: 11))
-                            .foregroundColor(memberColor ?? .secondary)
+                            .foregroundColor(dotColor)
                         Text(memberName)
                             .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(memberColor ?? .secondary)
+                            .foregroundStyle(dotColor)
                     }
                 }
 
@@ -721,6 +728,13 @@ private struct UpcomingEventRow: View {
     }
 
     private var defaultColor: Color { Color(red: 0.27, green: 0.63, blue: 0.98) }
+
+    private var dotColor: Color {
+        if let c = event.effectiveColor {
+            return Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
+        }
+        return memberColor ?? defaultColor
+    }
 
     private func timeSummary(_ e: CalendarEventWithUser) -> String {
         if e.is_all_day { return "All day" }

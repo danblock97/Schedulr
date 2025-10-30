@@ -153,7 +153,7 @@ private struct MiniAgendaRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Circle().fill((member?.color ?? .blue).opacity(0.9))
+            Circle().fill(eventColor.opacity(0.9))
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.title.isEmpty ? "Busy" : event.title)
@@ -192,6 +192,18 @@ private struct MiniAgendaRow: View {
         }
         let d = DateFormatter(); d.dateStyle = .medium; d.timeStyle = .none
         return "\(d.string(from: e.start_date)) \(t.string(from: e.start_date)) → \(d.string(from: e.end_date)) \(t.string(from: e.end_date))"
+    }
+    
+    private var eventColor: Color {
+        if let color = event.effectiveColor {
+            return Color(
+                red: color.red,
+                green: color.green,
+                blue: color.blue,
+                opacity: color.alpha
+            )
+        }
+        return member?.color ?? .blue
     }
 }
 

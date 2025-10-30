@@ -76,8 +76,8 @@ struct DayTimelineView: View {
                     .foregroundStyle(.white)
                     .padding(6)
                     .frame(width: dayWidth - 8, height: max(40, h), alignment: .topLeading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill((members[e.user_id]?.color ?? .blue).opacity(0.9)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke((members[e.user_id]?.color ?? .blue), lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(eventColor(e).opacity(0.9)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(eventColor(e), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .offset(x: timeColumnWidth + 4, y: y + 1)
@@ -106,6 +106,18 @@ struct DayTimelineView: View {
         return h * 60 + m
     }
     private func minutesDuration(_ e: CalendarEventWithUser) -> Int { max(30, Int(e.end_date.timeIntervalSince(e.start_date) / 60)) }
+    
+    private func eventColor(_ e: CalendarEventWithUser) -> Color {
+        if let color = e.effectiveColor {
+            return Color(
+                red: color.red,
+                green: color.green,
+                blue: color.blue,
+                opacity: color.alpha
+            )
+        }
+        return members[e.user_id]?.color ?? .blue
+    }
 }
 
 

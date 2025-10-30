@@ -19,6 +19,9 @@ struct CalendarRootView: View {
     @State private var preferences = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
     @State private var isLoadingPrefs = false
     @State private var showingEditor = false
+    @State private var categories: [EventCategory] = []
+    @State private var selectedCategoryIds: Set<UUID> = []
+    @State private var isLoadingCategories = false
 
     var body: some View {
         NavigationStack {
@@ -34,6 +37,10 @@ struct CalendarRootView: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
+                    
+                    if !categories.isEmpty {
+                        categoryFilterBar
+                    }
 
                     Group {
                         switch mode {
@@ -77,7 +84,74 @@ struct CalendarRootView: View {
                     EventEditorView(groupId: gid, members: viewModel.members)
                 }
             }
-            .task { await loadPreferences() }
+            .task {
+                await loadPreferences()
+                await loadCategories()
+            }
+        }
+    }
+    
+    private var categoryFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                // "All" button to clear filters
+                Button(action: {
+                    selectedCategoryIds.removeAll()
+                }) {
+                    Text("All")
+                        .font(.subheadline)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(selectedCategoryIds.isEmpty ? Color.accentColor : Color(.systemGray5))
+                        .foregroundColor(selectedCategoryIds.isEmpty ? .white : .primary)
+                        .cornerRadius(16)
+                }
+                
+                // Category filter buttons
+                ForEach(categories) { category in
+                    Button(action: {
+                        if selectedCategoryIds.contains(category.id) {
+                            selectedCategoryIds.remove(category.id)
+                        } else {
+                            selectedCategoryIds.insert(category.id)
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color(
+                                    red: category.color.red,
+                                    green: category.color.green,
+                                    blue: category.color.blue,
+                                    opacity: category.color.alpha
+                                ))
+                                .frame(width: 10, height: 10)
+                            Text(category.name)
+                                .font(.subheadline)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(selectedCategoryIds.contains(category.id) ? Color.accentColor : Color(.systemGray5))
+                        .foregroundColor(selectedCategoryIds.contains(category.id) ? .white : .primary)
+                        .cornerRadius(16)
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func loadCategories() async {
+        guard !isLoadingCategories else { return }
+        isLoadingCategories = true
+        defer { isLoadingCategories = false }
+        do {
+            let uid = try await viewModel.client?.auth.session.user.id
+            if let uid = uid, let groupId = viewModel.selectedGroupID {
+                categories = try await CalendarEventService.shared.fetchCategories(userId: uid, groupId: groupId)
+            }
+        } catch {
+            // Silently fail - categories are optional
         }
     }
 
@@ -134,29 +208,46 @@ struct CalendarRootView: View {
                 return !(isHoliday || isBirthday)
             }
         }
+        
+        // Filter by selected categories
+        if !selectedCategoryIds.isEmpty {
+            list = list.filter { ev in
+                if let categoryId = ev.category_id {
+                    return selectedCategoryIds.contains(categoryId)
+                }
+                return false
+            }
+        }
+        
         return list
     }
 
     private var displayEvents: [DisplayEvent] {
-        if !preferences.dedupAllDay { return filteredEvents.map { DisplayEvent(base: $0, sharedCount: 1) } }
-        // Group identical all‑day events by day + normalized title
+        // Always deduplicate events: group identical events by normalized title + time range
         var result: [DisplayEvent] = []
         let calendar = Calendar.current
+        
         let groups = Dictionary(grouping: filteredEvents) { ev -> String in
-            let day = calendar.startOfDay(for: ev.start_date)
             let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let key = "\(day.timeIntervalSince1970)#\(ev.is_all_day ? "1" : "0")#\(title)"
-            return key
-        }
-        for (_, arr) in groups {
-            if let first = arr.first {
-                if first.is_all_day {
-                    result.append(DisplayEvent(base: first, sharedCount: arr.count))
-                } else {
-                    result.append(contentsOf: arr.map { DisplayEvent(base: $0, sharedCount: 1) })
-                }
+            if ev.is_all_day {
+                // For all-day events, group by day + title
+                let day = calendar.startOfDay(for: ev.start_date)
+                return "allday:\(day.timeIntervalSince1970):\(title)"
+            } else {
+                // For timed events, group by start/end time (within 1 minute tolerance) + title
+                let startRounded = round(ev.start_date.timeIntervalSince1970 / 60) * 60
+                let endRounded = round(ev.end_date.timeIntervalSince1970 / 60) * 60
+                return "timed:\(startRounded):\(endRounded):\(title)"
             }
         }
+        
+        for (_, arr) in groups {
+            if let first = arr.first {
+                // Always show with shared count if multiple users have the same event
+                result.append(DisplayEvent(base: first, sharedCount: arr.count))
+            }
+        }
+        
         // Sort by start date
         return result.sorted { a, b in
             if a.base.start_date == b.base.start_date { return a.base.end_date < b.base.end_date }
@@ -165,9 +256,8 @@ struct CalendarRootView: View {
     }
 
     private var dayViewEvents: [CalendarEventWithUser] {
-        // Hide all‑day when dedup is enabled (they are summarized elsewhere)
-        if preferences.dedupAllDay { return filteredEvents.filter { !$0.is_all_day } }
-        return filteredEvents
+        // Return deduplicated events for day view (extract from displayEvents)
+        return displayEvents.map { $0.base }
     }
 
     private var memberColorMapping: [UUID: (name: String, color: Color)] {

@@ -12,6 +12,7 @@ struct NewEventInput {
     let attendeeUserIds: [UUID]
     let guestNames: [String]
     let originalEventId: String?
+    let categoryId: UUID?
 }
 
 final class CalendarEventService {
@@ -35,6 +36,7 @@ final class CalendarEventService {
             let calendar_color: ColorComponents?
             let notes: String?
             let original_event_id: String?
+            let category_id: UUID?
         }
 
         let row = InsertRow(
@@ -49,7 +51,8 @@ final class CalendarEventService {
             calendar_name: "Schedulr",
             calendar_color: nil,
             notes: input.notes,
-            original_event_id: input.originalEventId
+            original_event_id: input.originalEventId,
+            category_id: input.categoryId
         )
 
         struct Returned: Decodable { let id: UUID }
@@ -105,8 +108,9 @@ final class CalendarEventService {
             let location: String?
             let notes: String?
             let original_event_id: String?
+            let category_id: UUID?
         }
-        let row = UpdateRow(title: input.title, start_date: input.start, end_date: input.end, is_all_day: input.isAllDay, location: input.location, notes: input.notes, original_event_id: input.originalEventId)
+        let row = UpdateRow(title: input.title, start_date: input.start, end_date: input.end, is_all_day: input.isAllDay, location: input.location, notes: input.notes, original_event_id: input.originalEventId, category_id: input.categoryId)
         _ = try await client.from("calendar_events").update(row).eq("id", value: eventId).execute()
 
         // Replace attendees: delete then insert
@@ -133,12 +137,125 @@ final class CalendarEventService {
             .execute()
     }
 
+    // Delete an event (allowed by RLS only for the event owner)
+    // Also deletes from EventKit if original_event_id is provided
+    func deleteEvent(eventId: UUID, currentUserId: UUID, originalEventId: String?) async throws {
+        // Delete from EventKit first if we have the identifier
+        if let ekId = originalEventId {
+            try? await EventKitEventManager.shared.deleteEvent(identifier: ekId)
+        }
+        
+        // RLS on calendar_events ensures only the owner can delete
+        _ = try await client
+            .from("calendar_events")
+            .delete()
+            .eq("id", value: eventId)
+            .execute()
+    }
+
     // Invoke Edge Function to send push notifications to attendees
     private func notifyAttendees(eventId: UUID) async throws {
         struct Payload: Encodable { let event_id: UUID }
         let payload = Payload(event_id: eventId)
         _ = try await client.functions
             .invoke("notify-event", options: FunctionInvokeOptions(body: payload))
+    }
+    
+    // MARK: - Category Management
+    
+    // Fetch categories available to the user (user's own + group categories from groups they're members of)
+    func fetchCategories(userId: UUID, groupId: UUID?) async throws -> [EventCategory] {
+        // RLS policy allows viewing: user's own categories + group categories from groups they're members of
+        // Query user's own categories first
+        var userCategories: [EventCategory] = try await client
+            .from("event_categories")
+            .select("*")
+            .eq("user_id", value: userId)
+            .order("name", ascending: true)
+            .execute()
+            .value
+        
+        // If groupId is provided, also fetch group categories (RLS will filter appropriately)
+        if let groupId = groupId {
+            let groupCategories: [EventCategory] = try await client
+                .from("event_categories")
+                .select("*")
+                .eq("group_id", value: groupId)
+                .order("name", ascending: true)
+                .execute()
+                .value
+            
+            // Combine and deduplicate by ID
+            var combined = userCategories
+            let userCategoryIds = Set(userCategories.map { $0.id })
+            combined.append(contentsOf: groupCategories.filter { !userCategoryIds.contains($0.id) })
+            return combined.sorted { $0.name < $1.name }
+        }
+        
+        return userCategories
+    }
+    
+    // Create a new category
+    func createCategory(input: EventCategoryInsert, currentUserId: UUID) async throws -> EventCategory {
+        let insertData = EventCategoryInsert(
+            user_id: currentUserId,
+            group_id: input.group_id,
+            name: input.name,
+            color: input.color
+        )
+        
+        let category: [EventCategory] = try await client
+            .from("event_categories")
+            .insert(insertData)
+            .select()
+            .execute()
+            .value
+        
+        guard let created = category.first else {
+            throw NSError(domain: "CalendarEventService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create category"])
+        }
+        
+        return created
+    }
+    
+    // Update an existing category (only user's own categories)
+    func updateCategory(categoryId: UUID, update: EventCategoryUpdate, currentUserId: UUID) async throws -> EventCategory {
+        let updated: [EventCategory] = try await client
+            .from("event_categories")
+            .update(update)
+            .eq("id", value: categoryId)
+            .eq("user_id", value: currentUserId)
+            .select()
+            .execute()
+            .value
+        
+        guard let category = updated.first else {
+            throw NSError(domain: "CalendarEventService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Category not found or update failed"])
+        }
+        
+        return category
+    }
+    
+    // Delete a category (only user's own categories)
+    func deleteCategory(categoryId: UUID, currentUserId: UUID) async throws {
+        _ = try await client
+            .from("event_categories")
+            .delete()
+            .eq("id", value: categoryId)
+            .eq("user_id", value: currentUserId)
+            .execute()
+    }
+    
+    // Fetch a single category by ID (for fallback when user doesn't have the category)
+    func fetchCategoryById(categoryId: UUID) async throws -> EventCategory? {
+        let categories: [EventCategory] = try await client
+            .from("event_categories")
+            .select("*")
+            .eq("id", value: categoryId)
+            .execute()
+            .value
+        
+        return categories.first
     }
 }
 

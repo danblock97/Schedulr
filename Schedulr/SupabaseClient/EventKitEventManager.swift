@@ -57,6 +57,12 @@ final class EventKitEventManager {
         event.notes = notes
         try store.save(event, span: .thisEvent)
     }
+
+    func deleteEvent(identifier: String) async throws {
+        try await ensureAccess()
+        guard let event = store.event(withIdentifier: identifier) else { return }
+        try store.remove(event, span: .thisEvent, commit: true)
+    }
 }
 
 
