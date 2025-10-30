@@ -7,9 +7,11 @@
 
 import SwiftUI
 import Foundation
+import UIKit
 
 @main
 struct SchedulrApp: App {
+    @UIApplicationDelegateAdaptor(PushManager.self) var appDelegate
     @SceneBuilder var body: some Scene {
         #if os(macOS)
         WindowGroup {
@@ -79,6 +81,8 @@ private struct RootContainer: View {
             }
             // Determine initial auth state before splash hides
             authVM.loadInitialSession()
+            // Register for push notifications
+            PushManager.shared.registerForPush()
             // Do not pre-check onboarding here to avoid race with async auth validation.
             // Keep splash until auth phase leaves .checking (with a safety timeout).
             var remainingChecks = 20 // ~2.0s max at 100ms intervals

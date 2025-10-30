@@ -64,6 +64,11 @@ final class CalendarEventService {
             throw NSError(domain: "CalendarEventService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create event"])
         }
 
+        // Notify attendees via push (async, don't fail if it errors)
+        Task {
+            try? await notifyAttendees(eventId: eventId)
+        }
+
         // Build attendee rows
         struct AttRow: Encodable { let event_id: UUID; let user_id: UUID?; let display_name: String; let status: String }
         var attendees: [AttRow] = []
@@ -115,6 +120,25 @@ final class CalendarEventService {
         if !attendees.isEmpty {
             _ = try await client.from("event_attendees").insert(attendees).execute()
         }
+    }
+
+    // Update current user's attendee status for an event
+    func updateMyStatus(eventId: UUID, status: String, currentUserId: UUID) async throws {
+        // If a row exists for me, update; otherwise insert
+        struct UpsertRow: Encodable { let event_id: UUID; let user_id: UUID?; let display_name: String; let status: String }
+        let row = UpsertRow(event_id: eventId, user_id: currentUserId, display_name: "", status: status)
+        _ = try await client
+            .from("event_attendees")
+            .upsert(row, onConflict: "event_id,user_id")
+            .execute()
+    }
+
+    // Invoke Edge Function to send push notifications to attendees
+    private func notifyAttendees(eventId: UUID) async throws {
+        struct Payload: Encodable { let event_id: UUID }
+        let payload = Payload(event_id: eventId)
+        _ = try await client.functions
+            .invoke("notify-event", options: FunctionInvokeOptions(body: payload))
     }
 }
 

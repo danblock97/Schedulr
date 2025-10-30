@@ -54,6 +54,16 @@ struct EventDetailView: View {
                     }
                 }
             }
+            Section("Your response") {
+                HStack(spacing: 8) {
+                    Button("Going") { respond("going") }
+                        .buttonStyle(.borderedProminent)
+                    Button("Maybe") { respond("maybe") }
+                        .buttonStyle(.bordered)
+                    Button("Decline") { respond("declined") }
+                        .buttonStyle(.bordered)
+                }
+            }
         }
         .navigationTitle("Event Details")
         .navigationBarTitleDisplayMode(.inline)
@@ -77,6 +87,17 @@ struct EventDetailView: View {
         return "\(day(e.start_date)) \(t.string(from: e.start_date)) → \(day(e.end_date)) \(t.string(from: e.end_date))"
     }
     private func day(_ d: Date) -> String { let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f.string(from: d) }
+}
+
+extension EventDetailView {
+    private func respond(_ status: String) {
+        Task {
+            if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
+                try? await CalendarEventService.shared.updateMyStatus(eventId: event.id, status: status, currentUserId: uid)
+                await loadAttendees()
+            }
+        }
+    }
 }
 
 private struct Attendee: Identifiable { let id = UUID(); let displayName: String; let status: String; let color: Color? }
