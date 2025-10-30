@@ -25,7 +25,7 @@ final class OnboardingViewModel: ObservableObject {
     @Published var isSavingName: Bool = false
 
     // Group step
-    @Published var groupMode: GroupMode = .skip
+    @Published var groupMode: GroupMode = .create
     @Published var groupName: String = ""
     @Published var joinInput: String = ""
     @Published var isHandlingGroup: Bool = false
@@ -67,6 +67,8 @@ final class OnboardingViewModel: ObservableObject {
             // Optional; upload if provided
             if pickedImageData != nil {
                 await uploadAvatarAndSave()
+                // If upload failed (e.g., RLS), stay on this step to surface the error.
+                if errorMessage != nil { return }
             }
             step = .name
         case .name:

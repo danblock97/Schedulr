@@ -3,22 +3,57 @@ import PhotosUI
 
 struct OnboardingFlowView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @State private var previousStep: OnboardingViewModel.Step = .avatar
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                switch viewModel.step {
-                case .avatar:
-                    AvatarStep(viewModel: viewModel)
-                case .name:
-                    NameStep(viewModel: viewModel)
-                case .group:
-                    GroupStep(viewModel: viewModel)
-                case .done:
-                    DoneStep(onFinish: { viewModel.onFinished?() })
+            ZStack {
+                BubblyBackground()
+                    .ignoresSafeArea()
+
+                VStack(spacing: 24) {
+                    OnboardingHeader(step: viewModel.step)
+
+                    // Animated stage transitions without boxy containers
+                    ZStack {
+                        let forward = viewModel.step.rawValue >= previousStep.rawValue
+                        let insertion: Edge = forward ? .trailing : .leading
+                        let removal: Edge = forward ? .leading : .trailing
+
+                        if viewModel.step == .avatar {
+                            AvatarStep(viewModel: viewModel)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: insertion).combined(with: .opacity),
+                                    removal: .move(edge: removal).combined(with: .opacity)
+                                ))
+                        }
+                        if viewModel.step == .name {
+                            NameStep(viewModel: viewModel)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: insertion).combined(with: .opacity),
+                                    removal: .move(edge: removal).combined(with: .opacity)
+                                ))
+                        }
+                        if viewModel.step == .group {
+                            GroupStep(viewModel: viewModel)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: insertion).combined(with: .opacity),
+                                    removal: .move(edge: removal).combined(with: .opacity)
+                                ))
+                        }
+                        if viewModel.step == .done {
+                            DoneStep(onFinish: { viewModel.onFinished?() })
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: insertion).combined(with: .opacity),
+                                    removal: .move(edge: removal).combined(with: .opacity)
+                                ))
+                        }
+                    }
+                    .frame(maxWidth: 640)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.step)
                 }
+                .padding()
             }
-            .padding()
             .navigationTitle("Welcome ✨")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -27,11 +62,19 @@ struct OnboardingFlowView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(viewModel.step == .done ? "Finish" : "Next") {
+                    Button(viewModel.step == .done ? "Finish" : "Next →") {
                         Task { await viewModel.next() }
                     }
+                    .disabled(
+                        (viewModel.step == .name && viewModel.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        || (viewModel.step == .avatar && viewModel.isUploadingAvatar)
+                    )
                     .keyboardShortcut(.defaultAction)
                 }
+            }
+            .tint(Color(red: 0.98, green: 0.29, blue: 0.55))
+            .onChange(of: viewModel.step) { oldValue, _ in
+                previousStep = oldValue
             }
         }
     }
@@ -43,37 +86,41 @@ private struct AvatarStep: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Add a cute avatar (optional)")
-                .font(.title3.weight(.semibold))
-                .multilineTextAlignment(.center)
             if let data = viewModel.pickedImageData, let img = UIImage(data: data) {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 120, height: 120)
+                    .frame(width: 132, height: 132)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(.white, lineWidth: 4))
-                    .shadow(radius: 8)
+                    .overlay(
+                        Circle().stroke(Color.accentColor.opacity(0.6), lineWidth: 3)
+                    )
             } else {
                 ZStack {
-                    Circle().fill(.gray.opacity(0.15)).frame(width: 120, height: 120)
-                    Text("🫧")
-                        .font(.system(size: 42))
+                    Circle()
+                        .fill(Color.primary.opacity(0.05))
+                        .frame(width: 132, height: 132)
+                        .overlay(Circle().stroke(.quaternary, lineWidth: 1))
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 44, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
             PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                Label("Choose Photo", systemImage: "photo.fill.on.rectangle.fill")
-                    .padding(.horizontal, 16)
+                Label("Upload Photo", systemImage: "camera.on.rectangle")
+                    .padding(.horizontal, 18)
                     .padding(.vertical, 10)
-                    .background(.pink.gradient)
+                    .background(Color.accentColor)
                     .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(Capsule())
             }
             .onChange(of: pickerItem) { _, newItem in
                 guard let newItem else { return }
                 Task {
                     if let data = try? await newItem.loadTransferable(type: Data.self) {
                         await MainActor.run { viewModel.pickedImageData = data }
+                        // Auto-upload and advance when a photo is chosen
+                        await viewModel.next()
                     }
                 }
             }
@@ -91,15 +138,27 @@ private struct NameStep: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Pick a display name")
-                .font(.title3.weight(.semibold))
-                .multilineTextAlignment(.center)
-            TextField("e.g. BubbleBuddy", text: $viewModel.displayName)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.words)
-                .disableAutocorrection(true)
-                .focused($isFocused)
-                .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isFocused = true } }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 4) {
+                    Text("Display name")
+                        .font(.subheadline.weight(.semibold))
+                    Text("*")
+                        .foregroundStyle(.red)
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityLabel("Required")
+                }
+                TextField("Alex Morgan", text: $viewModel.displayName)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.words)
+                    .disableAutocorrection(true)
+                    .focused($isFocused)
+            }
+            .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isFocused = true } }
+            if viewModel.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Display name is required.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             if viewModel.isSavingName { ProgressView("Saving…") }
             if let error = viewModel.errorMessage { Text(error).foregroundStyle(.red).font(.footnote).multilineTextAlignment(.center) }
         }
@@ -110,37 +169,65 @@ private struct GroupStep: View {
     @ObservedObject var viewModel: OnboardingViewModel
     var body: some View {
         VStack(spacing: 18) {
-            Text("Groups (optional)")
-                .font(.title3.weight(.semibold))
-            Picker("Mode", selection: $viewModel.groupMode) {
-                Text("Skip").tag(OnboardingViewModel.GroupMode.skip)
-                Text("Create").tag(OnboardingViewModel.GroupMode.create)
-                Text("Join").tag(OnboardingViewModel.GroupMode.join)
-            }.pickerStyle(.segmented)
-
-            switch viewModel.groupMode {
-            case .skip:
-                Text("You can always manage groups later.")
-                    .foregroundStyle(.secondary)
-            case .create:
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Group name")
-                        .font(.subheadline.weight(.medium))
-                    TextField("e.g. Fun Schedulers", text: $viewModel.groupName)
-                        .textFieldStyle(.roundedBorder)
-                }
-            case .join:
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Paste the invite URL or code")
-                        .font(.subheadline.weight(.medium))
-                    TextField("https://… or invite-code", text: $viewModel.joinInput)
-                        .textFieldStyle(.roundedBorder)
-                        .textInputAutocapitalization(.never)
-                        .disableAutocorrection(true)
-                }
+            // Create by default
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Create a group")
+                    .font(.subheadline.weight(.semibold))
+                TextField("e.g. Weekend Warriors", text: $viewModel.groupName)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: viewModel.groupName) { _, val in
+                        // If user types a name, prefer create mode
+                        if !val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            viewModel.groupMode = .create
+                        }
+                    }
             }
 
-            if viewModel.isHandlingGroup { ProgressView("Saving…") }
+            // OR separator with lines
+            HStack(spacing: 12) {
+                Rectangle().fill(.quaternary).frame(height: 1).frame(maxWidth: .infinity)
+                Text("or")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Rectangle().fill(.quaternary).frame(height: 1).frame(maxWidth: .infinity)
+            }
+
+            // Join via link/code
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    // Vertical accent line
+                    Rectangle().fill(.quaternary).frame(width: 1, height: 24)
+                    Text("Already have a link? Paste it here to join")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                TextField("https://… or invite-code", text: $viewModel.joinInput)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+                    .onChange(of: viewModel.joinInput) { _, val in
+                        let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                        viewModel.groupMode = trimmed.isEmpty ? .create : .join
+                    }
+            }
+
+            Divider()
+
+            // Subtle skip link (not a button)
+            Button(action: {
+                viewModel.groupMode = .skip
+                Task { await viewModel.next() }
+            }) {
+                Text("Set up later")
+                    .font(.subheadline)
+                    .underline()
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if viewModel.isHandlingGroup {
+                ProgressView(viewModel.groupMode == .create ? "Creating…" : (viewModel.groupMode == .join ? "Joining…" : "Saving…"))
+            }
             if let error = viewModel.errorMessage { Text(error).foregroundStyle(.red).font(.footnote).multilineTextAlignment(.center) }
         }
     }
@@ -149,13 +236,14 @@ private struct GroupStep: View {
 private struct DoneStep: View {
     var onFinish: () -> Void
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Text("All set! 🎉")
-                .font(.title2.weight(.bold))
+                .font(.title2.weight(.black))
             Text("You can change your profile anytime in settings.")
                 .foregroundStyle(.secondary)
             Button("Go to app", action: onFinish)
                 .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.27, green: 0.63, blue: 0.98))
         }
     }
 }
@@ -164,3 +252,125 @@ private struct DoneStep: View {
     OnboardingFlowView(viewModel: OnboardingViewModel(onFinished: {}))
 }
 
+// MARK: - Bubbly styling helpers (UI-only)
+
+private struct BubblyBackground: View {
+    var body: some View {
+        ZStack {
+            Color(.systemBackground)
+            // Tasteful color: subtle radial accents
+            RadialGradient(
+                colors: [Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.10), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 280
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [Color(red: 0.27, green: 0.63, blue: 0.98).opacity(0.08), .clear],
+                center: .bottomTrailing,
+                startRadius: 0,
+                endRadius: 300
+            )
+            .ignoresSafeArea()
+        }
+    }
+}
+
+// Wizard header with progress and step title
+private struct OnboardingHeader: View {
+    let step: OnboardingViewModel.Step
+    private var count: Int { OnboardingViewModel.Step.allCases.count }
+    private var index: Int { step.rawValue }
+    private var progress: CGFloat { CGFloat(index + 1) / CGFloat(count) }
+    private var title: String {
+        switch step {
+        case .avatar: return "Make it yours"
+        case .name: return "A name to go by"
+        case .group: return "Find your crew"
+        case .done: return "Ready to roll"
+        }
+    }
+    private var subtitle: String {
+        switch step {
+        case .avatar: return "Add a profile photo—put a face to your plans."
+        case .name: return "How should we address you across Schedulr?"
+        case .group: return "Create or join a group now, or skip and do it later."
+        case .done: return "Nice! You can tweak these anytime in settings."
+        }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                AppLogoMark()
+                Text(title)
+                    .font(.title3.weight(.bold))
+                Spacer()
+                Text("Step \(index + 1) of \(count)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            ProgressBar(progress: progress)
+            Text(subtitle)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: 640)
+        .padding(.top, 4)
+    }
+}
+
+private struct ProgressBar: View {
+    let progress: CGFloat // 0...1
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = max(8, proxy.size.height)
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: h/2, style: .continuous)
+                    .fill(Color.secondary.opacity(0.15))
+                RoundedRectangle(cornerRadius: h/2, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.29, blue: 0.55),
+                                Color(red: 0.58, green: 0.41, blue: 0.87)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(12, w * min(max(progress, 0), 1)))
+            }
+        }
+        .frame(height: 10)
+        .animation(.easeInOut(duration: 0.35), value: progress)
+    }
+}
+
+// Small app logo mark (with fallback)
+private struct AppLogoMark: View {
+    var body: some View {
+        if UIImage(named: "schedulr-logo") != nil {
+            Image("schedulr-logo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .accessibilityLabel("Schedulr Logo")
+        } else if UIImage(named: "schedulr-logo-any") != nil {
+            Image("schedulr-logo-any")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .accessibilityLabel("Schedulr Logo")
+        } else {
+            Image(systemName: "calendar")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
+        }
+    }
+}
