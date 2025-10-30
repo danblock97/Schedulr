@@ -1,11 +1,15 @@
 import SwiftUI
 import PhotosUI
+import Supabase
+import Auth
 
 struct ProfileView: View {
     @ObservedObject var viewModel: ProfileViewModel
     @EnvironmentObject var authViewModel: AuthViewModel
     @State private var isEditingName = false
     @State private var tempDisplayName = ""
+    @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
+    @State private var isLoadingPrefs = false
 
     var body: some View {
         NavigationStack {
@@ -197,6 +201,55 @@ struct ProfileView: View {
                             }
                         }
 
+                        // Calendar Preferences Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("📅 Calendar Preferences")
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal)
+
+                            VStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Toggle("Hide holidays & birthdays", isOn: Binding(
+                                    get: { calendarPrefs.hideHolidays },
+                                    set: { newVal in
+                                        calendarPrefs.hideHolidays = newVal
+                                        Task { await saveCalendarPrefs() }
+                                    }
+                                ))
+                                    .padding(.bottom, 2)
+                                    .accessibilityHint("Filters common holiday and birthday calendars from your views and dashboard")
+                                    
+                                    Text("Filters common holiday and birthday calendars from your Calendar and Upcoming.")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Toggle("Deduplicate identical all‑day events", isOn: Binding(
+                                    get: { calendarPrefs.dedupAllDay },
+                                    set: { newVal in
+                                        calendarPrefs.dedupAllDay = newVal
+                                        Task { await saveCalendarPrefs() }
+                                    }
+                                ))
+                                    .padding(.bottom, 2)
+                                    .accessibilityHint("Combines same-title all-day events on a day into one row with a shared count")
+
+                                    Text("Combines same‑title all‑day events on a day into one row with a shared count.")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                            .padding(.horizontal)
+                        }
+
                         // Action Buttons Section
                         VStack(spacing: 12) {
                             // Sign Out Button
@@ -309,6 +362,7 @@ struct ProfileView: View {
             }
             .task {
                 await viewModel.loadUserProfile()
+                await loadCalendarPrefs()
             }
             .onChange(of: viewModel.selectedPhotoItem) { _, _ in
                 Task {
@@ -427,6 +481,26 @@ struct BubblyProfileBackground: View {
                 .frame(width: 40, height: 40)
                 .offset(x: -130, y: 50)
                 .blur(radius: 8)
+        }
+    }
+}
+
+// MARK: - Calendar Prefs IO
+extension ProfileView {
+    private func loadCalendarPrefs() async {
+        guard !isLoadingPrefs else { return }
+        isLoadingPrefs = true
+        defer { isLoadingPrefs = false }
+        if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
+            if let prefs = try? await CalendarPreferencesManager.shared.load(for: uid) {
+                calendarPrefs = prefs
+            }
+        }
+    }
+
+    private func saveCalendarPrefs() async {
+        if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
+            try? await CalendarPreferencesManager.shared.save(calendarPrefs, for: uid)
         }
     }
 }

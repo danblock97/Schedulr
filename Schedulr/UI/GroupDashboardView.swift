@@ -267,6 +267,7 @@ struct GroupDashboardView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     var onSignOut: (() -> Void)?
+    @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
 
     var body: some View {
         NavigationStack {
@@ -276,6 +277,7 @@ struct GroupDashboardView: View {
         .task {
             await viewModel.loadInitialData()
             await viewModel.refreshCalendarIfNeeded()
+            await loadCalendarPrefs()
         }
         .refreshable {
             // Reload memberships first
@@ -419,7 +421,7 @@ struct GroupDashboardView: View {
     private var availabilitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("📅 Group Calendar")
+                Text("📅 Upcoming")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                 Spacer()
                 if calendarSync.syncEnabled && viewModel.selectedGroupID != nil {
@@ -449,9 +451,29 @@ struct GroupDashboardView: View {
                 }
             }
 
+            // Active filter indicators
+            if calendarPrefs.hideHolidays || calendarPrefs.dedupAllDay {
+                HStack(spacing: 8) {
+                    if calendarPrefs.hideHolidays {
+                        Text("Holidays hidden")
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                    }
+                    if calendarPrefs.dedupAllDay {
+                        Text("Deduped all‑day")
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                    }
+                }
+            }
+
             if viewModel.selectedGroupID == nil {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Select a group to view the shared calendar.")
+                    Text("Select a group to view upcoming events.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -486,11 +508,17 @@ struct GroupDashboardView: View {
                         .foregroundStyle(.tertiary)
                 }
             } else {
-                // Calendar block view
-                CalendarBlockView(
-                    events: calendarSync.groupEvents,
-                    members: memberColorMapping
-                )
+                // Upcoming list (next 10 events)
+                VStack(spacing: 12) {
+                    ForEach(upcomingDisplayEvents.prefix(10)) { devent in
+                        UpcomingEventRow(
+                            event: devent.base,
+                            memberColor: memberColorMapping[devent.base.user_id]?.color,
+                            memberName: memberColorMapping[devent.base.user_id]?.name,
+                            sharedCount: devent.sharedCount
+                        )
+                    }
+                }
             }
 
             // Show any sync errors
@@ -516,6 +544,49 @@ struct GroupDashboardView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var filteredEvents: [CalendarEventWithUser] {
+        let now = Date()
+        var list = calendarSync.groupEvents.filter { $0.end_date >= now }
+        if calendarPrefs.hideHolidays {
+            list = list.filter { ev in
+                let name = (ev.calendar_name ?? ev.title).lowercased()
+                let cal = (ev.calendar_name ?? "").lowercased()
+                let isHoliday = name.contains("holiday") || cal.contains("holiday")
+                let isBirthday = name.contains("birthday") || cal.contains("birthday")
+                return !(isHoliday || isBirthday)
+            }
+        }
+        return list.sorted { lhs, rhs in
+            if lhs.start_date == rhs.start_date { return lhs.end_date < rhs.end_date }
+            return lhs.start_date < rhs.start_date
+        }
+    }
+
+    private var upcomingDisplayEvents: [DisplayEvent] {
+        if !calendarPrefs.dedupAllDay { return filteredEvents.map { DisplayEvent(base: $0, sharedCount: 1) } }
+        let cal = Calendar.current
+        let groups = Dictionary(grouping: filteredEvents) { ev -> String in
+            let day = cal.startOfDay(for: ev.start_date)
+            let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let key = "\(day.timeIntervalSince1970)#\(ev.is_all_day ? "1" : "0")#\(title)"
+            return key
+        }
+        var result: [DisplayEvent] = []
+        for (_, arr) in groups {
+            if let first = arr.first {
+                if first.is_all_day {
+                    result.append(DisplayEvent(base: first, sharedCount: arr.count))
+                } else {
+                    result.append(contentsOf: arr.map { DisplayEvent(base: $0, sharedCount: 1) })
+                }
+            }
+        }
+        return result.sorted { a, b in
+            if a.base.start_date == b.base.start_date { return a.base.end_date < b.base.end_date }
+            return a.base.start_date < b.base.start_date
         }
     }
 
@@ -572,6 +643,110 @@ struct GroupDashboardView: View {
         switch role.lowercased() {
         case "owner": return "star.fill"
         default: return "person.2.fill"
+        }
+    }
+}
+
+private struct UpcomingEventRow: View {
+    let event: CalendarEventWithUser
+    var memberColor: Color?
+    var memberName: String?
+    var sharedCount: Int = 1
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Circle()
+                .fill((memberColor ?? defaultColor).opacity(0.9))
+                .frame(width: 12, height: 12)
+                .overlay(
+                    Circle()
+                        .fill((memberColor ?? defaultColor).opacity(0.25))
+                        .frame(width: 24, height: 24)
+                        .blur(radius: 4)
+                )
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(event.title.isEmpty ? "Busy" : event.title)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                if sharedCount > 1 {
+                    Text("shared by \(sharedCount)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.15), in: Capsule())
+                }
+
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text(timeSummary(event))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+
+                if let memberName {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(memberColor ?? .secondary)
+                        Text(memberName)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(memberColor ?? .secondary)
+                    }
+                }
+
+                if let location = event.location, !location.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text(location)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private var defaultColor: Color { Color(red: 0.27, green: 0.63, blue: 0.98) }
+
+    private func timeSummary(_ e: CalendarEventWithUser) -> String {
+        if e.is_all_day { return "All day" }
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateStyle = .medium
+        dayFormatter.timeStyle = .none
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateStyle = .none
+        timeFormatter.timeStyle = .short
+
+        if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
+            return "\(dayFormatter.string(from: e.start_date)) • \(timeFormatter.string(from: e.start_date)) – \(timeFormatter.string(from: e.end_date))"
+        } else {
+            return "\(dayFormatter.string(from: e.start_date)) \(timeFormatter.string(from: e.start_date)) → \(dayFormatter.string(from: e.end_date)) \(timeFormatter.string(from: e.end_date))"
+        }
+    }
+}
+
+// MARK: - Prefs IO
+extension GroupDashboardView {
+    private func loadCalendarPrefs() async {
+        if let uid = try? await viewModel.client?.auth.session.user.id {
+            if let prefs = try? await CalendarPreferencesManager.shared.load(for: uid) {
+                calendarPrefs = prefs
+            }
         }
     }
 }

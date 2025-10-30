@@ -14,9 +14,9 @@ struct FloatingTabBar: View {
                 animation: animation
             )
 
-            // Create Event Tab
+            // Calendar Tab
             TabBarButton(
-                icon: "plus.circle.fill",
+                icon: "calendar",
                 index: 1,
                 selectedTab: $selectedTab,
                 animation: animation,

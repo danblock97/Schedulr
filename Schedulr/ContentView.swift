@@ -27,7 +27,7 @@ struct ContentView: View {
                 case 0:
                     GroupDashboardView(viewModel: viewModel)
                 case 1:
-                    PlaceholderView(title: "Create Event", icon: "plus.circle.fill", message: "Event creation is coming soon!")
+                    CalendarRootView(viewModel: viewModel)
                 case 2:
                     PlaceholderView(title: "Ask AI", icon: "sparkles", message: "AI assistant is coming soon!")
                 case 3:
