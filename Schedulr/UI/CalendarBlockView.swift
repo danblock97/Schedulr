@@ -44,7 +44,7 @@ struct CalendarBlockView: View {
     private var dayView: some View {
         VStack {
             dayNavigationHeader
-            dayHeaders
+            dayHeaders()
             ScrollView {
                 GeometryReader { geometry in
                     ZStack(alignment: .topLeading) {
@@ -124,7 +124,7 @@ struct CalendarBlockView: View {
             weekNavigationHeader
 
             // Day of week headers
-            dayHeaders
+            dayHeaders()
 
             // Calendar grid
             ScrollView {
