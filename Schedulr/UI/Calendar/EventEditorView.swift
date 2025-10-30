@@ -24,6 +24,8 @@ struct EventEditorView: View {
     @State private var selectedCategoryId: UUID? = nil
     @State private var showingCategoryCreator = false
     @State private var isLoadingCategories = false
+    @State private var currentAttendees: [(userId: UUID?, displayName: String, status: String)] = []
+    @State private var isLoadingAttendees = false
 
     var body: some View {
         NavigationStack {
@@ -79,6 +81,21 @@ struct EventEditorView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+                
+                if existingEvent != nil && !currentAttendees.isEmpty {
+                    Section("Current Attendees") {
+                        ForEach(currentAttendees.indices, id: \.self) { index in
+                            HStack {
+                                Circle().fill(Color.blue.opacity(0.9)).frame(width: 8, height: 8)
+                                Text(currentAttendees[index].displayName)
+                                Spacer()
+                                Text(currentAttendees[index].status.capitalized)
+                                    .foregroundStyle(.secondary)
+                                    .font(.footnote)
+                            }
+                        }
+                    }
+                }
 
                 Section("Apple Calendar") {
                     Toggle("Save to Apple Calendar", isOn: $saveToAppleCalendar)
@@ -105,6 +122,9 @@ struct EventEditorView: View {
         .task {
             await loadCategories()
             prefillIfEditing()
+            if existingEvent != nil {
+                await loadCurrentAttendees()
+            }
         }
         .sheet(isPresented: $showingCategoryCreator) {
             CategoryCreatorView(groupId: groupId) { category in
@@ -187,6 +207,18 @@ struct EventEditorView: View {
                 selectedMemberIds = ids
                 guestNamesText = guests.joined(separator: ", ")
             }
+        }
+    }
+    
+    private func loadCurrentAttendees() async {
+        guard let ev = existingEvent else { return }
+        isLoadingAttendees = true
+        defer { isLoadingAttendees = false }
+        do {
+            currentAttendees = try await CalendarEventService.shared.loadAttendees(eventId: ev.id)
+        } catch {
+            // Silently fail - attendees list is informational only
+            currentAttendees = []
         }
     }
 }

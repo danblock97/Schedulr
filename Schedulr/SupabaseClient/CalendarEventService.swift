@@ -86,16 +86,30 @@ final class CalendarEventService {
         return eventId
     }
 
-    // Load attendees
+    // Load attendees (include user profile name if available)
     func loadAttendees(eventId: UUID) async throws -> [(userId: UUID?, displayName: String, status: String)] {
-        struct Row: Decodable { let user_id: UUID?; let display_name: String?; let status: String }
+        struct Row: Decodable {
+            let user_id: UUID?
+            let display_name: String?
+            let status: String
+            let users: UserInfo?
+            struct UserInfo: Decodable { let display_name: String? }
+        }
         let rows: [Row] = try await client
             .from("event_attendees")
-            .select("user_id, display_name, status")
+            .select("user_id, display_name, status, users(display_name)")
             .eq("event_id", value: eventId)
             .execute()
             .value
-        return rows.map { ($0.user_id, $0.display_name ?? ($0.user_id?.uuidString ?? "Guest"), $0.status) }
+
+        return rows.map { r in
+            let explicit = r.display_name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nameFromUser = r.users?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolved = (explicit?.isEmpty == false ? explicit : nil)
+                ?? (nameFromUser?.isEmpty == false ? nameFromUser : nil)
+                ?? (r.user_id != nil ? "Member" : "Guest")
+            return (r.user_id, resolved ?? "Guest", r.status)
+        }
     }
 
     // Update event and replace attendees set
@@ -128,13 +142,51 @@ final class CalendarEventService {
 
     // Update current user's attendee status for an event
     func updateMyStatus(eventId: UUID, status: String, currentUserId: UUID) async throws {
-        // If a row exists for me, update; otherwise insert
-        struct UpsertRow: Encodable { let event_id: UUID; let user_id: UUID?; let display_name: String; let status: String }
-        let row = UpsertRow(event_id: eventId, user_id: currentUserId, display_name: "", status: status)
-        _ = try await client
+        let statusLower = status.lowercased()
+
+        struct IdRow: Decodable { let id: UUID }
+        struct UpdateStatusOnly: Encodable { let status: String }
+        struct UpdateStatusAndUser: Encodable { let status: String; let user_id: UUID }
+
+        // 1) Try updating an existing attendee row for this user
+        let updatedForUser: [IdRow] = try await client
             .from("event_attendees")
-            .upsert(row, onConflict: "event_id,user_id")
+            .update(UpdateStatusOnly(status: statusLower))
+            .eq("event_id", value: eventId)
+            .eq("user_id", value: currentUserId)
+            .select("id")
             .execute()
+            .value
+
+        // If we updated at least one row, we are done
+        if !updatedForUser.isEmpty { return }
+
+        // 2) Otherwise, try to claim a guest row by matching the user's display name
+        struct UserRow: Decodable { let display_name: String? }
+        let me: [UserRow] = try await client
+            .from("users")
+            .select("display_name")
+            .eq("id", value: currentUserId)
+            .limit(1)
+            .execute()
+            .value
+
+        let myName = me.first?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !myName.isEmpty {
+            let updatedGuest: [IdRow] = try await client
+                .from("event_attendees")
+                .update(UpdateStatusAndUser(status: statusLower, user_id: currentUserId))
+                .eq("event_id", value: eventId)
+                .is("user_id", value: nil)
+                .ilike("display_name", value: myName)
+                .select("id")
+                .execute()
+                .value
+
+            if !updatedGuest.isEmpty { return }
+        }
+
+        // 3) If nothing was updated, do nothing (avoid insert/delete due to RLS). The UI will stay on the optimistic value.
     }
 
     // Delete an event (allowed by RLS only for the event owner)

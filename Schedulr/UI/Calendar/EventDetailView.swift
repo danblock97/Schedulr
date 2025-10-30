@@ -6,12 +6,26 @@ struct EventDetailView: View {
     let event: CalendarEventWithUser
     let member: (name: String, color: Color)?
     @State private var attendees: [Attendee] = []
+    @State private var myStatus: String = "invited"
+    @State private var currentUserId: UUID?
+    @State private var isUpdatingResponse = false
+    @State private var isProgrammaticStatusChange = false
+    @State private var hasInitializedStatus = false
     @State private var isLoading = true
     @State private var showingEditor = false
     @State private var showingDeleteConfirm = false
     @State private var isDeleting = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
+    
+    private let responseOptions = [
+        ("invited", "Not responded"),
+        ("going", "Going"),
+        ("maybe", "Maybe"),
+        ("declined", "Decline")
+    ]
+
+    private let attendeeStatusOrder: [String] = ["going", "maybe", "invited"]
 
     var body: some View {
         List {
@@ -58,26 +72,74 @@ struct EventDetailView: View {
             if isLoading {
                 Section { ProgressView().frame(maxWidth: .infinity) }
             } else if !attendees.isEmpty {
-                Section("Attendees") {
-                    ForEach(attendees) { a in
-                        HStack {
-                            Circle().fill((a.color ?? .blue).opacity(0.9)).frame(width: 8, height: 8)
-                            Text(a.displayName)
-                            Spacer()
-                            Text(a.status.capitalized).foregroundStyle(.secondary).font(.footnote)
+                // Group by status and render in a stable order
+                ForEach(attendeeStatusOrder, id: \.self) { statusKey in
+                    let group = attendees.filter { $0.status.lowercased() == statusKey }
+                    if !group.isEmpty {
+                        Section("\(statusDisplayName(statusKey)) (\(group.count))") {
+                            ForEach(group) { a in
+                                HStack {
+                                    Circle().fill((a.color ?? .blue).opacity(0.9)).frame(width: 8, height: 8)
+                                    Text(a.displayName)
+                                    Spacer()
+                                    Text(statusDisplayName(a.status))
+                                        .foregroundStyle(.secondary)
+                                        .font(.footnote)
+                                }
+                            }
                         }
                     }
                 }
             }
             Section("Your response") {
-                HStack(spacing: 8) {
-                    Button("Going") { respond("going") }
-                        .buttonStyle(.borderedProminent)
-                    Button("Maybe") { respond("maybe") }
-                        .buttonStyle(.bordered)
-                    Button("Decline") { respond("declined") }
-                        .buttonStyle(.bordered)
+                Menu {
+                    // Going
+                    Button(action: {
+                        if isUpdatingResponse { return }
+                        let previous = myStatus
+                        isProgrammaticStatusChange = true
+                        myStatus = "going"
+                        isProgrammaticStatusChange = false
+                        respond("going", previousStatus: previous)
+                    }) {
+                        Label("Going", systemImage: myStatus == "going" ? "checkmark.circle.fill" : "circle")
+                    }
+
+                    // Maybe
+                    Button(action: {
+                        if isUpdatingResponse { return }
+                        let previous = myStatus
+                        isProgrammaticStatusChange = true
+                        myStatus = "maybe"
+                        isProgrammaticStatusChange = false
+                        respond("maybe", previousStatus: previous)
+                    }) {
+                        Label("Maybe", systemImage: myStatus == "maybe" ? "checkmark.circle.fill" : "circle")
+                    }
+
+                    // Decline
+                    Button(role: .destructive, action: {
+                        if isUpdatingResponse { return }
+                        let previous = myStatus
+                        isProgrammaticStatusChange = true
+                        myStatus = "declined"
+                        isProgrammaticStatusChange = false
+                        respond("declined", previousStatus: previous)
+                    }) {
+                        Label("Decline", systemImage: myStatus == "declined" ? "checkmark.circle.fill" : "circle")
+                    }
+                } label: {
+                    HStack {
+                        Text("Response")
+                        Spacer()
+                        Text(statusDisplayName(myStatus))
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .disabled(isUpdatingResponse)
             }
         }
         .navigationTitle("Event Details")
@@ -105,7 +167,11 @@ struct EventDetailView: View {
         .sheet(isPresented: $showingEditor) {
             EventEditorView(groupId: event.group_id, members: [], existingEvent: event)
         }
-        .task { await loadAttendees() }
+        .task {
+            // Get current user ID first
+            currentUserId = try? await SupabaseManager.shared.client.auth.session.user.id
+            await loadAttendees()
+        }
     }
 
     private var eventColor: Color {
@@ -124,15 +190,52 @@ struct EventDetailView: View {
         return "\(day(e.start_date)) \(t.string(from: e.start_date)) → \(day(e.end_date)) \(t.string(from: e.end_date))"
     }
     private func day(_ d: Date) -> String { let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f.string(from: d) }
+    
+    private func statusDisplayName(_ status: String) -> String {
+        switch status.lowercased() {
+        case "going": return "Going"
+        case "maybe": return "Maybe"
+        case "declined": return "Declined"
+        case "invited": return "Invited"
+        default: return status.capitalized
+        }
+    }
 }
 
 extension EventDetailView {
-    private func respond(_ status: String) {
+    private func respond(_ status: String, previousStatus: String) {
+        // Status is already updated optimistically via the picker binding
         Task {
-            if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
-                try? await CalendarEventService.shared.updateMyStatus(eventId: event.id, status: status, currentUserId: uid)
-                await loadAttendees()
+            await MainActor.run { isUpdatingResponse = true }
+            let uid: UUID
+            if let existing = currentUserId {
+                uid = existing
+            } else if let fetched = try? await SupabaseManager.shared.client.auth.session.user.id {
+                uid = fetched
+                await MainActor.run { currentUserId = fetched }
+            } else {
+                // Revert if we can't get user ID
+                await MainActor.run {
+                    isProgrammaticStatusChange = true
+                    myStatus = previousStatus
+                    isProgrammaticStatusChange = false
+                }
+                await MainActor.run { isUpdatingResponse = false }
+                return
             }
+            
+            do {
+                try await CalendarEventService.shared.updateMyStatus(eventId: event.id, status: status, currentUserId: uid)
+                await loadAttendees()
+            } catch {
+                // Revert status on error
+                await MainActor.run {
+                    isProgrammaticStatusChange = true
+                    myStatus = previousStatus
+                    isProgrammaticStatusChange = false
+                }
+            }
+            await MainActor.run { isUpdatingResponse = false }
         }
     }
 
@@ -155,38 +258,64 @@ extension EventDetailView {
     }
 }
 
-private struct Attendee: Identifiable { let id = UUID(); let displayName: String; let status: String; let color: Color? }
+private struct Attendee: Identifiable {
+    let id: UUID
+    let userId: UUID?
+    let displayName: String
+    let status: String
+    let color: Color?
+}
 
 extension EventDetailView {
     private func loadAttendees() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            struct Row: Decodable {
-                let user_id: UUID?
-                let display_name: String?
-                let status: String
-                let users: UserInfo?
-                struct UserInfo: Decodable { let display_name: String? }
-            }
-            let rows: [Row] = try await SupabaseManager.shared.client
-                .from("event_attendees")
-                .select("user_id, display_name, status, users(display_name)")
-                .eq("event_id", value: event.id)
-                .execute()
-                .value
+            let rows = try await CalendarEventService.shared.loadAttendees(eventId: event.id)
 
-            attendees = rows.map { r in
-                let explicit = r.display_name?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let nameFromUser = r.users?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let resolved = (explicit?.isEmpty == false ? explicit : nil)
-                    ?? (nameFromUser?.isEmpty == false ? nameFromUser : nil)
-                    ?? (r.user_id != nil ? "Member" : "Guest")
-                let color = r.user_id.map { _ in Color.blue }
-                return Attendee(displayName: resolved ?? "Guest", status: r.status, color: color)
+            let currentUserIdValue: UUID?
+            if let existing = currentUserId {
+                currentUserIdValue = existing
+            } else {
+                currentUserIdValue = try? await SupabaseManager.shared.client.auth.session.user.id
+                if let fetched = currentUserIdValue {
+                    await MainActor.run { currentUserId = fetched }
+                }
+            }
+
+            // Filter out declined attendees and map to Attendee struct
+            let mappedAttendees = rows
+                .filter { $0.status.lowercased() != "declined" }
+                .map { r in
+                    let name = r.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let resolved = name.isEmpty ? (r.userId != nil ? "Member" : "Guest") : name
+                    let color = r.userId.map { _ in Color.blue }
+                    return Attendee(
+                        id: UUID(),
+                        userId: r.userId,
+                        displayName: resolved,
+                        status: r.status,
+                        color: color
+                    )
+                }
+
+            await MainActor.run {
+                attendees = mappedAttendees
+                // Initialize myStatus only once from server to avoid flicker
+                if !hasInitializedStatus {
+                    isProgrammaticStatusChange = true
+                    defer { isProgrammaticStatusChange = false }
+                    if let userId = currentUserIdValue,
+                       let myAttendee = rows.first(where: { $0.userId == userId }) {
+                        myStatus = myAttendee.status.lowercased()
+                    } else {
+                        myStatus = "invited"
+                    }
+                    hasInitializedStatus = true
+                }
             }
         } catch {
-            attendees = []
+            await MainActor.run { attendees = [] }
         }
     }
 }
