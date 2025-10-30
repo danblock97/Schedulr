@@ -4,6 +4,7 @@ struct CalendarBlockView: View {
     let events: [CalendarEventWithUser]
     let members: [UUID: (name: String, color: Color)]
     @State private var currentWeekStart: Date = Date().startOfWeek()
+    @State private var selectedDate: Date = Date()
 
     private let calendar = Calendar.current
     private let hourHeight: CGFloat = 60
@@ -43,7 +44,7 @@ struct CalendarBlockView: View {
 
     private var weekNavigationHeader: some View {
         HStack {
-            Button(action: previousWeek) {
+            Button(action: previous) {
                 Image(systemName: "chevron.left.circle.fill")
                     .font(.title2)
                     .foregroundStyle(
@@ -73,7 +74,7 @@ struct CalendarBlockView: View {
 
             Spacer()
 
-            Button(action: nextWeek) {
+            Button(action: next) {
                 Image(systemName: "chevron.right.circle.fill")
                     .font(.title2)
                     .foregroundStyle(
@@ -90,6 +91,8 @@ struct CalendarBlockView: View {
         }
         .padding(.horizontal)
     }
+
+
 
     // MARK: - Day Headers
 
@@ -117,24 +120,34 @@ struct CalendarBlockView: View {
                 .frame(width: 32, height: 32)
                 .background(
                     Circle()
-                        .fill(isToday(date) ?
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                    Color(red: 0.58, green: 0.41, blue: 0.87)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ) :
-                            LinearGradient(
-                                colors: [.clear],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                        .fill(
+                            isToday(date) ?
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.98, green: 0.29, blue: 0.55),
+                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ) :
+                                (calendar.isDate(date, inSameDayAs: selectedDate) && !isToday(date)) ?
+                                LinearGradient(
+                                    colors: [.gray.opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ) :
+                                LinearGradient(
+                                    colors: [.clear],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                         )
                 )
         }
         .frame(maxWidth: .infinity)
+        .onTapGesture {
+            selectedDate = date
+        }
     }
 
     // MARK: - Time Grid Background
@@ -154,20 +167,24 @@ struct CalendarBlockView: View {
 
             // Grid for each day
             ForEach(weekDays, id: \.self) { _ in
-                VStack(spacing: 0) {
-                    ForEach(0..<24, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.1))
-                            .frame(height: 1)
-                            .frame(maxWidth: .infinity)
-
-                        Spacer()
-                            .frame(height: hourHeight - 1)
-                    }
-                }
-                .frame(maxWidth: .infinity)
+                dayGrid
             }
         }
+    }
+
+    private var dayGrid: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<24, id: \.self) { _ in
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.1))
+                    .frame(height: 1)
+                    .frame(maxWidth: .infinity)
+
+                Spacer()
+                    .frame(height: hourHeight - 1)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Events Overlay
@@ -175,17 +192,21 @@ struct CalendarBlockView: View {
     private func eventsOverlay(in geometry: GeometryProxy) -> some View {
         let dayWidth = (geometry.size.width - timeColumnWidth) / 7
 
-        return ForEach(Array(weekDays.enumerated()), id: \.element) { index, date in
-            let dayEvents = eventsForDay(date)
+        return ZStack {
+            ForEach(Array(weekDays.enumerated()), id: \.element) { index, date in
+                if calendar.isDate(date, inSameDayAs: selectedDate) {
+                    let dayEvents = eventsForDay(date)
 
-            ForEach(Array(dayEvents.enumerated()), id: \.element.id) { eventIndex, event in
-                eventBlock(
-                    event: event,
-                    dayIndex: index,
-                    dayWidth: dayWidth,
-                    totalEventsInSlot: dayEvents.count,
-                    eventIndexInSlot: eventIndex
-                )
+                    ForEach(Array(dayEvents.enumerated()), id: \.element.id) { eventIndex, event in
+                        eventBlock(
+                            event: event,
+                            dayIndex: index,
+                            dayWidth: dayWidth,
+                            totalEventsInSlot: dayEvents.count,
+                            eventIndexInSlot: eventIndex
+                        )
+                    }
+                }
             }
         }
     }
@@ -277,27 +298,6 @@ struct CalendarBlockView: View {
 
     // MARK: - Helper Methods
 
-    private var weekDays: [Date] {
-        (0..<7).compactMap { dayOffset in
-            calendar.date(byAdding: .day, value: dayOffset, to: currentWeekStart)
-        }
-    }
-
-    private var weekRangeText: String {
-        let weekEnd = calendar.date(byAdding: .day, value: 6, to: currentWeekStart) ?? currentWeekStart
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-
-        let startMonth = calendar.component(.month, from: currentWeekStart)
-        let endMonth = calendar.component(.month, from: weekEnd)
-
-        if startMonth == endMonth {
-            return "\(formatter.string(from: currentWeekStart)) - \(calendar.component(.day, from: weekEnd))"
-        } else {
-            return "\(formatter.string(from: currentWeekStart)) - \(formatter.string(from: weekEnd))"
-        }
-    }
-
     private var isCurrentWeek: Bool {
         let today = Date()
         return calendar.isDate(today, equalTo: currentWeekStart, toGranularity: .weekOfYear)
@@ -333,13 +333,34 @@ struct CalendarBlockView: View {
         return hour * 60 + minute
     }
 
-    private func previousWeek() {
+    private var weekDays: [Date] {
+        (0..<7).compactMap { dayOffset in
+            calendar.date(byAdding: .day, value: dayOffset, to: currentWeekStart)
+        }
+    }
+
+    private var weekRangeText: String {
+        let weekEnd = calendar.date(byAdding: .day, value: 6, to: currentWeekStart) ?? currentWeekStart
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+
+        let startMonth = calendar.component(.month, from: currentWeekStart)
+        let endMonth = calendar.component(.month, from: weekEnd)
+
+        if startMonth == endMonth {
+            return "\(formatter.string(from: currentWeekStart)) - \(calendar.component(.day, from: weekEnd))"
+        } else {
+            return "\(formatter.string(from: currentWeekStart)) - \(formatter.string(from: weekEnd))"
+        }
+    }
+
+    private func previous() {
         if let newDate = calendar.date(byAdding: .weekOfYear, value: -1, to: currentWeekStart) {
             currentWeekStart = newDate
         }
     }
 
-    private func nextWeek() {
+    private func next() {
         if let newDate = calendar.date(byAdding: .weekOfYear, value: 1, to: currentWeekStart) {
             currentWeekStart = newDate
         }
