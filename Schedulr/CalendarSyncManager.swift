@@ -171,6 +171,8 @@ final class CalendarSyncManager: ObservableObject {
         }
     }
 
+    static let calendarDidChangeNotification = Notification.Name("calendarDidChangeNotification")
+
     private func observeEventStoreChanges() {
         guard storeChangeObserver == nil else { return }
 
@@ -180,7 +182,9 @@ final class CalendarSyncManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            Task { await self.refreshEvents() }
+            
+            // Post a custom notification instead of directly refreshing
+            NotificationCenter.default.post(name: Self.calendarDidChangeNotification, object: nil)
         }
     }
 

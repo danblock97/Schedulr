@@ -215,7 +215,17 @@ final class DashboardViewModel: ObservableObject {
 
     func refreshCalendarIfNeeded() async {
         if calendarManager.syncEnabled {
-            await calendarManager.refreshEvents()
+            await syncGroupCalendar()
+        }
+    }
+
+    func syncGroupCalendar() async {
+        guard let groupID = selectedGroupID, calendarManager.syncEnabled else { return }
+        
+        Task {
+            if let userId = try? await currentUID() {
+                await calendarManager.syncWithGroup(groupId: groupID, userId: userId)
+            }
         }
     }
 
@@ -277,7 +287,12 @@ struct GroupDashboardView: View {
             }
 
             // Refresh calendar - don't let this fail the whole refresh
-            await viewModel.refreshCalendarIfNeeded()
+            await viewModel.syncGroupCalendar()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: CalendarSyncManager.calendarDidChangeNotification)) { _ in
+            Task {
+                await viewModel.syncGroupCalendar()
+            }
         }
     }
 

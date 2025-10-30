@@ -1,10 +1,19 @@
 import SwiftUI
 
+enum CalendarViewType: String, CaseIterable, Identifiable {
+    case day = "Day"
+    case week = "Week"
+    case month = "Month"
+
+    var id: String { self.rawValue }
+}
+
 struct CalendarBlockView: View {
     let events: [CalendarEventWithUser]
     let members: [UUID: (name: String, color: Color)]
     @State private var currentWeekStart: Date = Date().startOfWeek()
     @State private var selectedDate: Date = Date()
+    @State private var viewType: CalendarViewType = .week
 
     private let calendar = Calendar.current
     private let hourHeight: CGFloat = 60
@@ -12,6 +21,105 @@ struct CalendarBlockView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            // View type picker
+            Picker("View Type", selection: $viewType) {
+                ForEach(CalendarViewType.allCases) { type in
+                    Text(type.rawValue).tag(type)
+                }
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding(.horizontal)
+
+            switch viewType {
+            case .day:
+                dayView
+            case .week:
+                weekView
+            case .month:
+                MonthlyCalendarView()
+            }
+        }
+    }
+
+    private var dayView: some View {
+        VStack {
+            dayNavigationHeader
+            dayHeaders
+            ScrollView {
+                GeometryReader { geometry in
+                    ZStack(alignment: .topLeading) {
+                        timeGridBackground
+                        eventsOverlay(in: geometry)
+                    }
+                    .frame(height: hourHeight * 24)
+                }
+                .frame(minHeight: 500)
+            }
+        }
+    }
+
+    private var dayNavigationHeader: some View {
+        HStack {
+            Button(action: previousDay) {
+                Image(systemName: "chevron.left.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.29, blue: 0.55),
+                                Color(red: 0.58, green: 0.41, blue: 0.87)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+
+            Spacer()
+
+            Text(dayViewDateText)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+
+            Spacer()
+
+            Button(action: nextDay) {
+                Image(systemName: "chevron.right.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.29, blue: 0.55),
+                                Color(red: 0.58, green: 0.41, blue: 0.87)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var dayViewDateText: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d, yyyy"
+        return formatter.string(from: selectedDate)
+    }
+
+    private func previousDay() {
+        if let newDate = calendar.date(byAdding: .day, value: -1, to: selectedDate) {
+            selectedDate = newDate
+        }
+    }
+
+    private func nextDay() {
+        if let newDate = calendar.date(byAdding: .day, value: 1, to: selectedDate) {
+            selectedDate = newDate
+        }
+    }
+
+    private var weekView: some View {
+        VStack {
             // Week navigation header
             weekNavigationHeader
 
@@ -30,7 +138,7 @@ struct CalendarBlockView: View {
                     }
                     .frame(height: hourHeight * 24)
                 }
-                .frame(height: 500)
+                .frame(minHeight: 500)
             }
 
             // Legend
@@ -96,14 +204,18 @@ struct CalendarBlockView: View {
 
     // MARK: - Day Headers
 
-    private var dayHeaders: some View {
+    private func dayHeaders(for day: Date? = nil) -> some View {
         HStack(spacing: 0) {
             // Empty space for time column
             Color.clear
                 .frame(width: timeColumnWidth)
 
-            ForEach(weekDays, id: \.self) { date in
-                dayHeaderCell(for: date)
+            if let day = day {
+                dayHeaderCell(for: day)
+            } else {
+                ForEach(weekDays, id: \.self) { date in
+                    dayHeaderCell(for: date)
+                }
             }
         }
     }
