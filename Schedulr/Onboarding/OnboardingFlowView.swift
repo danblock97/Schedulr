@@ -377,7 +377,7 @@ private struct CalendarPreviewRow: View {
             red: event.calendarColor.red,
             green: event.calendarColor.green,
             blue: event.calendarColor.blue,
-            opacity: event.calendarColor.opacity
+            opacity: event.calendarColor.alpha
         )
     }
 }

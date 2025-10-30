@@ -29,7 +29,7 @@ final class DashboardViewModel: ObservableObject {
     @Published var membershipsError: String?
     @Published var membersError: String?
 
-    private let client: SupabaseClient?
+    let client: SupabaseClient?
     private let calendarManager: CalendarSyncManager
     private let defaults = UserDefaults.standard
     private static let selectedGroupKeyPrefix = "LastSelectedGroup-"
@@ -404,12 +404,17 @@ struct GroupDashboardView: View {
     private var availabilitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("📅 Upcoming Events")
+                Text("📅 Group Calendar")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                 Spacer()
-                if calendarSync.syncEnabled {
+                if calendarSync.syncEnabled && viewModel.selectedGroupID != nil {
                     Button {
-                        Task { await calendarSync.refreshEvents() }
+                        Task {
+                            if let groupId = viewModel.selectedGroupID,
+                               let userId = try? await viewModel.client?.auth.session.user.id {
+                                await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
+                            }
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise.circle.fill")
                             .font(.system(size: 24))
@@ -425,18 +430,28 @@ struct GroupDashboardView: View {
                             )
                             .symbolRenderingMode(.hierarchical)
                     }
+                    .disabled(calendarSync.isRefreshing)
                 }
             }
 
-            if !calendarSync.syncEnabled {
+            if viewModel.selectedGroupID == nil {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Turn on calendar sync to display your upcoming events here.")
+                    Text("Select a group to view the shared calendar.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !calendarSync.syncEnabled {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Turn on calendar sync to share your calendar with the group.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Button("Enable calendar sync") {
                         Task {
                             if await calendarSync.enableSyncFlow() {
-                                await calendarSync.refreshEvents()
+                                if let groupId = viewModel.selectedGroupID,
+                                   let userId = try? await viewModel.client?.auth.session.user.id {
+                                    await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
+                                }
                             }
                         }
                     }
@@ -444,18 +459,60 @@ struct GroupDashboardView: View {
                 }
             } else if calendarSync.isRefreshing {
                 ProgressView("Syncing calendar…")
-            } else if calendarSync.upcomingEvents.isEmpty {
-                Text("No events in the next couple of weeks.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else if calendarSync.groupEvents.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No events in the next couple of weeks.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text("Tap the refresh button to sync your calendar with the group.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             } else {
-                VStack(spacing: 12) {
-                    ForEach(calendarSync.upcomingEvents.prefix(5)) { event in
-                        CalendarEventCard(event: event)
+                // Calendar block view
+                CalendarBlockView(
+                    events: calendarSync.groupEvents,
+                    members: memberColorMapping
+                )
+            }
+
+            // Show any sync errors
+            if let error = calendarSync.lastSyncError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+            }
+        }
+        .onChange(of: viewModel.selectedGroupID) { _, newGroupID in
+            // Sync calendar when group changes
+            if let groupId = newGroupID, calendarSync.syncEnabled {
+                Task {
+                    if let userId = try? await viewModel.client?.auth.session.user.id {
+                        await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
                     }
                 }
             }
         }
+    }
+
+    private var memberColorMapping: [UUID: (name: String, color: Color)] {
+        var mapping: [UUID: (name: String, color: Color)] = [:]
+        for member in viewModel.members {
+            mapping[member.id] = (
+                name: member.displayName,
+                color: calendarSync.userColor(for: member.id)
+            )
+        }
+        return mapping
     }
 
     private var membersSection: some View {
@@ -570,25 +627,41 @@ private struct GroupInviteView: View {
 
 private struct CalendarEventCard: View {
     let event: CalendarSyncManager.SyncedEvent
+    var userColor: Color?
+    var showUserAttribution: Bool = false
 
     var body: some View {
         HStack(spacing: 14) {
-            // Color accent circle
+            // Color accent circle - use user color if provided, otherwise calendar color
             Circle()
-                .fill(color(for: event))
+                .fill(userColor ?? color(for: event))
                 .frame(width: 12, height: 12)
                 .overlay(
                     Circle()
-                        .fill(color(for: event).opacity(0.3))
+                        .fill((userColor ?? color(for: event)).opacity(0.3))
                         .frame(width: 24, height: 24)
                         .blur(radius: 4)
                 )
 
             VStack(alignment: .leading, spacing: 6) {
+                // Event title
                 Text(event.title.isEmpty ? "🔒 Busy" : event.title)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .foregroundColor(.primary)
 
+                // Show user name if attribution is enabled
+                if showUserAttribution, let userName = event.userName {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(userColor ?? .secondary)
+                        Text(userName)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(userColor ?? .secondary)
+                    }
+                }
+
+                // Time info
                 HStack(spacing: 6) {
                     Image(systemName: "clock.fill")
                         .font(.system(size: 11))
@@ -598,6 +671,7 @@ private struct CalendarEventCard: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // Location
                 if let location = event.location, !location.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "location.fill")
@@ -616,7 +690,7 @@ private struct CalendarEventCard: View {
         .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                .stroke((userColor ?? Color.white).opacity(0.2), lineWidth: 1)
         )
     }
 
@@ -645,7 +719,7 @@ private struct CalendarEventCard: View {
             red: event.calendarColor.red,
             green: event.calendarColor.green,
             blue: event.calendarColor.blue,
-            opacity: event.calendarColor.opacity
+            opacity: event.calendarColor.alpha
         )
     }
 }
