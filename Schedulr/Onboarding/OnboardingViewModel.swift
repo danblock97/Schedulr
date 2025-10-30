@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import Supabase
+import EventKit
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {
@@ -9,6 +10,7 @@ final class OnboardingViewModel: ObservableObject {
         case avatar
         case name
         case group
+        case calendar
         case done
     }
 
@@ -30,6 +32,9 @@ final class OnboardingViewModel: ObservableObject {
     @Published var joinInput: String = ""
     @Published var isHandlingGroup: Bool = false
 
+    // Calendar step
+    @Published var wantsCalendarSync: Bool = false
+
     // Errors
     @Published var errorMessage: String? = nil
 
@@ -40,9 +45,12 @@ final class OnboardingViewModel: ObservableObject {
 
     private var client: SupabaseClient { SupabaseManager.shared.client }
     private let avatarsBucket = "avatars"
+    private let calendarManager: CalendarSyncManager?
 
-    init(onFinished: (() -> Void)? = nil) {
+    init(calendarManager: CalendarSyncManager? = nil, onFinished: (() -> Void)? = nil) {
+        self.calendarManager = calendarManager
         self.onFinished = onFinished
+        wantsCalendarSync = calendarManager?.syncEnabled ?? false
     }
 
     // MARK: - Gating
@@ -62,6 +70,7 @@ final class OnboardingViewModel: ObservableObject {
 
     // MARK: - Flow
     func next() async {
+        errorMessage = nil
         switch step {
         case .avatar:
             // Optional; upload if provided
@@ -76,7 +85,12 @@ final class OnboardingViewModel: ObservableObject {
             step = .group
         case .group:
             await handleGroup()
-            step = .done
+            step = .calendar
+        case .calendar:
+            await handleCalendarPreference()
+            if errorMessage == nil {
+                step = .done
+            }
         case .done:
             onFinished?()
         }
@@ -136,7 +150,7 @@ final class OnboardingViewModel: ObservableObject {
             guard let data = pickedImageData, !data.isEmpty else { return }
             let fileName = "\(uid.uuidString)/avatar_\(Int(Date().timeIntervalSince1970)).jpg"
             // Overwrite if exists
-            _ = try await client.storage.from(avatarsBucket).upload(path: fileName, file: data, options: .init(contentType: "image/jpeg", upsert: true))
+            _ = try await client.storage.from(avatarsBucket).upload(fileName, data: data, options: .init(contentType: "image/jpeg", upsert: true))
             // Get a public URL (bucket should be public)
             let url = try client.storage.from(avatarsBucket).getPublicURL(path: fileName)
             avatarPublicURL = url
@@ -216,5 +230,24 @@ final class OnboardingViewModel: ObservableObject {
         }
         // Fallback: accept raw code
         return trimmed
+    }
+
+    private func handleCalendarPreference() async {
+        guard let calendarManager else {
+            return
+        }
+
+        if wantsCalendarSync {
+            let granted = await calendarManager.enableSyncFlow()
+            if !granted {
+                if calendarManager.authorizationStatus == .denied {
+                    errorMessage = "Calendar access is denied. Enable access in Settings to sync your availability."
+                } else {
+                    errorMessage = calendarManager.lastSyncError ?? "We couldn't enable calendar sync right now."
+                }
+            }
+        } else {
+            calendarManager.disableSync()
+        }
     }
 }

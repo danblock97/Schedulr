@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import EventKit
 
 struct OnboardingFlowView: View {
     @ObservedObject var viewModel: OnboardingViewModel
@@ -36,6 +37,13 @@ struct OnboardingFlowView: View {
                         }
                         if viewModel.step == .group {
                             GroupStep(viewModel: viewModel)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: insertion).combined(with: .opacity),
+                                    removal: .move(edge: removal).combined(with: .opacity)
+                                ))
+                        }
+                        if viewModel.step == .calendar {
+                            CalendarStep(viewModel: viewModel)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: insertion).combined(with: .opacity),
                                     removal: .move(edge: removal).combined(with: .opacity)
@@ -233,6 +241,146 @@ private struct GroupStep: View {
     }
 }
 
+private struct CalendarStep: View {
+    @ObservedObject var viewModel: OnboardingViewModel
+    @EnvironmentObject private var calendarSync: CalendarSyncManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Bring your schedule")
+                    .font(.subheadline.weight(.semibold))
+                Text("Let Schedulr show your upcoming events so the group can see when you're busy.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Toggle(isOn: Binding(
+                get: { viewModel.wantsCalendarSync },
+                set: { newValue in
+                    viewModel.wantsCalendarSync = newValue
+                    if !newValue {
+                        calendarSync.disableSync()
+                    }
+                }
+            )) {
+                Text("Sync my personal calendars")
+                    .font(.body.weight(.medium))
+            }
+            .toggleStyle(.switch)
+
+            Group {
+                switch calendarSync.authorizationStatus {
+                case .notDetermined:
+                    Text("We'll ask for permission on the next step.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                case .authorized:
+                    if calendarSync.syncEnabled && !calendarSync.upcomingEvents.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Upcoming (next 2 weeks)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(Array(calendarSync.upcomingEvents.prefix(3))) { event in
+                                CalendarPreviewRow(event: event)
+                            }
+                            if calendarSync.upcomingEvents.count > 3 {
+                                Text("…and \(calendarSync.upcomingEvents.count - 3) more")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(14)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else if viewModel.wantsCalendarSync {
+                        Text("We'll pull in your next couple of weeks once calendar access is granted.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                case .denied, .restricted:
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Calendar access is turned off.")
+                            .font(.footnote.weight(.semibold))
+                        Text("You can enable it later in Settings > Privacy > Calendars.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                @unknown default:
+                    EmptyView()
+                }
+            }
+
+            if calendarSync.isRequestingAccess {
+                ProgressView("Requesting access…")
+            } else if calendarSync.isRefreshing {
+                ProgressView("Syncing events…")
+            }
+
+            if let error = viewModel.errorMessage, viewModel.step == .calendar {
+                Text(error)
+                    .foregroundStyle(.red)
+                    .font(.footnote)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct CalendarPreviewRow: View {
+    let event: CalendarSyncManager.SyncedEvent
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(color(for: event))
+                .frame(width: 8, height: 8)
+                .padding(.top, 6)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(event.title.isEmpty ? "Busy" : event.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(formattedDateRange(for: event))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let location = event.location, !location.isEmpty {
+                    Text(location)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    private func formattedDateRange(for event: CalendarSyncManager.SyncedEvent) -> String {
+        if event.isAllDay {
+            return "All day • \(event.calendarTitle)"
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        let sameDay = Calendar.current.isDate(event.startDate, inSameDayAs: event.endDate)
+
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateStyle = .medium
+        dayFormatter.timeStyle = .none
+
+        if sameDay {
+            return "\(dayFormatter.string(from: event.startDate)) • \(formatter.string(from: event.startDate)) – \(formatter.string(from: event.endDate))"
+        } else {
+            return "\(dayFormatter.string(from: event.startDate)) \(formatter.string(from: event.startDate)) → \(dayFormatter.string(from: event.endDate)) \(formatter.string(from: event.endDate))"
+        }
+    }
+
+    private func color(for event: CalendarSyncManager.SyncedEvent) -> Color {
+        Color(
+            red: event.calendarColor.red,
+            green: event.calendarColor.green,
+            blue: event.calendarColor.blue,
+            opacity: event.calendarColor.opacity
+        )
+    }
+}
 private struct DoneStep: View {
     var onFinish: () -> Void
     var body: some View {
@@ -249,7 +397,9 @@ private struct DoneStep: View {
 }
 
 #Preview {
-    OnboardingFlowView(viewModel: OnboardingViewModel(onFinished: {}))
+    let manager = CalendarSyncManager()
+    return OnboardingFlowView(viewModel: OnboardingViewModel(calendarManager: manager, onFinished: {}))
+        .environmentObject(manager)
 }
 
 // MARK: - Bubbly styling helpers (UI-only)
@@ -289,6 +439,7 @@ private struct OnboardingHeader: View {
         case .avatar: return "Make it yours"
         case .name: return "A name to go by"
         case .group: return "Find your crew"
+        case .calendar: return "Sync your calendar"
         case .done: return "Ready to roll"
         }
     }
@@ -297,6 +448,7 @@ private struct OnboardingHeader: View {
         case .avatar: return "Add a profile photo—put a face to your plans."
         case .name: return "How should we address you across Schedulr?"
         case .group: return "Create or join a group now, or skip and do it later."
+        case .calendar: return "Pull in your personal calendars so everyone can see when you're busy."
         case .done: return "Nice! You can tweak these anytime in settings."
         }
     }

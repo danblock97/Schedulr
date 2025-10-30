@@ -63,6 +63,9 @@
     <!-- Photo library access for choosing profile avatar -->
     <key>NSPhotoLibraryUsageDescription</key>
     <string>We use your photo to set a cute profile avatar.</string>
+    <!-- Calendar access for syncing personal availability -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>Schedulr needs calendar access so you can share availability with your groups.</string>
 
     <!-- Ensure full-screen launch to avoid letterboxing on tall iPhones -->
     <key>UILaunchStoryboardName</key>

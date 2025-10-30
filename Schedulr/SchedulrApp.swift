@@ -28,9 +28,16 @@ struct SchedulrApp: App {
 private struct RootContainer: View {
     @State private var showSplash: Bool = true
     @StateObject private var authVM = AuthViewModel()
-    @StateObject private var onboardingVM = OnboardingViewModel()
+    @StateObject private var calendarManager: CalendarSyncManager
+    @StateObject private var onboardingVM: OnboardingViewModel
     @State private var showOnboarding: Bool = false
     @State private var routingInProgress: Bool = false
+
+    init() {
+        let calendarManager = CalendarSyncManager()
+        _calendarManager = StateObject(wrappedValue: calendarManager)
+        _onboardingVM = StateObject(wrappedValue: OnboardingViewModel(calendarManager: calendarManager))
+    }
 
     var body: some View {
         ZStack {
@@ -44,8 +51,9 @@ private struct RootContainer: View {
                         .ignoresSafeArea()
                         .zIndex(0)
                 } else {
-                    ContentView()
+                    ContentView(calendarManager: calendarManager)
                         .environmentObject(authVM)
+                        .environmentObject(calendarManager)
                         .zIndex(0)
                 }
             default:
@@ -90,10 +98,14 @@ private struct RootContainer: View {
             switch phase {
             case .authenticated:
                 routingInProgress = true
+                calendarManager.resetAuthorizationStatus()
                 Task { @MainActor in
                     showOnboarding = await onboardingVM.needsOnboarding()
                     // If onboarding is needed, keep routingInProgress true so we don't flash main UI underneath.
                     routingInProgress = showOnboarding
+                    if !showOnboarding {
+                        await calendarManager.refreshEvents()
+                    }
                 }
             default:
                 routingInProgress = false
@@ -102,10 +114,12 @@ private struct RootContainer: View {
         }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingFlowView(viewModel: onboardingVM)
+                .environmentObject(calendarManager)
                 .onAppear {
                     onboardingVM.onFinished = {
                         showOnboarding = false
                         routingInProgress = false
+                        Task { await calendarManager.refreshEvents() }
                     }
                 }
         }

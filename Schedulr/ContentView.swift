@@ -6,39 +6,27 @@
 //
 
 import SwiftUI
-import Supabase
 
 struct ContentView: View {
     @EnvironmentObject private var authVM: AuthViewModel
-    var body: some View {
-        ZStack {
-            // Fill full screen behind content (iOS/macOS)
-            Color(.systemBackground)
-                .ignoresSafeArea()
+    @ObservedObject private var calendarManager: CalendarSyncManager
+    @StateObject private var viewModel: DashboardViewModel
 
-            VStack {
-                Image(systemName: "globe")
-                    .imageScale(.large)
-                    .foregroundStyle(.tint)
-                Text("Hello, world!")
-                Button("Ping Supabase") {
-                    Task {
-                        _ = SupabaseManager.shared.client
-                        #if DEBUG
-                        print("Supabase client ready")
-                        #endif
-                    }
-                }
-                Button("Sign Out") {
-                    Task { await authVM.signOut() }
-                }
-            }
-            .padding()
+    init(calendarManager: CalendarSyncManager) {
+        _calendarManager = ObservedObject(initialValue: calendarManager)
+        _viewModel = StateObject(wrappedValue: DashboardViewModel(calendarManager: calendarManager))
+    }
+
+    var body: some View {
+        GroupDashboardView(viewModel: viewModel) {
+            Task { await authVM.signOut() }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 #Preview {
-    ContentView()
+    let calendarManager = CalendarSyncManager()
+    return ContentView(calendarManager: calendarManager)
+        .environmentObject(AuthViewModel())
+        .environmentObject(calendarManager)
 }
