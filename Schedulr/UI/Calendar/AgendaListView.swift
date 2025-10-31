@@ -7,22 +7,37 @@ struct AgendaListView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            List {
-                ForEach(grouped.keys.sorted(), id: \.self) { day in
-                    Section(header: dayHeader(day)) {
-                        ForEach(grouped[day] ?? []) { devent in
-                            NavigationLink(destination: EventDetailView(event: devent.base, member: members[devent.base.user_id])) {
-                                AgendaRow(event: devent.base, member: members[devent.base.user_id], sharedCount: devent.sharedCount)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(grouped.keys.sorted(), id: \.self) { day in
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Date header
+                            Text(headerTitle(for: day))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isTodayOrFirst(day) ? .red : .primary)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 16)
+                                .padding(.bottom, 4)
+                                .id(day)
+                            
+                            // Events for this day
+                            ForEach(grouped[day] ?? []) { devent in
+                                NavigationLink(destination: EventDetailView(event: devent.base, member: members[devent.base.user_id])) {
+                                    AgendaRow(event: devent.base, member: members[devent.base.user_id], sharedCount: devent.sharedCount)
+                                }
+                                .padding(.horizontal, 20)
                             }
                         }
                     }
                 }
+                .padding(.bottom, 100)
             }
-            .listStyle(.insetGrouped)
             .onAppear {
                 // attempt to scroll to today
                 if let todayKey = Calendar.current.startOfDay(for: Date()) as Date? {
-                    proxy.scrollTo(todayKey, anchor: .top)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        proxy.scrollTo(todayKey, anchor: .top)
+                    }
                 }
             }
         }
@@ -31,21 +46,22 @@ struct AgendaListView: View {
     private var grouped: [Date: [DisplayEvent]] {
         Dictionary(grouping: events) { Calendar.current.startOfDay(for: $0.base.start_date) }
     }
-
-    private func dayHeader(_ date: Date) -> some View {
-        HStack {
-            Text(headerTitle(for: date))
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
-            Spacer()
+    
+    private func isTodayOrFirst(_ date: Date) -> Bool {
+        let today = Calendar.current.startOfDay(for: Date())
+        let dayStart = Calendar.current.startOfDay(for: date)
+        
+        // First date in list or today
+        if let firstDate = grouped.keys.sorted().first, dayStart == firstDate {
+            return true
         }
-        .id(date)
+        return Calendar.current.isDate(dayStart, inSameDayAs: today)
     }
 
     private func headerTitle(for date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE — d MMM yyyy"
-        return f.string(from: date)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE — d MMM"
+        return formatter.string(from: date)
     }
 }
 
@@ -55,38 +71,45 @@ private struct AgendaRow: View {
     var sharedCount: Int = 1
 
     var body: some View {
-        HStack(spacing: 12) {
-            Circle().fill(eventColor.opacity(0.9))
-                .frame(width: 10, height: 10)
+        HStack(alignment: .top, spacing: 12) {
+            // Purple star icon (Apple Calendar style)
+            Image(systemName: "star.fill")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color(red: 0.58, green: 0.41, blue: 0.87))
+                .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
+                // Event title
                 Text(event.title.isEmpty ? "Busy" : event.title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                if sharedCount > 1 {
-                    Text("shared by \(sharedCount)")
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.15), in: Capsule())
-                }
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundColor(.primary)
 
-                HStack(spacing: 6) {
-                    Image(systemName: "clock.fill").font(.system(size: 11)).foregroundColor(.secondary)
-                    Text(timeSummary(event))
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-
-                if let location = event.location, !location.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "location.fill").font(.system(size: 11)).foregroundColor(.secondary)
-                        Text(location).font(.system(size: 12)).foregroundStyle(.tertiary)
+                // Time and "all-day" indicator
+                HStack(spacing: 4) {
+                    if event.is_all_day {
+                        Text("all-day")
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text(timeSummary(event))
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
                 }
             }
+            
             Spacer()
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(.separator), lineWidth: 0.5)
+        )
     }
 
     private func timeSummary(_ e: CalendarEventWithUser) -> String {

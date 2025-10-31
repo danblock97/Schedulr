@@ -23,6 +23,15 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        // Suppress APNs errors in simulator/development (expected when entitlements aren't configured)
+        #if DEBUG
+        let nsError = error as NSError
+        // Only log if it's not the expected "no valid aps-environment" error in simulator
+        if nsError.domain == "NSCocoaErrorDomain" && nsError.code == 3000 {
+            // Expected error in simulator - suppress
+            return
+        }
+        #endif
         print("APNs registration failed: \(error)")
     }
 

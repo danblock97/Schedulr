@@ -9,23 +9,57 @@ struct DayTimelineView: View {
     private let timeColumnWidth: CGFloat = 56
 
     var body: some View {
-        VStack(spacing: 8) {
-            dayHeader
+        VStack(spacing: 0) {
+            // All-day events bar
+            allDayEventsBar
             dayGrid
         }
     }
-
-    private var dayHeader: some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: timeColumnWidth)
-            VStack(alignment: .leading) {
-                Text(formatted(date: date))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+    
+    @ViewBuilder
+    private var allDayEventsBar: some View {
+        let allDayEvents = allDayEventsForDate(date)
+        if !allDayEvents.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Text("all-day")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(width: timeColumnWidth - 8)
+                    
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(allDayEvents, id: \.id) { event in
+                                NavigationLink(destination: EventDetailView(event: event, member: members[event.user_id])) {
+                                    HStack(spacing: 4) {
+                                        Text(event.title.isEmpty ? "Busy" : event.title)
+                                            .font(.system(size: 12, weight: .medium))
+                                            .lineLimit(1)
+                                        if let name = members[event.user_id]?.name {
+                                            Text("• \(name)")
+                                                .font(.system(size: 10, weight: .regular))
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(eventColor(event))
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                    }
+                }
+                .padding(.vertical, 6)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .background(Color(.systemGroupedBackground))
         }
-        .padding(.horizontal)
     }
 
     private var dayGrid: some View {
@@ -86,7 +120,16 @@ struct DayTimelineView: View {
     }
 
     private func eventsForDay(_ day: Date) -> [CalendarEventWithUser] {
-        events.filter { Calendar.current.isDate($0.start_date, inSameDayAs: day) || ($0.start_date < day && $0.end_date > day) }
+        // Only return timed events (not all-day)
+        events.filter { 
+            !$0.is_all_day && (Calendar.current.isDate($0.start_date, inSameDayAs: day) || ($0.start_date < day && $0.end_date > day))
+        }
+    }
+    
+    private func allDayEventsForDate(_ day: Date) -> [CalendarEventWithUser] {
+        events.filter { 
+            $0.is_all_day && Calendar.current.isDate($0.start_date, inSameDayAs: day)
+        }
     }
 
     private func label(for hour: Int) -> String {
@@ -95,10 +138,6 @@ struct DayTimelineView: View {
         return f.string(from: d).lowercased()
     }
 
-    private func formatted(date: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "EEEE — d MMM yyyy"
-        return f.string(from: date)
-    }
 
     private func minutes(fromStart d: Date) -> Int {
         let h = Calendar.current.component(.hour, from: d)

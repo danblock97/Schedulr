@@ -4,118 +4,185 @@ struct MonthGridView: View {
     let events: [DisplayEvent]
     let members: [UUID: (name: String, color: Color)]
     @Binding var selectedDate: Date
-
-    @State private var displayedMonth: Date = Date()
+    @Binding var displayedMonth: Date
+    let viewMode: MonthViewMode
+    var onDateSelected: ((Date) -> Void)?
 
     private let columns = Array(repeating: GridItem(.flexible(minimum: 36, maximum: .infinity)), count: 7)
 
     var body: some View {
-        VStack(spacing: 12) {
-            monthHeader
-            LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(weekdayHeaders, id: \.self) { header in
-                    Text(header)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: viewMode == .compact ? 4 : 6) {
                 ForEach(daysInMonthGrid, id: \.self) { day in
                     dayCell(day)
                 }
             }
-            .padding(.horizontal)
-
-            // Inline agenda for selected day
-            if let selectedDay = Calendar.current.startOfDay(for: selectedDate) as Date? {
-                let dayEvents = eventsForDay(selectedDay)
-                if !dayEvents.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("\(inlineHeader(for: selectedDay))")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .padding(.horizontal)
-                        ForEach(dayEvents) { e in
-                            NavigationLink(destination: EventDetailView(event: e.base, member: members[e.base.user_id])) {
-                                MiniAgendaRow(event: e.base, member: members[e.base.user_id], sharedCount: e.sharedCount)
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+            
+            // Event details for selected day (only in Details mode)
+            if viewMode == .details {
+                if let selectedDay = Calendar.current.startOfDay(for: selectedDate) as Date? {
+                    let dayEvents = eventsForDay(selectedDay)
+                    if !dayEvents.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(inlineHeader(for: selectedDay))
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 20)
+                                .padding(.top, 16)
+                            
+                            ForEach(dayEvents) { e in
+                                NavigationLink(destination: EventDetailView(event: e.base, member: members[e.base.user_id])) {
+                                    MiniAgendaRow(event: e.base, member: members[e.base.user_id], sharedCount: e.sharedCount)
+                                }
+                                .padding(.horizontal, 20)
                             }
-                            .padding(.horizontal)
                         }
                     }
                 }
             }
-            Spacer(minLength: 0)
         }
-        .onAppear { displayedMonth = startOfMonth(for: selectedDate) }
     }
 
-    private var monthHeader: some View {
-        HStack {
-            Button(action: { displayedMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth }) {
-                Image(systemName: "chevron.left.circle.fill").font(.title2)
-                    .foregroundStyle(LinearGradient(colors: [
-                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                        Color(red: 0.58, green: 0.41, blue: 0.87)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing))
-            }
-            Spacer()
-            Text(monthTitle(displayedMonth))
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-            Spacer()
-            Button(action: { displayedMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth }) {
-                Image(systemName: "chevron.right.circle.fill").font(.title2)
-                    .foregroundStyle(LinearGradient(colors: [
-                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                        Color(red: 0.58, green: 0.41, blue: 0.87)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing))
-            }
-        }
-        .padding(.horizontal)
-    }
 
     private func dayCell(_ day: Date) -> some View {
         let isCurrentMonth = Calendar.current.isDate(day, equalTo: displayedMonth, toGranularity: .month)
         let isToday = Calendar.current.isDateInToday(day)
         let isSelected = Calendar.current.isDate(day, inSameDayAs: selectedDate)
-        let badgeCount = eventsForDay(day).count
-        return VStack(spacing: 6) {
-            Text("\(Calendar.current.component(.day, from: day))")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(isSelected || isToday ? .white : (isCurrentMonth ? Color.primary : Color.secondary))
-                .frame(width: 28, height: 28)
-                .background(
-                    Circle().fill(isToday && !isSelected ? Color.blue : Color.clear)
-                )
-                .overlay(
-                    Circle()
-                        .fill(
-                            LinearGradient(colors: [
-                                Color(red: 0.98, green: 0.29, blue: 0.55),
-                                Color(red: 0.58, green: 0.41, blue: 0.87)
-                            ], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .opacity(isSelected ? 1 : 0)
-                )
-            if badgeCount > 0 {
-                Text("\(badgeCount)")
-                    .font(.system(size: 10, weight: .medium))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.15), in: Capsule())
+        let dayEvents = eventsForDay(day)
+        let dayNumber = Calendar.current.component(.day, from: day)
+        
+        return ZStack(alignment: .top) {
+            // Date number - centered horizontally
+            HStack {
+                Spacer()
+                Text("\(dayNumber)")
+                    .font(.system(size: viewMode == .compact ? 15 : 17, weight: .regular))
+                    .foregroundColor(isSelected ? .red : (isCurrentMonth ? .primary : .secondary))
+                    .frame(width: 36, height: 36, alignment: .center)
+                Spacer()
+            }
+            .padding(.top, viewMode == .compact ? 4 : 6)
+            
+            VStack(alignment: .leading, spacing: viewMode == .compact ? 2 : 4) {
+                // Spacer to align content below day number
+                Spacer()
+                    .frame(height: viewMode == .compact ? 24 : 26)
+            
+            // Event indicators based on view mode
+            if viewMode == .compact {
+                // Compact: Clearer, larger event indicators
+                if !dayEvents.isEmpty {
+                    HStack(spacing: 3) {
+                        ForEach(dayEvents.prefix(4)) { event in
+                            Circle()
+                                .fill(event.base.effectiveColor != nil ? Color(
+                                    red: event.base.effectiveColor!.red,
+                                    green: event.base.effectiveColor!.green,
+                                    blue: event.base.effectiveColor!.blue,
+                                    opacity: event.base.effectiveColor!.alpha
+                                ) : Color(red: 0.58, green: 0.41, blue: 0.87))
+                                .frame(width: 5.5, height: 5.5)
+                        }
+                        if dayEvents.count > 4 {
+                            Text("+\(dayEvents.count - 4)")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundColor(Color(red: 0.58, green: 0.41, blue: 0.87))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 4)
+                }
+            } else if viewMode == .stacked {
+                // Stacked: Event titles stacked
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(dayEvents.prefix(2)) { event in
+                        Text(event.base.title.isEmpty ? "Busy" : event.base.title)
+                            .font(.system(size: 10, weight: .medium))
+                            .lineLimit(1)
+                            .foregroundColor(event.base.effectiveColor != nil ? Color(
+                                red: event.base.effectiveColor!.red,
+                                green: event.base.effectiveColor!.green,
+                                blue: event.base.effectiveColor!.blue,
+                                opacity: event.base.effectiveColor!.alpha
+                            ) : Color(red: 0.58, green: 0.41, blue: 0.87))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill((event.base.effectiveColor != nil ? Color(
+                                        red: event.base.effectiveColor!.red,
+                                        green: event.base.effectiveColor!.green,
+                                        blue: event.base.effectiveColor!.blue,
+                                        opacity: event.base.effectiveColor!.alpha
+                                    ) : Color(red: 0.58, green: 0.41, blue: 0.87)).opacity(0.15))
+                            )
+                    }
+                    if dayEvents.count > 2 {
+                        Text("+\(dayEvents.count - 2)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 4)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
             } else {
+                // Details: More space, event indicators
+                if !dayEvents.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(dayEvents.prefix(3)) { event in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(event.base.effectiveColor != nil ? Color(
+                                    red: event.base.effectiveColor!.red,
+                                    green: event.base.effectiveColor!.green,
+                                    blue: event.base.effectiveColor!.blue,
+                                    opacity: event.base.effectiveColor!.alpha
+                                ) : Color(red: 0.58, green: 0.41, blue: 0.87))
+                                .frame(height: 3)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 6)
+                }
+            }
+                
                 Spacer(minLength: 0)
-                    .frame(height: 16)
+            }
+            
+            // Red circle for selected/today - perfectly aligned with day number
+            if isSelected || isToday {
+                HStack {
+                    Spacer()
+                    Circle()
+                        .stroke(Color.red, lineWidth: 1.5)
+                        .frame(width: 36, height: 36)
+                    Spacer()
+                }
+                .padding(.top, viewMode == .compact ? 4 : 6)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: viewMode == .compact ? 44 : (viewMode == .stacked ? 60 : 50))
         .contentShape(Rectangle())
-        .onTapGesture { selectedDate = day }
-    }
-
-    private var weekdayHeaders: [String] {
-        let f = DateFormatter(); f.locale = .current; f.dateFormat = "EEEEE"
-        return (0..<7).map { i in
-            let d = Calendar.current.date(byAdding: .day, value: i, to: startOfWeek(for: Date())) ?? Date()
-            return f.string(from: d)
+        .onTapGesture {
+            withAnimation {
+                selectedDate = day
+                // Update displayedMonth if tapping a date from different month
+                if !Calendar.current.isDate(day, equalTo: displayedMonth, toGranularity: .month) {
+                    displayedMonth = startOfMonth(for: day)
+                }
+                
+                // If date has events, notify parent to switch to day view
+                if !dayEvents.isEmpty, let onDateSelected = onDateSelected {
+                    onDateSelected(day)
+                }
+            }
         }
     }
+
 
     private var daysInMonthGrid: [Date] {
         let start = startOfMonth(for: displayedMonth)
@@ -123,9 +190,9 @@ struct MonthGridView: View {
         var days: [Date] = range.compactMap { day -> Date? in
             Calendar.current.date(byAdding: .day, value: day - 1, to: start)
         }
-        // prepend previous month days to align first weekday
+        // prepend previous month days to align first weekday (Sunday = 1)
         let firstWeekday = Calendar.current.component(.weekday, from: start)
-        let prefix = (firstWeekday + 6) % 7
+        let prefix = firstWeekday - 1 // Sunday = 1, so if Monday (2), prefix = 1
         if prefix > 0 {
             for i in 1...prefix {
                 if let d = Calendar.current.date(byAdding: .day, value: -i, to: start) { days.insert(d, at: 0) }
@@ -140,10 +207,16 @@ struct MonthGridView: View {
         events.filter { Calendar.current.isDate($0.base.start_date, inSameDayAs: day) }
     }
 
-    private func monthTitle(_ date: Date) -> String { let f = DateFormatter(); f.dateFormat = "LLLL yyyy"; return f.string(from: date) }
-    private func startOfWeek(for date: Date) -> Date { Calendar.current.date(from: Calendar.current.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)) ?? date }
-    private func startOfMonth(for date: Date) -> Date { let comps = Calendar.current.dateComponents([.year, .month], from: date); return Calendar.current.date(from: comps) ?? date }
-    private func inlineHeader(for date: Date) -> String { let f = DateFormatter(); f.dateFormat = "EEEE, d MMMM"; return f.string(from: date) }
+    private func startOfMonth(for date: Date) -> Date {
+        let comps = Calendar.current.dateComponents([.year, .month], from: date)
+        return Calendar.current.date(from: comps) ?? date
+    }
+    
+    private func inlineHeader(for date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, d MMMM"
+        return f.string(from: date)
+    }
 }
 
 private struct MiniAgendaRow: View {

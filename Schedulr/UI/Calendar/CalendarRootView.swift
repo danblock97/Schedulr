@@ -3,10 +3,19 @@ import Supabase
 import Auth
 
 enum CalendarMode: String, CaseIterable, Identifiable {
-    case agenda = "List"
-    case day = "Day"
+    case year = "Year"
     case month = "Month"
+    case day = "Day"
+    case list = "List"
+    
+    var id: String { rawValue }
+}
 
+enum MonthViewMode: String, CaseIterable, Identifiable {
+    case compact = "Compact"
+    case stacked = "Stacked"
+    case details = "Details"
+    
     var id: String { rawValue }
 }
 
@@ -14,11 +23,15 @@ struct CalendarRootView: View {
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     @ObservedObject var viewModel: DashboardViewModel
 
-    @State private var mode: CalendarMode = .agenda
+    @State private var mode: CalendarMode = .month
+    @State private var monthViewMode: MonthViewMode = .compact
     @State private var selectedDate: Date = Date()
+    @State private var displayedMonth: Date = Date()
+    @State private var displayedYear: Date = Date()
     @State private var preferences = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
     @State private var isLoadingPrefs = false
     @State private var showingEditor = false
+    @State private var showingMonthModePicker = false
     @State private var categories: [EventCategory] = []
     @State private var selectedCategoryIds: Set<UUID> = []
     @State private var isLoadingCategories = false
@@ -26,29 +39,97 @@ struct CalendarRootView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                // Soft background color
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
+                
+                // Subtle soft color overlay
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.08),
+                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.06)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.06),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 300
+                            )
+                        )
+                        .offset(x: -150, y: -200)
+                        .blur(radius: 80)
+                    
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.05),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 350
+                            )
+                        )
+                        .offset(x: 180, y: 400)
+                        .blur(radius: 100)
+                }
+                .ignoresSafeArea()
 
-                VStack(spacing: 12) {
-                    header
-                    Picker("Mode", selection: $mode) {
-                        ForEach(CalendarMode.allCases) { m in
-                            Text(m.rawValue).tag(m)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
+                VStack(spacing: 0) {
+                    // Apple Calendar style header
+                    calendarHeader
                     
                     if !categories.isEmpty {
                         categoryFilterBar
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                     }
 
+                    // Main calendar content
                     Group {
                         switch mode {
-                        case .agenda:
-                            AgendaListView(
+                        case .year:
+                            YearlyCalendarView(
+                                selectedDate: $selectedDate,
+                                displayedYear: $displayedYear,
+                                events: displayEvents,
+                                onMonthSelected: { monthDate in
+                                    withAnimation {
+                                        selectedDate = monthDate
+                                        displayedMonth = startOfMonth(for: monthDate)
+                                        mode = .month
+                                    }
+                                }
+                            )
+                        case .month:
+                            MonthGridView(
                                 events: displayEvents,
                                 members: memberColorMapping,
-                                selectedDate: $selectedDate
+                                selectedDate: $selectedDate,
+                                displayedMonth: $displayedMonth,
+                                viewMode: monthViewMode,
+                                onDateSelected: { date in
+                                    // If date has events, switch to day view
+                                    let eventsForDate = displayEvents.filter { 
+                                        Calendar.current.isDate($0.base.start_date, inSameDayAs: date) 
+                                    }
+                                    if !eventsForDate.isEmpty {
+                                        withAnimation {
+                                            mode = .day
+                                        }
+                                    }
+                                }
                             )
                         case .day:
                             DayTimelineView(
@@ -56,8 +137,8 @@ struct CalendarRootView: View {
                                 members: memberColorMapping,
                                 date: $selectedDate
                             )
-                        case .month:
-                            MonthGridView(
+                        case .list:
+                            AgendaListView(
                                 events: displayEvents,
                                 members: memberColorMapping,
                                 selectedDate: $selectedDate
@@ -65,16 +146,105 @@ struct CalendarRootView: View {
                         }
                     }
                     .animation(.default, value: mode)
+                    .animation(.default, value: monthViewMode)
                 }
             }
-            .navigationTitle("Calendar")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                refreshButton
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    // View mode picker button
+                    Menu {
+                        Button {
+                            withAnimation {
+                                mode = .year
+                            }
+                        } label: {
+                            HStack {
+                                Text("Year")
+                                if mode == .year {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                        
+                        Button {
+                            withAnimation {
+                                mode = .month
+                            }
+                        } label: {
+                            HStack {
+                                Text("Month")
+                                if mode == .month {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                        
+                        Button {
+                            withAnimation {
+                                mode = .day
+                            }
+                        } label: {
+                            HStack {
+                                Text("Day")
+                                if mode == .day {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                        
+                        Button {
+                            withAnimation {
+                                mode = .list
+                            }
+                        } label: {
+                            HStack {
+                                Text("List")
+                                if mode == .list {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: mode == .year ? "calendar" : (mode == .month ? "calendar" : (mode == .day ? "calendar.badge.clock" : "list.bullet")))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+                    
                     if let gid = viewModel.selectedGroupID {
                         Button {
                             showingEditor = true
-                        } label: { Image(systemName: "plus") }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                        .disabled(calendarSync.isRefreshing)
+                    }
+                    
+                    if calendarSync.syncEnabled, let groupId = viewModel.selectedGroupID {
+                        Button {
+                            Task {
+                                if let userId = try? await viewModel.client?.auth.session.user.id {
+                                    await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: calendarSync.isRefreshing ? "arrow.clockwise" : "arrow.clockwise")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .rotationEffect(.degrees(calendarSync.isRefreshing ? 360 : 0))
+                                .animation(calendarSync.isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: calendarSync.isRefreshing)
+                        }
                         .disabled(calendarSync.isRefreshing)
                     }
                 }
@@ -84,11 +254,205 @@ struct CalendarRootView: View {
                     EventEditorView(groupId: gid, members: viewModel.members)
                 }
             }
+            .sheet(isPresented: $showingMonthModePicker) {
+                MonthViewModePicker(selectedMode: $monthViewMode)
+                    .presentationDetents([.height(280)])
+            }
             .task {
                 await loadPreferences()
                 await loadCategories()
+                displayedMonth = startOfMonth(for: selectedDate)
+                displayedYear = startOfYear(for: selectedDate)
+            }
+            .onChange(of: selectedDate) { _, newDate in
+                // Only update displayedMonth/Year if they're not already in sync
+                // This prevents unnecessary updates when navigating months
+                let newMonth = startOfMonth(for: newDate)
+                let newYear = startOfYear(for: newDate)
+                
+                if !Calendar.current.isDate(displayedMonth, equalTo: newMonth, toGranularity: .month) {
+                    displayedMonth = newMonth
+                }
+                if !Calendar.current.isDate(displayedYear, equalTo: newYear, toGranularity: .year) {
+                    displayedYear = newYear
+                }
             }
         }
+    }
+    
+    private var calendarHeader: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // Navigation buttons (back and forward)
+                HStack(spacing: 8) {
+                    // Back button
+                    if mode == .year {
+                        Button {
+                            withAnimation {
+                                displayedYear = Calendar.current.date(byAdding: .year, value: -1, to: displayedYear) ?? displayedYear
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                    } else if mode == .month {
+                        Button {
+                            withAnimation {
+                                let previousMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+                                displayedMonth = previousMonth
+                                selectedDate = startOfMonth(for: previousMonth)
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                    } else if mode == .day {
+                        Button {
+                            withAnimation {
+                                if let previousDay = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate) {
+                                    selectedDate = previousDay
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                    } else {
+                        Button {
+                            withAnimation {
+                                mode = .month
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                    }
+                    
+                    // Forward button (for month and day views)
+                    if mode == .month {
+                        Button {
+                            withAnimation {
+                                let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
+                                displayedMonth = nextMonth
+                                selectedDate = startOfMonth(for: nextMonth)
+                            }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                    } else if mode == .day {
+                        Button {
+                            withAnimation {
+                                if let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate) {
+                                    selectedDate = nextDay
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                // Month/Year title
+                if mode == .year {
+                    Text("\(Calendar.current.component(.year, from: displayedYear))")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundColor(.red)
+                } else if mode == .month {
+                    Text(monthTitle(displayedMonth))
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.primary)
+                } else if mode == .day {
+                    // Smaller, more compact date for day view
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(dayTitleShort(for: selectedDate))
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text(dayTitleDate(for: selectedDate))
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    // List view - show selected date title
+                    Text(monthTitle(selectedDate))
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundColor(.primary)
+                }
+                
+                Spacer()
+                
+                // Month view mode picker (only for month view)
+                if mode == .month {
+                    Button {
+                        showingMonthModePicker = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(monthViewMode.rawValue)
+                                .font(.system(size: 16, weight: .medium))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            
+            // Days of week header (for month view)
+            if mode == .month {
+                HStack(spacing: 0) {
+                    ForEach(Array(weekdayHeaders.enumerated()), id: \.offset) { index, day in
+                        Text(day)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            }
+        }
+    }
+    
+    private var weekdayHeaders: [String] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        let weekdaySymbols = formatter.shortWeekdaySymbols ?? []
+        // Apple Calendar uses Sunday-first (default)
+        return weekdaySymbols.map { String($0.prefix(1)).uppercased() }
     }
     
     private var categoryFilterBar: some View {
@@ -155,45 +519,20 @@ struct CalendarRootView: View {
         }
     }
 
-    private var header: some View {
-        HStack {
-            Button(action: { selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate) ?? selectedDate }) {
-                Image(systemName: "chevron.left.circle.fill").font(.title2)
-                    .foregroundStyle(LinearGradient(colors: [
-                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                        Color(red: 0.58, green: 0.41, blue: 0.87)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing))
-            }
-            Spacer()
-            Text(dateTitle(for: selectedDate))
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-            Spacer()
-            Button(action: { selectedDate = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate) ?? selectedDate }) {
-                Image(systemName: "chevron.right.circle.fill").font(.title2)
-                    .foregroundStyle(LinearGradient(colors: [
-                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                        Color(red: 0.58, green: 0.41, blue: 0.87)
-                    ], startPoint: .topLeading, endPoint: .bottomTrailing))
-            }
-        }
-        .padding(.horizontal)
+    private func monthTitle(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM"
+        return formatter.string(from: date)
     }
-
-    private var refreshButton: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
-            if calendarSync.syncEnabled, let groupId = viewModel.selectedGroupID {
-                Button {
-                    Task {
-                        if let userId = try? await viewModel.client?.auth.session.user.id {
-                            await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(calendarSync.isRefreshing)
-            }
-        }
+    
+    private func startOfMonth(for date: Date) -> Date {
+        let components = Calendar.current.dateComponents([.year, .month], from: date)
+        return Calendar.current.date(from: components) ?? date
+    }
+    
+    private func startOfYear(for date: Date) -> Date {
+        let components = Calendar.current.dateComponents([.year], from: date)
+        return Calendar.current.date(from: components) ?? date
     }
 
     // MARK: - Event filtering/deduping
@@ -271,6 +610,18 @@ struct CalendarRootView: View {
     private func dateTitle(for date: Date) -> String {
         let f = DateFormatter()
         f.dateFormat = "EEEE, MMM d, yyyy"
+        return f.string(from: date)
+    }
+    
+    private func dayTitleShort(for date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE"
+        return f.string(from: date)
+    }
+    
+    private func dayTitleDate(for date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM d, yyyy"
         return f.string(from: date)
     }
 }
