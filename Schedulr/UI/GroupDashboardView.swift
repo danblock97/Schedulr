@@ -272,7 +272,8 @@ struct GroupDashboardView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Schedulr")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
         }
         .task {
             await viewModel.loadInitialData()
@@ -300,14 +301,57 @@ struct GroupDashboardView: View {
 
     private var content: some View {
         ZStack {
+            // Soft background color
             Color(.systemGroupedBackground)
                 .ignoresSafeArea()
-
-            BubblyDashboardBackground()
-                .ignoresSafeArea()
+            
+            // Subtle soft color overlay
+            ZStack {
+                // Base soft tint
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.08),
+                        Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.06)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                
+                // Additional soft radial gradients for depth
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.06),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 300
+                        )
+                    )
+                    .offset(x: -150, y: -200)
+                    .blur(radius: 80)
+                
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.05),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 350
+                        )
+                    )
+                    .offset(x: 180, y: 400)
+                    .blur(radius: 100)
+            }
+            .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 28) {
                     // Quick stats cards
                     quickStatsSection
 
@@ -315,114 +359,112 @@ struct GroupDashboardView: View {
                     availabilitySection
                     membersSection
                 }
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
                 .padding(.bottom, 100) // Space for floating tab bar
             }
         }
     }
 
     private var quickStatsSection: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             // Groups count
-            QuickStatCard(
+            EnhancedQuickStatCard(
                 icon: "person.3.fill",
                 count: "\(viewModel.memberships.count)",
                 label: "Groups",
-                gradient: [Color(red: 0.98, green: 0.29, blue: 0.55), Color(red: 0.58, green: 0.41, blue: 0.87)]
+                gradient: [],
+                accentColor: Color(red: 0.98, green: 0.29, blue: 0.55)
             )
 
             // Events count
-            QuickStatCard(
+            EnhancedQuickStatCard(
                 icon: "calendar.badge.clock",
                 count: "\(calendarSync.upcomingEvents.count)",
                 label: "Events",
-                gradient: [Color(red: 0.27, green: 0.63, blue: 0.98), Color(red: 0.20, green: 0.78, blue: 0.74)]
+                gradient: [],
+                accentColor: Color(red: 0.58, green: 0.41, blue: 0.87)
             )
 
             // Members count
-            QuickStatCard(
+            EnhancedQuickStatCard(
                 icon: "person.2.fill",
                 count: "\(viewModel.members.count)",
                 label: "Members",
-                gradient: [Color(red: 0.59, green: 0.85, blue: 0.34), Color(red: 1.00, green: 0.78, blue: 0.16)]
+                gradient: [],
+                accentColor: Color(red: 0.59, green: 0.85, blue: 0.34)
             )
         }
     }
 
     private var groupSelectorSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("👥 Your Groups")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(icon: "person.3.fill", title: "Your Groups", color: Color(red: 0.98, green: 0.29, blue: 0.55))
 
             if viewModel.isLoadingMemberships {
+                BubblyCard {
                 ProgressView("Loading groups…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                }
             } else if let error = viewModel.membershipsError {
+                BubblyCard {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("We couldn’t load your groups.")
+                        Text("We couldn't load your groups.")
                         .font(.subheadline.weight(.semibold))
                     Text(error)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
                 }
             } else if viewModel.memberships.isEmpty {
+                BubblyCard {
                 Text("Create or join a group to start planning together.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 12)
+                }
             } else {
-                Menu {
+                VStack(spacing: 12) {
                     ForEach(viewModel.memberships) { membership in
                         Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             viewModel.selectGroup(membership.id)
+                            }
                         } label: {
-                            Label(membership.name, systemImage: membershipIcon(for: membership.role))
-                        }
-                    }
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let selected = currentGroup {
-                                Text(selected.name)
-                                    .font(.system(size: 19, weight: .bold, design: .rounded))
-                                HStack(spacing: 4) {
-                                    Text(selected.role == "owner" ? "👑" : "✨")
-                                    Text(selected.role.capitalized)
-                                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                                        .foregroundStyle(.secondary)
+                            BubblyCard {
+                                HStack {
+                                    Text(membership.name)
+                                        .font(.system(size: 17, weight: .regular, design: .default))
+                                        .foregroundStyle(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    if viewModel.selectedGroupID == membership.id {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(.primary)
+                                    }
                                 }
                             }
                         }
-                        Spacer()
-                        Image(systemName: "chevron.down.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                                        Color(red: 0.58, green: 0.41, blue: 0.87)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .symbolRenderingMode(.hierarchical)
+                        .buttonStyle(.plain)
                     }
-                    .padding(18)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
                 }
 
                 if let selected = currentGroup {
-                    GroupInviteView(inviteSlug: selected.inviteSlug)
+                    EnhancedGroupInviteView(inviteSlug: selected.inviteSlug)
                 }
             }
         }
     }
 
     private var availabilitySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("📅 Upcoming")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                SectionHeader(icon: "calendar.badge.clock", title: "Upcoming", color: Color(red: 0.58, green: 0.41, blue: 0.87))
                 Spacer()
                 if calendarSync.syncEnabled && viewModel.selectedGroupID != nil {
                     Button {
@@ -433,19 +475,12 @@ struct GroupDashboardView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: "arrow.clockwise.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.27, green: 0.63, blue: 0.98),
-                                        Color(red: 0.20, green: 0.78, blue: 0.74)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                        Image(systemName: calendarSync.isRefreshing ? "arrow.clockwise" : "arrow.clockwise.circle.fill")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundColor(Color(red: 0.58, green: 0.41, blue: 0.87))
                             .symbolRenderingMode(.hierarchical)
+                            .rotationEffect(.degrees(calendarSync.isRefreshing ? 360 : 0))
+                            .animation(calendarSync.isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: calendarSync.isRefreshing)
                     }
                     .disabled(calendarSync.isRefreshing)
                 }
@@ -453,36 +488,31 @@ struct GroupDashboardView: View {
 
             // Active filter indicators
             if calendarPrefs.hideHolidays || calendarPrefs.dedupAllDay {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     if calendarPrefs.hideHolidays {
-                        Text("Holidays hidden")
-                            .font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                        FilterBadge(text: "Holidays hidden", color: Color(red: 0.58, green: 0.41, blue: 0.87))
                     }
                     if calendarPrefs.dedupAllDay {
-                        Text("Deduped all‑day")
-                            .font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                        FilterBadge(text: "Deduped all‑day", color: Color(red: 0.98, green: 0.29, blue: 0.55))
                     }
                 }
             }
 
             if viewModel.selectedGroupID == nil {
-                VStack(alignment: .leading, spacing: 6) {
+                BubblyCard {
                     Text("Select a group to view upcoming events.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 12)
                 }
             } else if !calendarSync.syncEnabled {
-                VStack(alignment: .leading, spacing: 6) {
+                BubblyCard {
+                    VStack(alignment: .leading, spacing: 12) {
                     Text("Turn on calendar sync to share your calendar with the group.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    Button("Enable calendar sync") {
+                        Button {
                         Task {
                             if await calendarSync.enableSyncFlow() {
                                 if let groupId = viewModel.selectedGroupID,
@@ -491,14 +521,34 @@ struct GroupDashboardView: View {
                                 }
                             }
                         }
+                        } label: {
+                            Text("Enable calendar sync")
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(
+                                    Color(red: 0.58, green: 0.41, blue: 0.87),
+                                    in: Capsule()
+                                )
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .padding(.vertical, 4)
                 }
             } else if calendarSync.isRefreshing {
-                ProgressView("Syncing calendar…")
+                BubblyCard {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.9)
+                        Text("Syncing calendar…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .padding(.vertical, 20)
+                }
             } else if calendarSync.groupEvents.isEmpty {
+                BubblyCard {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("No events in the next couple of weeks.")
                         .font(.footnote)
@@ -506,12 +556,14 @@ struct GroupDashboardView: View {
                     Text("Tap the refresh button to sync your calendar with the group.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 12)
                 }
             } else {
                 // Upcoming list (next 10 events)
-                VStack(spacing: 12) {
+                VStack(spacing: 14) {
                     ForEach(upcomingDisplayEvents.prefix(10)) { devent in
-                        UpcomingEventRow(
+                        EnhancedUpcomingEventRow(
                             event: devent.base,
                             memberColor: memberColorMapping[devent.base.user_id]?.color,
                             memberName: memberColorMapping[devent.base.user_id]?.name,
@@ -609,32 +661,46 @@ struct GroupDashboardView: View {
     }
 
     private var membersSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("✨ Members")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(icon: "person.2.fill", title: "Members", color: Color(red: 0.59, green: 0.85, blue: 0.34))
 
             if viewModel.selectedGroupID == nil {
+                BubblyCard {
                 Text("Pick a group to view its members.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 12)
+                }
             } else if viewModel.isLoadingMembers {
+                BubblyCard {
                 ProgressView("Loading members…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                }
             } else if let error = viewModel.membersError {
+                BubblyCard {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("We couldn’t load member details.")
+                        Text("We couldn't load member details.")
                         .font(.subheadline.weight(.semibold))
                     Text(error)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
                 }
             } else if viewModel.members.isEmpty {
+                BubblyCard {
                 Text("No members found yet. Share the invite link to get people in!")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 12)
+                }
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: 14) {
                     ForEach(viewModel.members) { member in
-                        MemberRow(member: member)
+                        EnhancedMemberRow(member: member)
                     }
                 }
             }
@@ -1028,137 +1094,368 @@ private struct AvatarView: View {
     }
 }
 
-// MARK: - Quick Stat Card
+// MARK: - Enhanced Quick Stat Card
 
-private struct QuickStatCard: View {
+private struct EnhancedQuickStatCard: View {
     let icon: String
     let count: String
     let label: String
     let gradient: [Color]
+    let accentColor: Color
+    @State private var isPressed = false
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: gradient,
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 20, weight: .medium, design: .default))
+                .foregroundColor(accentColor)
+                .symbolRenderingMode(.monochrome)
 
             Text(count)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 32, weight: .semibold, design: .default))
                 .foregroundColor(.primary)
+                .contentTransition(.numericText())
 
             Text(label)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(.secondary)
+                .font(.system(size: 13, weight: .regular, design: .default))
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
+        .padding(.vertical, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(.separator), lineWidth: 0.5)
         )
     }
 }
 
-// MARK: - Bubbly Background
 
-private struct BubblyDashboardBackground: View {
+// MARK: - Section Header
+
+private struct SectionHeader: View {
+    let icon: String
+    let title: String
+    let color: Color
+    
+    var body: some View {
+        Text(title)
+            .font(.system(size: 20, weight: .semibold, design: .default))
+            .foregroundStyle(.primary)
+    }
+}
+
+// MARK: - Bubbly Card
+
+private struct BubblyCard<Content: View>: View {
+    @ViewBuilder let content: Content
+    
+    var body: some View {
+        content
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(.systemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color(.separator), lineWidth: 0.5)
+            )
+    }
+}
+
+// MARK: - Filter Badge
+
+private struct FilterBadge: View {
+    let text: String
+    let color: Color
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .regular, design: .default))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(color.opacity(0.1))
+            )
+            .foregroundStyle(color)
+    }
+}
+
+// MARK: - Enhanced Upcoming Event Row
+
+private struct EnhancedUpcomingEventRow: View {
+    let event: CalendarEventWithUser
+    var memberColor: Color?
+    var memberName: String?
+    var sharedCount: Int = 1
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 8, height: 8)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                Text(event.title.isEmpty ? "Busy" : event.title)
+                    .font(.system(size: 17, weight: .regular, design: .default))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                
+                if sharedCount > 1 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 10))
+                        Text("\(sharedCount) members")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(dotColor.opacity(0.15))
+                            .overlay(
+                                Capsule()
+                                    .stroke(dotColor.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                    .foregroundStyle(dotColor)
+                }
+                
+                HStack(spacing: 8) {
+                    Label {
+                        Text(timeSummary(event))
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    } icon: {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if let memberName {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(dotColor)
+                        Text(memberName)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(dotColor)
+                    }
+                }
+                
+                if let location = event.location, !location.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text(location)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(.separator), lineWidth: 0.5)
+        )
+    }
+    
+    private var defaultColor: Color { Color(red: 0.58, green: 0.41, blue: 0.87) }
+    
+    private var dotColor: Color {
+        if let c = event.effectiveColor {
+            return Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
+        }
+        return memberColor ?? defaultColor
+    }
+    
+    private func timeSummary(_ e: CalendarEventWithUser) -> String {
+        if e.is_all_day { return "All day" }
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateStyle = .medium
+        dayFormatter.timeStyle = .none
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateStyle = .none
+        timeFormatter.timeStyle = .short
+        
+        if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
+            return "\(dayFormatter.string(from: e.start_date)) • \(timeFormatter.string(from: e.start_date)) – \(timeFormatter.string(from: e.end_date))"
+        } else {
+            return "\(dayFormatter.string(from: e.start_date)) \(timeFormatter.string(from: e.start_date)) → \(dayFormatter.string(from: e.end_date)) \(timeFormatter.string(from: e.end_date))"
+        }
+    }
+}
+
+// MARK: - Enhanced Member Row
+
+private struct EnhancedMemberRow: View {
+    let member: DashboardViewModel.MemberSummary
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                if let url = member.avatarURL {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .empty:
+                            ProgressView()
+                        case .failure:
+                            EnhancedAvatarView(initials: initials(for: member.displayName))
+                        @unknown default:
+                            EnhancedAvatarView(initials: initials(for: member.displayName))
+                        }
+                    }
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
+                } else {
+                    EnhancedAvatarView(initials: initials(for: member.displayName))
+                        .frame(width: 56, height: 56)
+                }
+            }
+            .overlay(
+                Circle()
+                    .stroke(Color(.separator), lineWidth: 0.5)
+            )
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text(member.displayName)
+                    .font(.system(size: 17, weight: .regular, design: .default))
+                    .foregroundColor(.primary)
+                
+                Text(member.role.capitalized)
+                    .font(.system(size: 14, weight: .regular, design: .default))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(.separator), lineWidth: 0.5)
+        )
+    }
+    
+    private func initials(for name: String) -> String {
+        let parts = name.split(separator: " ")
+        let initials = parts.prefix(2).map { part in
+            part.first.map(String.init) ?? ""
+        }
+        return initials.joined()
+    }
+}
+
+// MARK: - Enhanced Avatar View
+
+private struct EnhancedAvatarView: View {
+    let initials: String
+    
     var body: some View {
         ZStack {
-            // Large pink bubble
             Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.12),
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.03)
-                        ],
-                        center: .center,
-                        startRadius: 50,
-                        endRadius: 180
+                .fill(Color(.secondarySystemBackground))
+            Text(initials.isEmpty ? "?" : initials)
+                .font(.system(size: 18, weight: .medium, design: .default))
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+// MARK: - Enhanced Group Invite View
+
+private struct EnhancedGroupInviteView: View {
+    let inviteSlug: String
+    @State private var showCopied = false
+    
+    var body: some View {
+        BubblyCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    HStack(spacing: 8) {
+                        Text("Invite Link")
+                            .font(.system(size: 17, weight: .regular, design: .default))
+                            .foregroundStyle(.primary)
+                    }
+                    Spacer()
+                    if showCopied {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Copied!")
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                        }
+                        .foregroundColor(Color(red: 0.59, green: 0.85, blue: 0.34))
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                
+                Button {
+                    UIPasteboard.general.string = inviteSlug
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        showCopied = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        withAnimation {
+                            showCopied = false
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(inviteSlug)
+                            .font(.system(size: 15, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Spacer()
+                        Image(systemName: "doc.on.doc.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(Color(red: 0.98, green: 0.29, blue: 0.55))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(
+                                        LinearGradient(
+                                            colors: [
+                                                Color.white.opacity(0.2),
+                                                Color.white.opacity(0.1)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        ),
+                                        lineWidth: 1
+                                    )
+                            )
                     )
-                )
-                .frame(width: 280, height: 280)
-                .offset(x: -120, y: -200)
-                .blur(radius: 50)
-
-            // Purple bubble
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.12),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.03)
-                        ],
-                        center: .center,
-                        startRadius: 50,
-                        endRadius: 200
-                    )
-                )
-                .frame(width: 320, height: 320)
-                .offset(x: 140, y: 150)
-                .blur(radius: 50)
-
-            // Blue bubble
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.27, green: 0.63, blue: 0.98).opacity(0.10),
-                            Color(red: 0.27, green: 0.63, blue: 0.98).opacity(0.02)
-                        ],
-                        center: .center,
-                        startRadius: 40,
-                        endRadius: 140
-                    )
-                )
-                .frame(width: 220, height: 220)
-                .offset(x: -100, y: 500)
-                .blur(radius: 40)
-
-            // Teal bubble
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.20, green: 0.78, blue: 0.74).opacity(0.08),
-                            Color(red: 0.20, green: 0.78, blue: 0.74).opacity(0.02)
-                        ],
-                        center: .center,
-                        startRadius: 30,
-                        endRadius: 120
-                    )
-                )
-                .frame(width: 180, height: 180)
-                .offset(x: 130, y: -100)
-                .blur(radius: 35)
-
-            // Small decorative bubbles
-            Circle()
-                .fill(Color.white.opacity(0.25))
-                .frame(width: 50, height: 50)
-                .offset(x: 150, y: -150)
-                .blur(radius: 8)
-
-            Circle()
-                .fill(Color.white.opacity(0.2))
-                .frame(width: 35, height: 35)
-                .offset(x: -140, y: 80)
-                .blur(radius: 6)
-
-            Circle()
-                .fill(Color.white.opacity(0.15))
-                .frame(width: 40, height: 40)
-                .offset(x: 100, y: 350)
-                .blur(radius: 7)
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 }
