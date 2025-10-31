@@ -10,6 +10,10 @@ struct ProfileView: View {
     @State private var tempDisplayName = ""
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
     @State private var isLoadingPrefs = false
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
+    @State private var aiUsageInfo: AIUsageInfo?
+    @State private var groupLimitInfo: (current: Int, max: Int)?
 
     var body: some View {
         NavigationStack {
@@ -181,6 +185,9 @@ struct ProfileView: View {
                                 }
                             }
                         }
+
+                        // Subscription Section
+                        subscriptionSection
 
                         // Groups Section
                         if !viewModel.userGroups.isEmpty {
@@ -369,6 +376,148 @@ struct ProfileView: View {
                     await viewModel.uploadAvatar()
                 }
             }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
+            }
+            .task {
+                await loadSubscriptionInfo()
+            }
+        }
+    }
+    
+    // MARK: - Subscription Section
+    
+    private var subscriptionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("💎 Subscription")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.horizontal)
+            
+            VStack(spacing: 12) {
+                HStack {
+                    SubscriptionBadge(tier: subscriptionManager.currentTier)
+                    
+                    Spacer()
+                    
+                    if subscriptionManager.currentTier == .free {
+                        Button(action: { showPaywall = true }) {
+                            Text("Upgrade")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Capsule()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [
+                                                    Color(red: 0.98, green: 0.29, blue: 0.55),
+                                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                ],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        )
+                                )
+                        }
+                    }
+                }
+                
+                // Grace period warning
+                if subscriptionManager.isInGracePeriod {
+                    GracePeriodWarningView()
+                }
+                
+                // Usage stats
+                if let groupLimitInfo = groupLimitInfo {
+                    UsageStatRow(
+                        icon: "person.3.fill",
+                        title: "Groups",
+                        current: groupLimitInfo.current,
+                        max: groupLimitInfo.max
+                    )
+                }
+                
+                if subscriptionManager.currentTier == .pro,
+                   let aiUsage = aiUsageInfo {
+                    UsageStatRow(
+                        icon: "sparkles",
+                        title: "AI Requests",
+                        current: aiUsage.requestCount,
+                        max: aiUsage.maxRequests
+                    )
+                }
+            }
+            .padding()
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal)
+        }
+    }
+    
+    // MARK: - Helper
+    
+    private func loadSubscriptionInfo() async {
+        // Load usage info
+        groupLimitInfo = await SubscriptionLimitService.shared.getGroupLimitInfo()
+        
+        if subscriptionManager.currentTier == .pro {
+            aiUsageInfo = await SubscriptionLimitService.shared.getAIUsageInfo()
+        }
+    }
+}
+
+// MARK: - Usage Stat Row
+
+private struct UsageStatRow: View {
+    let icon: String
+    let title: String
+    let current: Int
+    let max: Int
+    
+    var body: some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(Color(red: 0.58, green: 0.41, blue: 0.87))
+                .frame(width: 24)
+            
+            Text(title)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundColor(.primary)
+            
+            Spacer()
+            
+            Text("\(current) / \(max)")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(current >= max ? .red : .secondary)
+        }
+    }
+}
+
+// MARK: - Grace Period Warning
+
+private struct GracePeriodWarningView: View {
+    @State private var daysRemaining: Int?
+    
+    var body: some View {
+        Group {
+            if let days = daysRemaining {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text("Grace period: \(days) day\(days == 1 ? "" : "s") remaining")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.orange)
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(12)
+            }
+        }
+        .task {
+            self.daysRemaining = await GracePeriodManager.shared.getDaysRemaining()
         }
     }
 }

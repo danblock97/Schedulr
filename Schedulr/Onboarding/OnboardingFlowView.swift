@@ -489,6 +489,9 @@ private struct CalendarPreviewRow: View {
 }
 private struct DoneStep: View {
     var onFinish: () -> Void
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
+    
     var body: some View {
         VStack(spacing: 24) {
             Text("All set! 🎉")
@@ -500,6 +503,11 @@ private struct DoneStep: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 20)
+            
+            // Soft upgrade prompt for free users
+            if !subscriptionManager.isPro {
+                OnboardingProPromo(onUpgrade: { showPaywall = true }, onSkip: onFinish)
+            }
             
             Button(action: onFinish) {
                 HStack(spacing: 10) {
@@ -527,6 +535,106 @@ private struct DoneStep: View {
             .padding(.top, 8)
         }
         .padding(.vertical, 20)
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
+    }
+}
+
+private struct OnboardingProPromo: View {
+    let onUpgrade: () -> Void
+    let onSkip: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 36, weight: .medium))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.29, blue: 0.55),
+                            Color(red: 0.58, green: 0.41, blue: 0.87)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .symbolRenderingMode(.hierarchical)
+            
+            Text("Unlock Pro")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+            
+            VStack(spacing: 8) {
+                ProFeatureRow(text: "AI scheduling assistant")
+                ProFeatureRow(text: "5 groups instead of 1")
+                ProFeatureRow(text: "10 members per group")
+            }
+            .padding(.vertical, 8)
+            
+            HStack(spacing: 12) {
+                Button(action: onUpgrade) {
+                    Text("Buy Pro")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.29, blue: 0.55),
+                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: Capsule()
+                        )
+                }
+                
+                Button(action: onSkip) {
+                    Text("Skip")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color(.secondarySystemBackground), in: Capsule())
+                }
+            }
+        }
+        .padding(24)
+        .background(Color(.tertiarySystemBackground))
+        .cornerRadius(20)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
+                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+        )
+    }
+}
+
+private struct ProFeatureRow: View {
+    let text: String
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Color(red: 0.59, green: 0.85, blue: 0.34))
+            Text(text)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

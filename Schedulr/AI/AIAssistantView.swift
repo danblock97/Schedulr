@@ -10,6 +10,9 @@ import SwiftUI
 struct AIAssistantView: View {
     @StateObject private var viewModel: AIAssistantViewModel
     @FocusState private var isInputFocused: Bool
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
+    @State private var hasShownProPrompt = false
     
     init(dashboardViewModel: DashboardViewModel, calendarManager: CalendarSyncManager) {
         _viewModel = StateObject(wrappedValue: AIAssistantViewModel(
@@ -28,6 +31,15 @@ struct AIAssistantView: View {
                 // Bubbly background decoration
                 BubblyAIBackground()
                     .ignoresSafeArea()
+                
+                // Show Pro paywall modal for free users on first visit
+                if !subscriptionManager.isPro && !hasShownProPrompt {
+                    AIProPaywallModal(
+                        onUpgrade: { showPaywall = true },
+                        onDismiss: { hasShownProPrompt = true }
+                    )
+                    .transition(.opacity)
+                }
                 
                 VStack(spacing: 0) {
                     // Messages list
@@ -168,7 +180,11 @@ struct AIAssistantView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
+            }
         }
+        .animation(.easeInOut, value: hasShownProPrompt)
     }
 }
 
@@ -440,7 +456,120 @@ private struct BubblyAIBackground: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - AI Pro Paywall Modal
+
+private struct AIProPaywallModal: View {
+    let onUpgrade: () -> Void
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    onDismiss()
+                }
+            
+            VStack(spacing: 24) {
+                // Close button
+                HStack {
+                    Spacer()
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
+                .padding(.horizontal, 20)
+                
+                VStack(spacing: 20) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 60, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.29, blue: 0.55),
+                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .symbolRenderingMode(.hierarchical)
+                    
+                    Text("AI Scheduling Assistant")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                    
+                    Text("Meet Scheduly, your AI assistant for finding the perfect meeting times with your group.")
+                        .font(.system(size: 17, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                    
+                    VStack(spacing: 12) {
+                        AIFeatureRow(text: "Natural language queries")
+                        AIFeatureRow(text: "100 AI requests per month")
+                        AIFeatureRow(text: "Find free time slots instantly")
+                    }
+                    .padding(.vertical, 8)
+                    
+                    Button(action: onUpgrade) {
+                        Text("Upgrade to Pro")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.98, green: 0.29, blue: 0.55),
+                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                in: Capsule()
+                            )
+                            .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.5), radius: 16, x: 0, y: 8)
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    Button(action: onDismiss) {
+                        Text("Maybe Later")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
+                .padding(32)
+                .background(
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .fill(Color(.systemBackground))
+                        .shadow(color: Color.black.opacity(0.3), radius: 30, x: 0, y: 15)
+                )
+                .padding(.horizontal, 20)
+            }
+        }
+    }
+}
+
+private struct AIFeatureRow: View {
+    let text: String
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Color(red: 0.59, green: 0.85, blue: 0.34))
+            Text(text)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+    }
+}
 
 #Preview {
     let calendarManager = CalendarSyncManager()

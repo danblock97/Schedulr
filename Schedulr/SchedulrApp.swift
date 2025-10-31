@@ -83,6 +83,10 @@ private struct RootContainer: View {
             authVM.loadInitialSession()
             // Register for push notifications
             PushManager.shared.registerForPush()
+            // Initialize subscription manager
+            await SubscriptionManager.shared.configure()
+            // Check and enforce grace periods if needed
+            await GracePeriodManager.shared.checkAndEnforceIfNeeded()
             // Do not pre-check onboarding here to avoid race with async auth validation.
             // Keep splash until auth phase leaves .checking (with a safety timeout).
             var remainingChecks = 20 // ~2.0s max at 100ms intervals

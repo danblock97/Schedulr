@@ -249,6 +249,10 @@ struct GroupDashboardView: View {
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     var onSignOut: (() -> Void)?
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
+    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
+    @State private var showUpgradePrompt = false
+    @State private var upgradePromptType: UpgradePromptModal.LimitType?
 
     var body: some View {
         NavigationStack {
@@ -276,6 +280,32 @@ struct GroupDashboardView: View {
         .onReceive(NotificationCenter.default.publisher(for: CalendarSyncManager.calendarDidChangeNotification)) { _ in
             Task {
                 await viewModel.syncGroupCalendar()
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
+        .alert("Upgrade Required", isPresented: $showUpgradePrompt, presenting: upgradePromptType) { type in
+            Button("Upgrade") {
+                showPaywall = true
+            }
+            Button("Maybe Later", role: .cancel) {}
+        } message: { type in
+            Text(type.message)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowUpgradePaywall"))) { notification in
+            if let reason = notification.userInfo?["reason"] as? String {
+                switch reason {
+                case "ai_limit":
+                    upgradePromptType = .ai
+                case "group_limit":
+                    upgradePromptType = .groups
+                case "member_limit":
+                    upgradePromptType = .members
+                default:
+                    return
+                }
+                showUpgradePrompt = true
             }
         }
     }

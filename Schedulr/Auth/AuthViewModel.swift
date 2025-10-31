@@ -62,6 +62,8 @@ final class AuthViewModel: ObservableObject {
                     self.isAuthenticated = true
                     self.phase = .authenticated
                 }
+                // Fetch subscription status after successful authentication
+                await SubscriptionManager.shared.fetchSubscriptionStatus()
             } catch {
                 #if DEBUG
                 print("[Auth] refreshSession failed; signing out:", error.localizedDescription)
@@ -135,6 +137,8 @@ final class AuthViewModel: ObservableObject {
                 }
             }
             refreshAuthState()
+            // Fetch subscription status after authentication
+            await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
             errorMessage = error.localizedDescription
             if error.localizedDescription.localizedCaseInsensitiveContains("invalid flow state") {

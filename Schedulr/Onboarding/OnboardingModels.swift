@@ -6,6 +6,11 @@ struct DBUser: Codable, Identifiable, Equatable {
     var avatar_url: String?
     var created_at: Date?
     var updated_at: Date?
+    var subscription_tier: String?
+    var subscription_status: String?
+    var revenuecat_customer_id: String?
+    var subscription_updated_at: Date?
+    var downgrade_grace_period_ends: Date?
 }
 
 struct DBUserUpdate: Encodable {

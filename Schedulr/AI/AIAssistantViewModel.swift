@@ -49,6 +49,27 @@ final class AIAssistantViewModel: ObservableObject {
         // Show loading state
         isLoading = true
         
+        // Check AI usage limits
+        let canUseAI = await AIUsageTracker.shared.canMakeRequest()
+        
+        guard canUseAI else {
+            // Show limit reached message
+            isLoading = false
+            let limitMsg = ChatMessage(
+                role: .assistant,
+                content: "⚠️ You've reached your AI usage limit for this month. Upgrade to Pro to get 100 AI requests per month!"
+            )
+            messages.append(limitMsg)
+            
+            // Notify that limit check is needed
+            NotificationCenter.default.post(
+                name: NSNotification.Name("ShowUpgradePaywall"),
+                object: nil,
+                userInfo: ["reason": "ai_limit"]
+            )
+            return
+        }
+        
         do {
             // Check if query is about availability
             let query = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers())
@@ -60,6 +81,10 @@ final class AIAssistantViewModel: ObservableObject {
                 // Handle general question
                 await handleGeneralQuestion(question: userMessage)
             }
+            
+            // Track AI usage after successful request
+            await AIUsageTracker.shared.trackRequest()
+            
         } catch {
             // Show user-friendly error messages
             let friendlyError: String
