@@ -50,7 +50,6 @@ final class DashboardViewModel: ObservableObject {
 
     func reloadMemberships() async {
         guard !isLoadingMemberships else {
-            print("⚠️ Memberships already loading, skipping...")
             return
         }
         guard let client else {
@@ -69,8 +68,6 @@ final class DashboardViewModel: ObservableObject {
 
         do {
             let uid = try await currentUID()
-
-            print("🔄 Fetching memberships for user: \(uid)")
 
             let rows: [GroupMembershipRow] = try await client.database
                 .from("group_members")
@@ -92,36 +89,29 @@ final class DashboardViewModel: ObservableObject {
                 )
             }
 
-            print("✅ Loaded \(summaries.count) groups")
-
             memberships = summaries
 
             // Try to restore previous selection first, then stored, then first group
             if let previouslySelectedID, summaries.contains(where: { $0.id == previouslySelectedID }) {
                 selectedGroupID = previouslySelectedID
-                print("✅ Restored previously selected group")
             } else {
                 let stored = loadStoredGroupID(for: uid)
                 if let stored, summaries.contains(where: { $0.id == stored }) {
                     selectedGroupID = stored
-                    print("✅ Restored stored group selection")
                 } else {
                     selectedGroupID = summaries.first?.id
                     if let first = summaries.first {
                         storeSelectedGroup(id: first.id, for: uid)
-                        print("✅ Selected first group as default")
                     }
                 }
             }
         } catch is CancellationError {
-            print("⚠️ Membership reload was cancelled - keeping existing data")
             // Restore previous selection if it was cleared
             if selectedGroupID == nil, let previouslySelectedID {
                 selectedGroupID = previouslySelectedID
             }
             // Don't show error to user - cancellation is normal behavior
         } catch {
-            print("❌ Error loading memberships: \(error)")
             // Only show error if it's not a cancellation
             let errorString = error.localizedDescription.lowercased()
             if !errorString.contains("cancel") {
@@ -129,7 +119,6 @@ final class DashboardViewModel: ObservableObject {
                 memberships = []
                 selectedGroupID = nil
             } else {
-                print("⚠️ Detected cancellation in error message, ignoring...")
                 // Restore previous selection
                 if selectedGroupID == nil, let previouslySelectedID {
                     selectedGroupID = previouslySelectedID
@@ -140,7 +129,6 @@ final class DashboardViewModel: ObservableObject {
 
     func fetchMembers(for groupID: UUID) async {
         guard !isLoadingMembers else {
-            print("⚠️ Members already loading, skipping...")
             return
         }
         guard let client else {
@@ -157,8 +145,6 @@ final class DashboardViewModel: ObservableObject {
         defer { isLoadingMembers = false }
 
         do {
-            print("🔄 Fetching members for group: \(groupID)")
-
             let rows: [GroupMemberRow] = try await client.database
                 .from("group_members")
                 .select("user_id, role, joined_at, users(id,display_name,avatar_url)")
@@ -176,24 +162,19 @@ final class DashboardViewModel: ObservableObject {
                     joinedAt: row.joined_at
                 )
             }
-
-            print("✅ Loaded \(members.count) members")
         } catch is CancellationError {
-            print("⚠️ Members fetch was cancelled - keeping existing data")
             // Restore previous members if they were cleared
             if members.isEmpty && !previousMembers.isEmpty {
                 members = previousMembers
             }
             // Don't show error to user
         } catch {
-            print("❌ Error loading members: \(error)")
             // Check if error message contains "cancel"
             let errorString = error.localizedDescription.lowercased()
             if !errorString.contains("cancel") {
                 membersError = error.localizedDescription
                 members = []
             } else {
-                print("⚠️ Detected cancellation in error message, keeping existing data...")
                 // Restore previous members
                 if members.isEmpty && !previousMembers.isEmpty {
                     members = previousMembers
