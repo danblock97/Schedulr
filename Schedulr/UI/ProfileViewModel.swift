@@ -206,26 +206,41 @@ class ProfileViewModel: ObservableObject {
 
         do {
             let session = try await client.auth.session
-            let uid = session.user.id
-
-            // Delete user record (should cascade to group_members if DB is set up correctly)
-            _ = try await client.database
-                .from("users")
-                .delete()
-                .eq("id", value: uid)
-                .execute()
-
-            // Delete from auth
-            // Note: Supabase client doesn't have a direct deleteUser method for self-deletion
-            // This typically needs to be handled via a server-side function or admin API
-            // For now, we'll sign out the user after deleting their data
-
-            isLoading = false
-            return true
+            let accessToken = session.accessToken
+            
+            // Get Supabase URL from configuration
+            guard let supabaseURL = SupabaseManager.shared.configuration?.url else {
+                throw NSError(domain: "DeleteAccount", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to get Supabase URL"])
+            }
+            
+            // Call the Edge Function to delete the user account
+            let url = supabaseURL.appendingPathComponent("functions/v1/delete-user-account")
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NSError(domain: "DeleteAccount", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+            }
+            
+            if httpResponse.statusCode == 200 {
+                print("✅ Account deleted successfully")
+                isLoading = false
+                return true
+            } else {
+                // Try to parse error message
+                let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let errorMsg = errorDict?["error"] as? String ?? "Failed to delete account"
+                throw NSError(domain: "DeleteAccount", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+            }
 
         } catch {
             errorMessage = "Failed to delete account: \(error.localizedDescription)"
-            print("Error deleting account: \(error)")
+            print("❌ Error deleting account: \(error)")
             isLoading = false
             return false
         }

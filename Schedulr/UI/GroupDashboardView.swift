@@ -253,12 +253,26 @@ struct GroupDashboardView: View {
     @State private var showPaywall = false
     @State private var showUpgradePrompt = false
     @State private var upgradePromptType: UpgradePromptModal.LimitType?
+    @State private var showGroupManagement = false
 
     var body: some View {
         NavigationStack {
             content
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbar {
+                    if !viewModel.memberships.isEmpty {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showGroupManagement = true
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 22, weight: .medium))
+                                    .foregroundColor(Color(red: 0.98, green: 0.29, blue: 0.55))
+                            }
+                        }
+                    }
+                }
         }
         .task {
             await viewModel.loadInitialData()
@@ -284,6 +298,9 @@ struct GroupDashboardView: View {
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
+        }
+        .sheet(isPresented: $showGroupManagement) {
+            GroupManagementView(dashboardVM: viewModel)
         }
         .alert("Upgrade Required", isPresented: $showUpgradePrompt, presenting: upgradePromptType) { type in
             Button("Upgrade") {
@@ -431,11 +448,38 @@ struct GroupDashboardView: View {
                 }
             } else if viewModel.memberships.isEmpty {
                 BubblyCard {
-                Text("Create or join a group to start planning together.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 12)
+                    VStack(spacing: 16) {
+                        Text("Create or join a group to start planning together.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        Button {
+                            showGroupManagement = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text("Create or Join Group")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.98, green: 0.29, blue: 0.55),
+                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(12)
+                        }
+                    }
+                    .padding(.vertical, 8)
                 }
             } else {
                 VStack(spacing: 12) {
