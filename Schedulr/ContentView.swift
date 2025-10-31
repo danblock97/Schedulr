@@ -29,7 +29,7 @@ struct ContentView: View {
                 case 1:
                     CalendarRootView(viewModel: viewModel)
                 case 2:
-                    PlaceholderView(title: "Ask AI", icon: "sparkles", message: "AI assistant is coming soon!")
+                    AIAssistantView(dashboardViewModel: viewModel, calendarManager: calendarManager)
                 case 3:
                     ProfileView(viewModel: profileViewModel)
                         .environmentObject(authVM)

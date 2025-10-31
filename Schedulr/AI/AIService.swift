@@ -1,0 +1,236 @@
+//
+//  AIService.swift
+//  Schedulr
+//
+//  Created by Daniel Block on 29/10/2025.
+//
+
+import Foundation
+
+enum AIServiceError: Error, LocalizedError {
+    case missingAPIKey
+    case invalidResponse
+    case apiError(String)
+    case networkError(Error)
+    
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey:
+            return "OpenAI API key is not configured. Please add your API key in the configuration file."
+        case .invalidResponse:
+            return "Received an invalid response from OpenAI API."
+        case .apiError(let message):
+            return "OpenAI API error: \(message)"
+        case .networkError(let error):
+            return "Network error: \(error.localizedDescription)"
+        }
+    }
+}
+
+final class AIService {
+    static let shared = AIService()
+    
+    private let baseURL = URL(string: "https://api.openai.com/v1/chat/completions")!
+    private let model = "gpt-5-nano-2025-08-07"
+    
+    private var apiKey: String? {
+        SupabaseManager.shared.configuration?.openAIAPIKey
+    }
+    
+    private init() {}
+    
+    // MARK: - Chat Completion
+    
+    /// Sends a chat completion request to OpenAI
+    /// - Parameters:
+    ///   - messages: Array of chat messages (including system, user, and assistant messages)
+    ///   - temperature: Sampling temperature (optional, defaults to 1.0 for GPT-5 nano)
+    /// - Returns: The assistant's response message
+    func chatCompletion(messages: [ChatMessage], temperature: Double? = nil) async throws -> String {
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            throw AIServiceError.missingAPIKey
+        }
+        
+        // Convert ChatMessage to OpenAIMessage
+        let openAIMessages = messages.map { msg in
+            OpenAIMessage(role: msg.role.rawValue, content: msg.content)
+        }
+        
+        let request = OpenAIRequest(
+            model: model,
+            messages: openAIMessages,
+            temperature: temperature, // nil will use API default (1.0 for GPT-5 nano)
+            stream: false
+        )
+        
+        var urlRequest = URLRequest(url: baseURL)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        do {
+            urlRequest.httpBody = try JSONEncoder().encode(request)
+            
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AIServiceError.invalidResponse
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                // Try to decode error response
+                if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
+                    let errorMessage = errorResponse.error?.message ?? "Unknown API error"
+                    
+                    // Provide more helpful messages for common errors
+                    var userFriendlyMessage = errorMessage
+                    if errorMessage.localizedCaseInsensitiveContains("quota") || 
+                       errorMessage.localizedCaseInsensitiveContains("exceeded") ||
+                       errorMessage.localizedCaseInsensitiveContains("insufficient_quota") {
+                        userFriendlyMessage = "Your OpenAI API quota has been exceeded. Please add payment information to your OpenAI account at https://platform.openai.com/account/billing to continue using Scheduly."
+                    } else if errorMessage.localizedCaseInsensitiveContains("invalid_api_key") {
+                        userFriendlyMessage = "Invalid OpenAI API key. Please check your API key in Xcode Build Settings."
+                    }
+                    
+                    throw AIServiceError.apiError(userFriendlyMessage)
+                }
+                throw AIServiceError.apiError("HTTP \(httpResponse.statusCode)")
+            }
+            
+            let apiResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+            
+            guard let content = apiResponse.choices?.first?.message?.content else {
+                throw AIServiceError.invalidResponse
+            }
+            
+            return content
+        } catch let error as AIServiceError {
+            throw error
+        } catch {
+            throw AIServiceError.networkError(error)
+        }
+    }
+    
+    // MARK: - Query Parsing
+    
+    /// Uses AI to parse a natural language query into a structured AvailabilityQuery
+    /// - Parameter query: The user's natural language query
+    /// - Returns: A structured AvailabilityQuery
+    func parseAvailabilityQuery(_ query: String, groupMembers: [(id: UUID, name: String)]) async throws -> AvailabilityQuery {
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            throw AIServiceError.missingAPIKey
+        }
+        
+        // Build a system prompt that instructs the AI to parse the query
+        let membersList = groupMembers.map { "\($0.name) (ID: \($0.id.uuidString))" }.joined(separator: ", ")
+        
+        let systemPrompt = """
+You are Scheduly, a friendly AI scheduling assistant for the Schedulr app. Parse scheduling queries into structured JSON format.
+
+Available group members: \(membersList)
+
+Parse the user's query and extract:
+1. User names mentioned (match them to the available members list)
+2. Duration in hours (if mentioned)
+3. Time window in 24-hour format HH:mm (if mentioned, e.g., "12pm-5pm" becomes "12:00-17:00")
+4. Date range in ISO 8601 format YYYY-MM-DD (if mentioned, defaults to next 30 days)
+
+Return ONLY valid JSON in this exact format:
+{
+  "type": "availability",
+  "users": ["User1", "User2"],
+  "durationHours": 5.0,
+  "timeWindow": {
+    "start": "12:00",
+    "end": "17:00"
+  },
+  "dateRange": {
+    "start": "2025-01-20",
+    "end": "2025-02-20"
+  }
+}
+
+If a field is not mentioned, omit it from the JSON. If the query is not about availability, return {"type": "general"}.
+"""
+        
+        let messages = [
+            ChatMessage(role: .system, content: systemPrompt),
+            ChatMessage(role: .user, content: query)
+        ]
+        
+        // Don't pass temperature - let API use default (1.0 for GPT-5 nano)
+        let response = try await chatCompletion(messages: messages)
+        
+        // Extract JSON from response (might have markdown code blocks)
+        var jsonString = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Remove markdown code blocks if present
+        if jsonString.hasPrefix("```") {
+            let lines = jsonString.components(separatedBy: .newlines)
+            jsonString = lines.dropFirst().dropLast().joined(separator: "\n")
+        }
+        
+        // Remove any leading/trailing whitespace
+        jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Try to parse JSON
+        guard let jsonData = jsonString.data(using: .utf8) else {
+            // Fallback: return a query with type general
+            return AvailabilityQuery(type: .general)
+        }
+        
+        do {
+            let query = try JSONDecoder().decode(AvailabilityQuery.self, from: jsonData)
+            return query
+        } catch {
+            #if DEBUG
+            print("Failed to parse AI response as JSON: \(error)")
+            print("Response was: \(response)")
+            #endif
+            // Fallback: try keyword-based parsing
+            return parseQueryFallback(query: query, groupMembers: groupMembers)
+        }
+    }
+    
+    // MARK: - Fallback Parsing
+    
+    private func parseQueryFallback(query: String, groupMembers: [(id: UUID, name: String)]) -> AvailabilityQuery {
+        var availabilityQuery = AvailabilityQuery()
+        let lowercasedQuery = query.lowercased()
+        
+        // Check if it's an availability query
+        let availabilityKeywords = ["free", "available", "schedule", "find", "when", "can", "time"]
+        let isAvailabilityQuery = availabilityKeywords.contains { lowercasedQuery.contains($0) }
+        
+        if !isAvailabilityQuery {
+            availabilityQuery.type = .general
+            return availabilityQuery
+        }
+        
+        availabilityQuery.type = .availability
+        
+        // Extract user names (simple keyword matching)
+        for member in groupMembers {
+            if lowercasedQuery.contains(member.name.lowercased()) {
+                availabilityQuery.users.append(member.name)
+            }
+        }
+        
+        // Extract duration (look for patterns like "5 hours", "2h", etc.)
+        let durationPattern = #"(\d+(?:\.\d+)?)\s*(?:hours?|h|hrs?)"#
+        if let regex = try? NSRegularExpression(pattern: durationPattern, options: .caseInsensitive),
+           let match = regex.firstMatch(in: query, range: NSRange(query.startIndex..., in: query)),
+           let range = Range(match.range(at: 1), in: query),
+           let duration = Double(query[range]) {
+            availabilityQuery.durationHours = duration
+        }
+        
+        // Extract time window (look for patterns like "12pm-5pm", "between 12 and 5", etc.)
+        // This is a simplified parser - the AI version is more robust
+        let timePattern = #"(\d{1,2})\s*(?:pm|am|:)\s*(?:and|-|to)\s*(\d{1,2})\s*(?:pm|am)"#
+        // For now, we'll rely on the AI parsing
+        
+        return availabilityQuery
+    }
+}
+

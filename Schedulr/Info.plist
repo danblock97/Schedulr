@@ -27,6 +27,10 @@
     <key>SUPABASE_SERVICE_ROLE_KEY</key>
     <string>$(SUPABASE_SERVICE_ROLE_KEY)</string>
     
+    <!-- OpenAI API configuration populated via build settings -->
+    <key>OPENAI_API_KEY</key>
+    <string>$(OPENAI_API_KEY)</string>
+    
     <!-- OAuth and Google placeholders -->
     <key>SUPABASE_OAUTH_CALLBACK_SCHEME</key>
     <string>$(SUPABASE_OAUTH_CALLBACK_SCHEME)</string>

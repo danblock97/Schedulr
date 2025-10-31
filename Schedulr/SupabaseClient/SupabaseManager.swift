@@ -24,6 +24,8 @@ struct SupabaseConfiguration {
     let serviceRoleKey: String?
     // URL scheme used for OAuth / magic-link redirects (must exist in Info.plist URL Types)
     let oauthCallbackScheme: String?
+    // OpenAI API key for AI features
+    let openAIAPIKey: String?
 
     // Loads from the app bundle's Info.plist.
     // Provide these via Build Settings -> Info.plist Preprocessor or .xcconfig.
@@ -39,11 +41,12 @@ struct SupabaseConfiguration {
         guard let anon = value("SUPABASE_ANON_KEY") else { throw SupabaseConfigError.missingValue("SUPABASE_ANON_KEY") }
         let service = value("SUPABASE_SERVICE_ROLE_KEY")
         let scheme = value("SUPABASE_OAUTH_CALLBACK_SCHEME")
+        let openAIKey = value("OPENAI_API_KEY")
 
         guard let url = URL(string: urlString), url.scheme != nil, url.host != nil else {
             throw SupabaseConfigError.invalidURL(urlString)
         }
-        return SupabaseConfiguration(url: url, anonKey: anon, serviceRoleKey: service, oauthCallbackScheme: scheme)
+        return SupabaseConfiguration(url: url, anonKey: anon, serviceRoleKey: service, oauthCallbackScheme: scheme, openAIAPIKey: openAIKey)
     }
 }
 
