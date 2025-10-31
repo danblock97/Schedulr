@@ -8,6 +8,7 @@ struct EventEditorView: View {
     let members: [DashboardViewModel.MemberSummary]
     var existingEvent: CalendarEventWithUser? = nil
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var calendarSync: CalendarSyncManager
 
     @State private var title: String = ""
     @State private var date: Date = Date()
@@ -180,6 +181,10 @@ struct EventEditorView: View {
                 } else {
                     _ = try await CalendarEventService.shared.createEvent(input: input, currentUserId: uid)
                 }
+                
+                // Auto-refresh the calendar view to show the new/updated event
+                try? await calendarSync.fetchGroupEvents(groupId: groupId)
+                
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

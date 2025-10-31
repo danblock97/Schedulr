@@ -66,21 +66,64 @@ struct OnboardingFlowView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     if viewModel.step != .avatar {
-                        Button("Back") { viewModel.back() }
+                        Button {
+                            viewModel.back()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("Back")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(Color(.secondarySystemBackground))
+                            )
+                        }
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(viewModel.step == .done ? "Finish" : "Next →") {
+                    Button {
                         Task { await viewModel.next() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(viewModel.step == .done ? "Finish" : "Next")
+                                .font(.system(size: 16, weight: .semibold))
+                            if viewModel.step != .done {
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.29, blue: 0.55),
+                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: Capsule()
+                        )
+                        .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 8, x: 0, y: 4)
                     }
                     .disabled(
                         (viewModel.step == .name && viewModel.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         || (viewModel.step == .avatar && viewModel.isUploadingAvatar)
                     )
+                    .opacity(
+                        (viewModel.step == .name && viewModel.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        || (viewModel.step == .avatar && viewModel.isUploadingAvatar) ? 0.5 : 1.0
+                    )
                     .keyboardShortcut(.defaultAction)
                 }
             }
-            .tint(Color(red: 0.98, green: 0.29, blue: 0.55))
             .onChange(of: viewModel.step) { oldValue, _ in
                 previousStep = oldValue
             }
@@ -93,7 +136,7 @@ private struct AvatarStep: View {
     @State private var pickerItem: PhotosPickerItem? = nil
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             if let data = viewModel.pickedImageData, let img = UIImage(data: data) {
                 Image(uiImage: img)
                     .resizable()
@@ -101,26 +144,84 @@ private struct AvatarStep: View {
                     .frame(width: 132, height: 132)
                     .clipShape(Circle())
                     .overlay(
-                        Circle().stroke(Color.accentColor.opacity(0.6), lineWidth: 3)
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.98, green: 0.29, blue: 0.55),
+                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 4
+                            )
                     )
+                    .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 12, x: 0, y: 6)
             } else {
                 ZStack {
                     Circle()
-                        .fill(Color.primary.opacity(0.05))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.08),
+                                    Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.06)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .frame(width: 132, height: 132)
-                        .overlay(Circle().stroke(.quaternary, lineWidth: 1))
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
+                                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 2
+                                )
+                        )
                     Image(systemName: "person.fill")
                         .font(.system(size: 44, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.29, blue: 0.55),
+                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                 }
             }
             PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                Label("Upload Photo", systemImage: "camera.on.rectangle")
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(Color.accentColor)
-                    .foregroundStyle(.white)
-                    .clipShape(Capsule())
+                HStack(spacing: 8) {
+                    Image(systemName: "camera.on.rectangle")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Upload Photo")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.29, blue: 0.55),
+                            Color(red: 0.58, green: 0.41, blue: 0.87)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Capsule()
+                )
+                .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 8, x: 0, y: 4)
             }
             .onChange(of: pickerItem) { _, newItem in
                 guard let newItem else { return }
@@ -227,9 +328,14 @@ private struct GroupStep: View {
                 Task { await viewModel.next() }
             }) {
                 Text("Set up later")
-                    .font(.subheadline)
-                    .underline()
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(Color.secondary.opacity(0.08))
+                    )
             }
             .buttonStyle(.plain)
 
@@ -384,15 +490,43 @@ private struct CalendarPreviewRow: View {
 private struct DoneStep: View {
     var onFinish: () -> Void
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 24) {
             Text("All set! 🎉")
-                .font(.title2.weight(.black))
+                .font(.system(size: 32, weight: .black, design: .rounded))
+                .foregroundStyle(.primary)
+            
             Text("You can change your profile anytime in settings.")
+                .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(.secondary)
-            Button("Go to app", action: onFinish)
-                .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.27, green: 0.63, blue: 0.98))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
+            
+            Button(action: onFinish) {
+                HStack(spacing: 10) {
+                    Text("Go to app")
+                        .font(.system(size: 17, weight: .semibold))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 16)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.29, blue: 0.55),
+                            Color(red: 0.58, green: 0.41, blue: 0.87)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Capsule()
+                )
+                .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4), radius: 12, x: 0, y: 6)
+            }
+            .padding(.top, 8)
         }
+        .padding(.vertical, 20)
     }
 }
 
@@ -453,23 +587,30 @@ private struct OnboardingHeader: View {
         }
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
                 AppLogoMark()
                 Text(title)
-                    .font(.title3.weight(.bold))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
                 Spacer()
                 Text("Step \(index + 1) of \(count)")
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color.secondary.opacity(0.1))
+                    )
             }
             ProgressBar(progress: progress)
             Text(subtitle)
-                .font(.callout)
+                .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(.secondary)
+                .lineSpacing(2)
         }
         .frame(maxWidth: 640)
-        .padding(.top, 4)
+        .padding(.top, 8)
     }
 }
 
@@ -478,10 +619,10 @@ private struct ProgressBar: View {
     var body: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
-            let h = max(8, proxy.size.height)
+            let h = max(16, proxy.size.height)
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: h/2, style: .continuous)
-                    .fill(Color.secondary.opacity(0.15))
+                    .fill(Color.secondary.opacity(0.12))
                 RoundedRectangle(cornerRadius: h/2, style: .continuous)
                     .fill(
                         LinearGradient(
@@ -493,11 +634,12 @@ private struct ProgressBar: View {
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: max(12, w * min(max(progress, 0), 1)))
+                    .frame(width: max(16, w * min(max(progress, 0), 1)))
+                    .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4), radius: 4, x: 0, y: 2)
             }
         }
-        .frame(height: 10)
-        .animation(.easeInOut(duration: 0.35), value: progress)
+        .frame(height: 14)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: progress)
     }
 }
 

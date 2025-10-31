@@ -361,7 +361,7 @@ struct GroupDashboardView: View {
             // Events count
             EnhancedQuickStatCard(
                 icon: "calendar.badge.clock",
-                count: "\(calendarSync.upcomingEvents.count)",
+                count: "\(upcomingDisplayEvents.count)",
                 label: "Events",
                 gradient: [],
                 accentColor: Color(red: 0.58, green: 0.41, blue: 0.87)

@@ -277,8 +277,10 @@ final class CalendarSyncManager: ObservableObject {
             throw NSError(domain: "CalendarSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Supabase client not available"])
         }
 
-        let start = Date()
-        let end = Calendar.current.date(byAdding: .day, value: 14, to: start) ?? start
+        // Fetch a much wider range: 30 days in the past and 1 year in the future
+        // This ensures events show up regardless of when they're created
+        let start = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+        let end = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
 
         // Query structure to join with users table
         struct EventRow: Decodable {
@@ -319,18 +321,22 @@ final class CalendarSyncManager: ObservableObject {
             }
         }
 
+        // Query events that overlap with our date range
+        // An event overlaps if: (start_date <= end) AND (end_date >= start)
+        // This captures all events that have any part within our range
         let rows: [EventRow] = try await client
             .from("calendar_events")
             .select("*, users(id, display_name, avatar_url), event_categories(*)")
             .eq("group_id", value: groupId)
-            .gte("end_date", value: start)
-            .lte("start_date", value: end)
+            .lte("start_date", value: end)  // Event starts before or on our end date
+            .gte("end_date", value: start)  // Event ends on or after our start date
             .order("start_date", ascending: true)
             .execute()
             .value
 
         // Convert to CalendarEventWithUser
-        groupEvents = rows.map { row in
+        // Since class is @MainActor, this assignment will automatically update on main thread
+        let mappedEvents = rows.map { row in
             let user = row.users.map { userInfo in
                 DBUser(
                     id: userInfo.id,
@@ -374,6 +380,11 @@ final class CalendarSyncManager: ObservableObject {
                 user: user,
                 category: category
             )
+        }
+        
+        // Update on main thread to trigger UI refresh
+        await MainActor.run {
+            groupEvents = mappedEvents
         }
     }
 

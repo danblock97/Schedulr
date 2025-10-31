@@ -227,6 +227,9 @@ extension EventDetailView {
             do {
                 try await CalendarEventService.shared.updateMyStatus(eventId: event.id, status: status, currentUserId: uid)
                 await loadAttendees()
+                
+                // Auto-refresh the calendar view to reflect any changes
+                try? await calendarSync.fetchGroupEvents(groupId: event.group_id)
             } catch {
                 // Revert status on error
                 await MainActor.run {

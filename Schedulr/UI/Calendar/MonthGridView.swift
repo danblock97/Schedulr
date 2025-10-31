@@ -68,30 +68,25 @@ struct MonthGridView: View {
             VStack(alignment: .leading, spacing: viewMode == .compact ? 2 : 4) {
                 // Spacer to align content below day number
                 Spacer()
-                    .frame(height: viewMode == .compact ? 24 : 26)
+                    .frame(height: viewMode == .compact ? 32 : 34)
             
             // Event indicators based on view mode
             if viewMode == .compact {
-                // Compact: Clearer, larger event indicators
+                // Compact: Single centered dot indicator
                 if !dayEvents.isEmpty {
-                    HStack(spacing: 3) {
-                        ForEach(dayEvents.prefix(4)) { event in
-                            Circle()
-                                .fill(event.base.effectiveColor != nil ? Color(
-                                    red: event.base.effectiveColor!.red,
-                                    green: event.base.effectiveColor!.green,
-                                    blue: event.base.effectiveColor!.blue,
-                                    opacity: event.base.effectiveColor!.alpha
-                                ) : Color(red: 0.58, green: 0.41, blue: 0.87))
-                                .frame(width: 5.5, height: 5.5)
-                        }
-                        if dayEvents.count > 4 {
-                            Text("+\(dayEvents.count - 4)")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundColor(Color(red: 0.58, green: 0.41, blue: 0.87))
-                        }
+                    let eventColor = dayEvents.first?.base.effectiveColor != nil ? Color(
+                        red: dayEvents.first!.base.effectiveColor!.red,
+                        green: dayEvents.first!.base.effectiveColor!.green,
+                        blue: dayEvents.first!.base.effectiveColor!.blue,
+                        opacity: dayEvents.first!.base.effectiveColor!.alpha
+                    ) : Color(red: 0.58, green: 0.41, blue: 0.87)
+                    HStack {
+                        Spacer()
+                        Circle()
+                            .fill(eventColor)
+                            .frame(width: 7, height: 7)
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity)
                     .padding(.bottom, 4)
                 }
             } else if viewMode == .stacked {
@@ -130,21 +125,21 @@ struct MonthGridView: View {
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)
             } else {
-                // Details: More space, event indicators
+                // Details: Single centered dot indicator
                 if !dayEvents.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(dayEvents.prefix(3)) { event in
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(event.base.effectiveColor != nil ? Color(
-                                    red: event.base.effectiveColor!.red,
-                                    green: event.base.effectiveColor!.green,
-                                    blue: event.base.effectiveColor!.blue,
-                                    opacity: event.base.effectiveColor!.alpha
-                                ) : Color(red: 0.58, green: 0.41, blue: 0.87))
-                                .frame(height: 3)
-                        }
+                    let eventColor = dayEvents.first?.base.effectiveColor != nil ? Color(
+                        red: dayEvents.first!.base.effectiveColor!.red,
+                        green: dayEvents.first!.base.effectiveColor!.green,
+                        blue: dayEvents.first!.base.effectiveColor!.blue,
+                        opacity: dayEvents.first!.base.effectiveColor!.alpha
+                    ) : Color(red: 0.58, green: 0.41, blue: 0.87)
+                    HStack {
+                        Spacer()
+                        Circle()
+                            .fill(eventColor)
+                            .frame(width: 7, height: 7)
+                        Spacer()
                     }
-                    .padding(.horizontal, 6)
                     .padding(.bottom, 6)
                 }
             }
@@ -175,8 +170,8 @@ struct MonthGridView: View {
                     displayedMonth = startOfMonth(for: day)
                 }
                 
-                // If date has events, notify parent to switch to day view
-                if !dayEvents.isEmpty, let onDateSelected = onDateSelected {
+                // Notify parent that a date was selected (to switch to Details mode if needed)
+                if let onDateSelected = onDateSelected {
                     onDateSelected(day)
                 }
             }
@@ -204,7 +199,22 @@ struct MonthGridView: View {
     }
 
     private func eventsForDay(_ day: Date) -> [DisplayEvent] {
-        events.filter { Calendar.current.isDate($0.base.start_date, inSameDayAs: day) }
+        let dayStart = Calendar.current.startOfDay(for: day)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        
+        return events.filter { event in
+            let eventStart = Calendar.current.startOfDay(for: event.base.start_date)
+            let eventEnd = Calendar.current.startOfDay(for: event.base.end_date)
+            // For all-day events, include the end date as part of the event
+            let adjustedEventEnd = event.base.is_all_day ? 
+                Calendar.current.date(byAdding: .day, value: 1, to: eventEnd) ?? eventEnd :
+                event.base.end_date
+            
+            // Event overlaps with the day if:
+            // - Event starts before or on the day AND
+            // - Event ends after the day starts
+            return eventStart <= dayEnd && adjustedEventEnd > dayStart
+        }
     }
 
     private func startOfMonth(for date: Date) -> Date {

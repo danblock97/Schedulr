@@ -75,7 +75,13 @@ struct YearlyCalendarView: View {
         let isSelected = Calendar.current.isDate(day, inSameDayAs: selectedDate)
         let isToday = Calendar.current.isDateInToday(day)
         let dayNumber = Calendar.current.component(.day, from: day)
-        let dayEvents = events.filter { Calendar.current.isDate($0.base.start_date, inSameDayAs: day) }
+        let dayEvents = eventsForDay(day)
+        let eventColor = !dayEvents.isEmpty ? (dayEvents.first?.base.effectiveColor != nil ? Color(
+            red: dayEvents.first!.base.effectiveColor!.red,
+            green: dayEvents.first!.base.effectiveColor!.green,
+            blue: dayEvents.first!.base.effectiveColor!.blue,
+            opacity: dayEvents.first!.base.effectiveColor!.alpha
+        ) : Color(red: 0.58, green: 0.41, blue: 0.87)) : Color(red: 0.58, green: 0.41, blue: 0.87)
         
         return ZStack {
             if isSelected {
@@ -97,7 +103,7 @@ struct YearlyCalendarView: View {
             Group {
                 if !dayEvents.isEmpty {
                     Circle()
-                        .fill(Color(red: 0.58, green: 0.41, blue: 0.87))
+                        .fill(eventColor)
                         .frame(width: 3, height: 3)
                         .offset(x: 7, y: 7)
                 }
@@ -138,6 +144,25 @@ struct YearlyCalendarView: View {
         }
         
         return days
+    }
+    
+    private func eventsForDay(_ day: Date) -> [DisplayEvent] {
+        let dayStart = Calendar.current.startOfDay(for: day)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        
+        return events.filter { event in
+            let eventStart = Calendar.current.startOfDay(for: event.base.start_date)
+            let eventEnd = Calendar.current.startOfDay(for: event.base.end_date)
+            // For all-day events, include the end date as part of the event
+            let adjustedEventEnd = event.base.is_all_day ? 
+                Calendar.current.date(byAdding: .day, value: 1, to: eventEnd) ?? eventEnd :
+                event.base.end_date
+            
+            // Event overlaps with the day if:
+            // - Event starts before or on the day AND
+            // - Event ends after the day starts
+            return eventStart <= dayEnd && adjustedEventEnd > dayStart
+        }
     }
 }
 

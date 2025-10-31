@@ -5,7 +5,6 @@ import Auth
 enum CalendarMode: String, CaseIterable, Identifiable {
     case year = "Year"
     case month = "Month"
-    case day = "Day"
     case list = "List"
     
     var id: String { rawValue }
@@ -112,6 +111,7 @@ struct CalendarRootView: View {
                                     }
                                 }
                             )
+                            .id("year-\(Calendar.current.component(.year, from: displayedYear))")
                         case .month:
                             MonthGridView(
                                 events: displayEvents,
@@ -120,22 +120,13 @@ struct CalendarRootView: View {
                                 displayedMonth: $displayedMonth,
                                 viewMode: monthViewMode,
                                 onDateSelected: { date in
-                                    // If date has events, switch to day view
-                                    let eventsForDate = displayEvents.filter { 
-                                        Calendar.current.isDate($0.base.start_date, inSameDayAs: date) 
-                                    }
-                                    if !eventsForDate.isEmpty {
+                                    // When a date is selected, switch to Details mode to show events
+                                    if monthViewMode != .details {
                                         withAnimation {
-                                            mode = .day
+                                            monthViewMode = .details
                                         }
                                     }
                                 }
-                            )
-                        case .day:
-                            DayTimelineView(
-                                events: dayViewEvents,
-                                members: memberColorMapping,
-                                date: $selectedDate
                             )
                         case .list:
                             AgendaListView(
@@ -187,21 +178,6 @@ struct CalendarRootView: View {
                         
                         Button {
                             withAnimation {
-                                mode = .day
-                            }
-                        } label: {
-                            HStack {
-                                Text("Day")
-                                if mode == .day {
-                                    Spacer()
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.red)
-                                }
-                            }
-                        }
-                        
-                        Button {
-                            withAnimation {
                                 mode = .list
                             }
                         } label: {
@@ -215,7 +191,7 @@ struct CalendarRootView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: mode == .year ? "calendar" : (mode == .month ? "calendar" : (mode == .day ? "calendar.badge.clock" : "list.bullet")))
+                        Image(systemName: mode == .year ? "calendar" : (mode == .month ? "calendar" : "list.bullet"))
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.primary)
                     }
@@ -305,21 +281,8 @@ struct CalendarRootView: View {
                                 let previousMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
                                 displayedMonth = previousMonth
                                 selectedDate = startOfMonth(for: previousMonth)
-                            }
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.primary)
-                                .frame(width: 32, height: 32)
-                                .background(Color(.secondarySystemBackground))
-                                .cornerRadius(8)
-                        }
-                    } else if mode == .day {
-                        Button {
-                            withAnimation {
-                                if let previousDay = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate) {
-                                    selectedDate = previousDay
-                                }
+                                // Update displayedYear if we crossed a year boundary
+                                displayedYear = startOfYear(for: previousMonth)
                             }
                         } label: {
                             Image(systemName: "chevron.left")
@@ -344,13 +307,11 @@ struct CalendarRootView: View {
                         }
                     }
                     
-                    // Forward button (for month and day views)
-                    if mode == .month {
+                    // Forward button (for year and month views)
+                    if mode == .year {
                         Button {
                             withAnimation {
-                                let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
-                                displayedMonth = nextMonth
-                                selectedDate = startOfMonth(for: nextMonth)
+                                displayedYear = Calendar.current.date(byAdding: .year, value: 1, to: displayedYear) ?? displayedYear
                             }
                         } label: {
                             Image(systemName: "chevron.right")
@@ -360,12 +321,14 @@ struct CalendarRootView: View {
                                 .background(Color(.secondarySystemBackground))
                                 .cornerRadius(8)
                         }
-                    } else if mode == .day {
+                    } else if mode == .month {
                         Button {
                             withAnimation {
-                                if let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate) {
-                                    selectedDate = nextDay
-                                }
+                                let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
+                                displayedMonth = nextMonth
+                                selectedDate = startOfMonth(for: nextMonth)
+                                // Update displayedYear if we crossed a year boundary
+                                displayedYear = startOfYear(for: nextMonth)
                             }
                         } label: {
                             Image(systemName: "chevron.right")
@@ -383,26 +346,16 @@ struct CalendarRootView: View {
                 // Month/Year title
                 if mode == .year {
                     Text("\(Calendar.current.component(.year, from: displayedYear))")
-                        .font(.system(size: 34, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.red)
                 } else if mode == .month {
-                    Text(monthTitle(displayedMonth))
-                        .font(.system(size: 28, weight: .bold))
+                    Text(monthTitleWithYear(displayedMonth))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.primary)
-                } else if mode == .day {
-                    // Smaller, more compact date for day view
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(dayTitleShort(for: selectedDate))
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text(dayTitleDate(for: selectedDate))
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.secondary)
-                    }
                 } else {
                     // List view - show selected date title
                     Text(monthTitle(selectedDate))
-                        .font(.system(size: 34, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.primary)
                 }
                 
@@ -525,6 +478,12 @@ struct CalendarRootView: View {
         return formatter.string(from: date)
     }
     
+    private func monthTitleWithYear(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
+    
     private func startOfMonth(for date: Date) -> Date {
         let components = Calendar.current.dateComponents([.year, .month], from: date)
         return Calendar.current.date(from: components) ?? date
@@ -594,10 +553,6 @@ struct CalendarRootView: View {
         }
     }
 
-    private var dayViewEvents: [CalendarEventWithUser] {
-        // Return deduplicated events for day view (extract from displayEvents)
-        return displayEvents.map { $0.base }
-    }
 
     private var memberColorMapping: [UUID: (name: String, color: Color)] {
         var mapping: [UUID: (name: String, color: Color)] = [:]
@@ -613,17 +568,6 @@ struct CalendarRootView: View {
         return f.string(from: date)
     }
     
-    private func dayTitleShort(for date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE"
-        return f.string(from: date)
-    }
-    
-    private func dayTitleDate(for date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "MMMM d, yyyy"
-        return f.string(from: date)
-    }
 }
 
 // MARK: - Preferences IO
