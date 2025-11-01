@@ -4,7 +4,7 @@ import Supabase
 struct GroupManagementView: View {
     @ObservedObject var dashboardVM: DashboardViewModel
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var groupName: String = ""
     @State private var inviteCode: String = ""
     @State private var isCreating: Bool = false

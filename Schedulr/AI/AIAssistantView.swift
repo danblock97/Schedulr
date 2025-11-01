@@ -10,7 +10,7 @@ import SwiftUI
 struct AIAssistantView: View {
     @StateObject private var viewModel: AIAssistantViewModel
     @FocusState private var isInputFocused: Bool
-    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
     @State private var hasShownProPrompt = false
     

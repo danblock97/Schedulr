@@ -249,7 +249,7 @@ struct GroupDashboardView: View {
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     var onSignOut: (() -> Void)?
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
-    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
     @State private var showUpgradePrompt = false
     @State private var upgradePromptType: UpgradePromptModal.LimitType?
@@ -649,12 +649,15 @@ struct GroupDashboardView: View {
                 // Upcoming list (next 10 events)
                 VStack(spacing: 14) {
                     ForEach(upcomingDisplayEvents.prefix(10)) { devent in
-                        EnhancedUpcomingEventRow(
-                            event: devent.base,
-                            memberColor: memberColorMapping[devent.base.user_id]?.color,
-                            memberName: memberColorMapping[devent.base.user_id]?.name,
-                            sharedCount: devent.sharedCount
-                        )
+                        NavigationLink(destination: EventDetailView(event: devent.base, member: memberColorMapping[devent.base.user_id])) {
+                            EnhancedUpcomingEventRow(
+                                event: devent.base,
+                                memberColor: memberColorMapping[devent.base.user_id]?.color,
+                                memberName: memberColorMapping[devent.base.user_id]?.name,
+                                sharedCount: devent.sharedCount
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }

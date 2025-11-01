@@ -121,8 +121,11 @@ struct DayTimelineView: View {
 
     private func eventsForDay(_ day: Date) -> [CalendarEventWithUser] {
         // Only return timed events (not all-day)
-        events.filter { 
-            !$0.is_all_day && (Calendar.current.isDate($0.start_date, inSameDayAs: day) || ($0.start_date < day && $0.end_date > day))
+        let dayStart = Calendar.current.startOfDay(for: day)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        
+        return events.filter { 
+            !$0.is_all_day && $0.start_date < dayEnd && $0.end_date > dayStart
         }
     }
     

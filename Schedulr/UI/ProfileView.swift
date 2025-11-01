@@ -11,7 +11,7 @@ struct ProfileView: View {
     @State private var tempDisplayName = ""
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
     @State private var isLoadingPrefs = false
-    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
     @State private var aiUsageInfo: AIUsageInfo?
     @State private var groupLimitInfo: (current: Int, max: Int)?
@@ -373,6 +373,7 @@ struct ProfileView: View {
             .task {
                 await viewModel.loadUserProfile()
                 await loadCalendarPrefs()
+                await loadSubscriptionInfo()
             }
             .onChange(of: viewModel.selectedPhotoItem) { _, _ in
                 Task {
@@ -382,8 +383,14 @@ struct ProfileView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
             }
-            .task {
+            .refreshable {
+                await SubscriptionManager.shared.fetchSubscriptionStatus()
                 await loadSubscriptionInfo()
+            }
+            .onChange(of: subscriptionManager.currentTier) { _, _ in
+                Task {
+                    await loadSubscriptionInfo()
+                }
             }
         }
     }
@@ -467,6 +474,8 @@ struct ProfileView: View {
         
         if subscriptionManager.currentTier == .pro {
             aiUsageInfo = await SubscriptionLimitService.shared.getAIUsageInfo()
+        } else {
+            aiUsageInfo = nil
         }
     }
 }

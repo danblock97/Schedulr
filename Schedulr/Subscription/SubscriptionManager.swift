@@ -22,6 +22,7 @@ final class SubscriptionManager: ObservableObject {
     
     private var client: SupabaseClient? { SupabaseManager.shared.client }
     private var configureTask: Task<Void, Never>?
+    private var fetchTask: Task<Void, Never>?
     
     private init() {}
     
@@ -60,64 +61,89 @@ final class SubscriptionManager: ObservableObject {
             return nil
         }
         
-        return plist["REVENUECAT_API_KEY"] as? String
+        guard let apiKey = plist["REVENUECAT_API_KEY"] as? String,
+              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        
+        return apiKey
     }
     
     // MARK: - Fetch Subscription Status
     
     func fetchSubscriptionStatus() async {
+        // Guard against concurrent fetches
+        guard fetchTask == nil else {
+            await fetchTask?.value
+            return
+        }
+        
         guard let client else {
             print("[SubscriptionManager] No Supabase client available")
             return
         }
         
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        
-        do {
-            // Get current user ID
-            let session = try await client.auth.session
-            let userId = session.user.id
-            
-            // Fetch user subscription info from Supabase
-            let user: DBUser = try await client.database
-                .from("users")
-                .select("subscription_tier,subscription_status,revenuecat_customer_id,subscription_updated_at,downgrade_grace_period_ends")
-                .eq("id", value: userId)
-                .single()
-                .execute()
-                .value
-            
-            // Convert to UserSubscriptionInfo
-            if let tierString = user.subscription_tier,
-               let tier = SubscriptionTier(rawValue: tierString),
-               let statusString = user.subscription_status,
-               let status = SubscriptionStatus(rawValue: statusString) {
-                subscriptionInfo = UserSubscriptionInfo(
-                    tier: tier,
-                    status: status,
-                    revenuecatCustomerId: user.revenuecat_customer_id,
-                    subscriptionUpdatedAt: user.subscription_updated_at,
-                    downgradeGracePeriodEnds: user.downgrade_grace_period_ends
-                )
-            } else {
-                subscriptionInfo = UserSubscriptionInfo(
-                    tier: .free,
-                    status: .active,
-                    revenuecatCustomerId: nil,
-                    subscriptionUpdatedAt: nil,
-                    downgradeGracePeriodEnds: nil
-                )
+        fetchTask = Task {
+            isLoading = true
+            errorMessage = nil
+            defer { 
+                isLoading = false
+                fetchTask = nil
             }
             
-            // Also fetch from RevenueCat to sync
-            try await syncWithRevenueCat(userId: userId)
-            
-        } catch {
-            print("[SubscriptionManager] Failed to fetch subscription status: \(error.localizedDescription)")
-            errorMessage = "Failed to load subscription status"
+            do {
+                // Get current user ID
+                let session = try await client.auth.session
+                let userId = session.user.id
+                
+                // Fetch user subscription info from Supabase
+                let user: DBUser = try await client.database
+                    .from("users")
+                    .select("id,subscription_tier,subscription_status,revenuecat_customer_id,subscription_updated_at,downgrade_grace_period_ends")
+                    .eq("id", value: userId)
+                    .single()
+                    .execute()
+                    .value
+                
+                // Convert to UserSubscriptionInfo
+                if let tierString = user.subscription_tier,
+                   let tier = SubscriptionTier(rawValue: tierString),
+                   let statusString = user.subscription_status,
+                   let status = SubscriptionStatus(rawValue: statusString) {
+                    subscriptionInfo = UserSubscriptionInfo(
+                        tier: tier,
+                        status: status,
+                        revenuecatCustomerId: user.revenuecat_customer_id,
+                        subscriptionUpdatedAt: user.subscription_updated_at,
+                        downgradeGracePeriodEnds: user.downgrade_grace_period_ends
+                    )
+                } else {
+                    subscriptionInfo = UserSubscriptionInfo(
+                        tier: .free,
+                        status: .active,
+                        revenuecatCustomerId: nil,
+                        subscriptionUpdatedAt: nil,
+                        downgradeGracePeriodEnds: nil
+                    )
+                }
+                
+                // Only sync with RevenueCat if it's configured
+                if getRevenueCatAPIKey() != nil {
+                    do {
+                        try await syncWithRevenueCat(userId: userId)
+                    } catch {
+                        // If RevenueCat sync fails, continue with Supabase data
+                        print("[SubscriptionManager] RevenueCat sync failed, using Supabase data only: \(error.localizedDescription)")
+                    }
+                }
+                
+            } catch {
+                print("[SubscriptionManager] Failed to fetch subscription status: \(error.localizedDescription)")
+                errorMessage = "Failed to load subscription status"
+            }
         }
+        
+        await fetchTask?.value
     }
     
     // MARK: - Load Offerings

@@ -489,7 +489,7 @@ private struct CalendarPreviewRow: View {
 }
 private struct DoneStep: View {
     var onFinish: () -> Void
-    @StateObject private var subscriptionManager = SubscriptionManager.shared
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
     
     var body: some View {

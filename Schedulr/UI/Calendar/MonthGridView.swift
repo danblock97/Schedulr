@@ -210,14 +210,14 @@ struct MonthGridView: View {
                 // Day must be >= event start AND <= event end (inclusive)
                 return dayStart >= eventStart && dayStart <= eventEnd
             } else {
-                // For timed events, use overlap logic
-                let eventStart = Calendar.current.startOfDay(for: event.base.start_date)
+                // For timed events, use overlap logic with actual event times
+                let eventStart = event.base.start_date
                 let eventEnd = event.base.end_date
                 
                 // Event overlaps with the day if:
-                // - Event starts before or on the day AND
+                // - Event starts before the day ends AND
                 // - Event ends after the day starts
-                return eventStart <= dayEnd && eventEnd > dayStart
+                return eventStart < dayEnd && eventEnd > dayStart
             }
         }
     }
