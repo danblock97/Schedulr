@@ -254,6 +254,12 @@ struct GroupDashboardView: View {
     @State private var showUpgradePrompt = false
     @State private var upgradePromptType: UpgradePromptModal.LimitType?
     @State private var showGroupManagement = false
+    @State private var showTransferOwnershipConfirmation = false
+    @State private var showDeleteGroupConfirmation = false
+    @State private var showDeleteGroupInfo = false
+    @State private var memberToTransfer: DashboardViewModel.MemberSummary?
+    @State private var memberCount: Int = 0
+    @State private var isOwner: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -261,15 +267,38 @@ struct GroupDashboardView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbar {
-                    if !viewModel.memberships.isEmpty {
-                        ToolbarItem(placement: .navigationBarTrailing) {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
                             Button {
                                 showGroupManagement = true
                             } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 22, weight: .medium))
-                                    .foregroundColor(Color(red: 0.98, green: 0.29, blue: 0.55))
+                                Label("Create New Group", systemImage: "plus.circle.fill")
                             }
+                            
+                            // Show delete option for owners (with different behavior based on member count)
+                            if let selectedGroup = currentGroup, isOwner {
+                                Divider()
+                                
+                                if memberCount == 1 {
+                                    // Can delete if sole member
+                                    Button(role: .destructive) {
+                                        showDeleteGroupConfirmation = true
+                                    } label: {
+                                        Label("Delete Group", systemImage: "trash.fill")
+                                    }
+                                } else {
+                                    // Show option that explains need to transfer ownership when multiple members
+                                    Button(role: .destructive) {
+                                        showDeleteGroupInfo = true
+                                    } label: {
+                                        Label("Delete Group", systemImage: "trash.fill")
+                                    }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundColor(Color(red: 0.98, green: 0.29, blue: 0.55))
                         }
                     }
                 }
@@ -278,6 +307,7 @@ struct GroupDashboardView: View {
             await viewModel.loadInitialData()
             await viewModel.refreshCalendarIfNeeded()
             await loadCalendarPrefs()
+            await updateOwnerStatusAndMemberCount()
         }
         .refreshable {
             // Reload memberships first
@@ -286,6 +316,7 @@ struct GroupDashboardView: View {
             // Only fetch members if we have a selected group after reload
             if let groupID = viewModel.selectedGroupID {
                 await viewModel.fetchMembers(for: groupID)
+                await updateOwnerStatusAndMemberCount()
             }
 
             // Refresh calendar - don't let this fail the whole refresh
@@ -651,6 +682,64 @@ struct GroupDashboardView: View {
                     }
                 }
             }
+            // Update owner status and member count
+            Task {
+                await updateOwnerStatusAndMemberCount()
+            }
+        }
+        .task {
+            await updateOwnerStatusAndMemberCount()
+        }
+        .alert("Transfer Ownership", isPresented: $showTransferOwnershipConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Transfer", role: .destructive) {
+                if let member = memberToTransfer,
+                   let groupId = viewModel.selectedGroupID {
+                    Task {
+                        await transferOwnership(groupId: groupId, newOwnerId: member.id)
+                    }
+                }
+            }
+        } message: {
+            if let member = memberToTransfer {
+                Text("Are you sure you want to transfer ownership of this group to \(member.displayName)? You will become a regular member.")
+            }
+        }
+        .alert("Delete Group", isPresented: $showDeleteGroupConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let groupId = viewModel.selectedGroupID {
+                    // Double-check member count before deleting
+                    Task {
+                        do {
+                            let count = try await GroupService.shared.getMemberCount(groupId: groupId)
+                            if count == 1 {
+                                await deleteGroup(groupId: groupId)
+                            } else {
+                                // This shouldn't happen, but show error if it does
+                                print("❌ Cannot delete group: has \(count) members")
+                            }
+                        } catch {
+                            print("❌ Error checking member count: \(error)")
+                        }
+                    }
+                }
+            }
+        } message: {
+            if let group = currentGroup {
+                Text("Are you sure you want to delete \"\(group.name)\"? This action cannot be undone. All events and members will be removed.")
+            }
+        }
+        .alert("Cannot Delete Group", isPresented: $showDeleteGroupInfo) {
+            Button("Transfer Ownership", role: .none) {
+                // Optionally could scroll to members section or highlight transfer option
+                // For now, just dismiss and let user use the member menu
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            if let group = currentGroup {
+                Text("To delete \"\(group.name)\", you must first transfer ownership to another member or remove all other members. The group currently has \(memberCount) member\(memberCount == 1 ? "" : "s").\n\nYou can transfer ownership by tapping the menu (⋯) next to any member's name.")
+            }
         }
     }
 
@@ -755,7 +844,14 @@ struct GroupDashboardView: View {
             } else {
                 VStack(spacing: 14) {
                     ForEach(viewModel.members) { member in
-                        EnhancedMemberRow(member: member)
+                        EnhancedMemberRow(
+                            member: member,
+                            isOwner: isOwner,
+                            onTransferOwnership: {
+                                memberToTransfer = member
+                                showTransferOwnershipConfirmation = true
+                            }
+                        )
                     }
                 }
             }
@@ -765,6 +861,90 @@ struct GroupDashboardView: View {
     private var currentGroup: DashboardViewModel.GroupSummary? {
         guard let id = viewModel.selectedGroupID else { return nil }
         return viewModel.memberships.first(where: { $0.id == id })
+    }
+    
+    private func updateOwnerStatusAndMemberCount() async {
+        guard let groupId = viewModel.selectedGroupID else {
+            isOwner = false
+            memberCount = 0
+            return
+        }
+        
+        // Verify group still exists in memberships before querying
+        guard viewModel.memberships.contains(where: { $0.id == groupId }) else {
+            isOwner = false
+            memberCount = 0
+            return
+        }
+        
+        do {
+            // Check if current user is owner
+            if let currentGroup = currentGroup {
+                isOwner = currentGroup.role == "owner"
+            } else {
+                isOwner = false
+            }
+            
+            // Get member count
+            memberCount = try await GroupService.shared.getMemberCount(groupId: groupId)
+        } catch {
+            // Ignore cancellation errors (happens when group is deleted mid-query)
+            if (error as NSError).code == NSURLErrorCancelled {
+                return
+            }
+            print("Error updating owner status: \(error)")
+            isOwner = false
+            memberCount = 0
+        }
+    }
+    
+    private func transferOwnership(groupId: UUID, newOwnerId: UUID) async {
+        do {
+            try await GroupService.shared.transferOwnership(groupId: groupId, newOwnerId: newOwnerId)
+            // Refresh members and memberships
+            await viewModel.reloadMemberships()
+            if let groupID = viewModel.selectedGroupID {
+                await viewModel.fetchMembers(for: groupID)
+            }
+            await updateOwnerStatusAndMemberCount()
+        } catch {
+            // Handle error - could show alert
+            print("Error transferring ownership: \(error)")
+        }
+    }
+    
+    private func deleteGroup(groupId: UUID) async {
+        do {
+            print("🗑️ Attempting to delete group: \(groupId)")
+            try await GroupService.shared.deleteGroup(groupId: groupId)
+            print("✅ Group deleted successfully")
+            
+            // Clear selection first before reload to avoid querying deleted group
+            if viewModel.selectedGroupID == groupId {
+                viewModel.selectedGroupID = nil
+            }
+            
+            // Refresh memberships (group will be removed)
+            await viewModel.reloadMemberships()
+            
+            // Reset owner status and member count since we're no longer viewing a group
+            isOwner = false
+            memberCount = 0
+            
+            // Select first available group if any remain
+            if !viewModel.memberships.isEmpty {
+                viewModel.selectedGroupID = viewModel.memberships.first?.id
+                if let newGroupId = viewModel.selectedGroupID {
+                    await updateOwnerStatusAndMemberCount()
+                }
+            }
+        } catch {
+            print("❌ Error deleting group: \(error)")
+            // Show error alert
+            await MainActor.run {
+                // Could show an alert here if we add error state
+            }
+        }
     }
 
     private func membershipIcon(for role: String) -> String {
@@ -1360,6 +1540,8 @@ private struct EnhancedUpcomingEventRow: View {
 
 private struct EnhancedMemberRow: View {
     let member: DashboardViewModel.MemberSummary
+    let isOwner: Bool
+    let onTransferOwnership: () -> Void
     
     var body: some View {
         HStack(spacing: 16) {
@@ -1401,6 +1583,22 @@ private struct EnhancedMemberRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            
+            // Show transfer ownership button for owners (not on themselves)
+            if isOwner && member.role != "owner" {
+                Menu {
+                    Button(role: .destructive) {
+                        onTransferOwnership()
+                    } label: {
+                        Label("Transfer Ownership", systemImage: "person.crop.circle.badge.checkmark")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(8)
+                }
+            }
         }
         .padding(18)
         .background(

@@ -14,7 +14,12 @@ class ProfileViewModel: ObservableObject {
     @Published var userGroups: [GroupMembership] = []
     @Published var showingLeaveGroupConfirmation: Bool = false
     @Published var showingDeleteAccountConfirmation: Bool = false
+    @Published var showingTransferOwnershipConfirmation: Bool = false
+    @Published var showingDeleteGroupConfirmation: Bool = false
     @Published var groupToLeave: GroupMembership?
+    @Published var groupToTransfer: GroupMembership?
+    @Published var groupToDelete: GroupMembership?
+    @Published var newOwnerId: UUID?
 
     private var client: SupabaseClient {
         SupabaseManager.shared.client
@@ -188,13 +193,8 @@ class ProfileViewModel: ObservableObject {
                 return
             }
 
-            // Remove from group_members
-            _ = try await client.database
-                .from("group_members")
-                .delete()
-                .eq("user_id", value: uid)
-                .eq("group_id", value: group.id)
-                .execute()
+            // Use GroupService to leave with proper cleanup
+            try await GroupService.shared.leaveGroupWithCleanup(groupId: group.id, userId: uid)
 
             // Reload groups
             await loadUserProfile()
@@ -204,6 +204,40 @@ class ProfileViewModel: ObservableObject {
             print("Error leaving group: \(error)")
         }
 
+        isLoading = false
+    }
+    
+    func transferOwnership(groupId: UUID, newOwnerId: UUID) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            try await GroupService.shared.transferOwnership(groupId: groupId, newOwnerId: newOwnerId)
+            
+            // Reload groups to reflect ownership change
+            await loadUserProfile()
+        } catch {
+            errorMessage = "Failed to transfer ownership: \(error.localizedDescription)"
+            print("Error transferring ownership: \(error)")
+        }
+        
+        isLoading = false
+    }
+    
+    func deleteGroup(_ group: GroupMembership) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            try await GroupService.shared.deleteGroup(groupId: group.id)
+            
+            // Reload groups to remove deleted group
+            await loadUserProfile()
+        } catch {
+            errorMessage = "Failed to delete group: \(error.localizedDescription)"
+            print("Error deleting group: \(error)")
+        }
+        
         isLoading = false
     }
 
