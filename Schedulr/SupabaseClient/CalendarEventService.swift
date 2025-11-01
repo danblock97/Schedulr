@@ -148,6 +148,51 @@ final class CalendarEventService {
         struct UpdateStatusOnly: Encodable { let status: String }
         struct UpdateStatusAndUser: Encodable { let status: String; let user_id: UUID }
 
+        // Fetch user's display name (needed for both validation and guest row claiming)
+        struct UserRow: Decodable { let display_name: String? }
+        let me: [UserRow] = try await client
+            .from("users")
+            .select("display_name")
+            .eq("id", value: currentUserId)
+            .limit(1)
+            .execute()
+            .value
+        
+        let myName = me.first?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        
+        // Check if user is an attendee (defense in depth - UI should prevent this, but verify server-side)
+        struct AttendeeCheck: Decodable { let id: UUID }
+        let existingAttendee: [AttendeeCheck] = try await client
+            .from("event_attendees")
+            .select("id")
+            .eq("event_id", value: eventId)
+            .eq("user_id", value: currentUserId)
+            .limit(1)
+            .execute()
+            .value
+        
+        // Also check for guest row with matching name
+        let hasGuestRow: Bool
+        if !myName.isEmpty {
+            let guestRows: [AttendeeCheck] = try await client
+                .from("event_attendees")
+                .select("id")
+                .eq("event_id", value: eventId)
+                .is("user_id", value: nil)
+                .ilike("display_name", value: myName)
+                .limit(1)
+                .execute()
+                .value
+            hasGuestRow = !guestRows.isEmpty
+        } else {
+            hasGuestRow = false
+        }
+        
+        // If user is not an attendee (neither as user_id nor as guest), return early
+        if existingAttendee.isEmpty && !hasGuestRow {
+            return
+        }
+
         // 1) Try updating an existing attendee row for this user
         let updatedForUser: [IdRow] = try await client
             .from("event_attendees")
@@ -162,16 +207,6 @@ final class CalendarEventService {
         if !updatedForUser.isEmpty { return }
 
         // 2) Otherwise, try to claim a guest row by matching the user's display name
-        struct UserRow: Decodable { let display_name: String? }
-        let me: [UserRow] = try await client
-            .from("users")
-            .select("display_name")
-            .eq("id", value: currentUserId)
-            .limit(1)
-            .execute()
-            .value
-
-        let myName = me.first?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !myName.isEmpty {
             let updatedGuest: [IdRow] = try await client
                 .from("event_attendees")

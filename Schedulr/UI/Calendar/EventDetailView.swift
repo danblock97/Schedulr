@@ -15,6 +15,7 @@ struct EventDetailView: View {
     @State private var showingEditor = false
     @State private var showingDeleteConfirm = false
     @State private var isDeleting = false
+    @State private var isCurrentUserInvited = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     
@@ -26,6 +27,11 @@ struct EventDetailView: View {
     ]
 
     private let attendeeStatusOrder: [String] = ["going", "maybe", "invited"]
+    
+    private var canEdit: Bool {
+        guard let userId = currentUserId else { return false }
+        return event.user_id == userId
+    }
 
     var body: some View {
         List {
@@ -91,7 +97,8 @@ struct EventDetailView: View {
                     }
                 }
             }
-            Section("Your response") {
+            if isCurrentUserInvited {
+                Section("Your response") {
                 Menu {
                     // Going
                     Button(action: {
@@ -141,20 +148,23 @@ struct EventDetailView: View {
                 }
                 .disabled(isUpdatingResponse)
             }
+            }
         }
         .navigationTitle("Event Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button("Edit", systemImage: "pencil") { showingEditor = true }
-                    Button(role: .destructive) {
-                        showingDeleteConfirm = true
+            if canEdit {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button("Edit", systemImage: "pencil") { showingEditor = true }
+                        Button(role: .destructive) {
+                            showingDeleteConfirm = true
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Image(systemName: "ellipsis.circle")
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
@@ -182,7 +192,13 @@ struct EventDetailView: View {
     }
 
     private func timeRange(_ e: CalendarEventWithUser) -> String {
-        if e.is_all_day { return "All day • " + day(e.start_date) }
+        if e.is_all_day {
+            if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
+                return "All day • " + day(e.start_date)
+            } else {
+                return "All day • \(day(e.start_date)) - \(day(e.end_date))"
+            }
+        }
         let t = DateFormatter(); t.timeStyle = .short; t.dateStyle = .none
         if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
             return "\(day(e.start_date)) • \(t.string(from: e.start_date)) – \(t.string(from: e.end_date))"
@@ -304,6 +320,12 @@ extension EventDetailView {
 
             await MainActor.run {
                 attendees = mappedAttendees
+                // Check if current user is invited
+                if let userId = currentUserIdValue {
+                    isCurrentUserInvited = rows.contains(where: { $0.userId == userId })
+                } else {
+                    isCurrentUserInvited = false
+                }
                 // Initialize myStatus only once from server to avoid flicker
                 if !hasInitializedStatus {
                     isProgrammaticStatusChange = true
