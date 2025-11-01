@@ -14,6 +14,7 @@ struct EventEditorView: View {
     @State private var date: Date = Date()
     @State private var endDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
     @State private var isAllDay: Bool = false
+    @State private var isPersonalEvent: Bool = false
     @State private var location: String = ""
     @State private var notes: String = ""
     @State private var selectedMemberIds: Set<UUID> = []
@@ -44,6 +45,14 @@ struct EventEditorView: View {
                 Section("Details") {
                     TextField("Title", text: $title)
                     Toggle("All day", isOn: $isAllDay)
+                    Toggle("Personal Event", isOn: $isPersonalEvent)
+                        .onChange(of: isPersonalEvent) { oldValue, newValue in
+                            if newValue {
+                                // Clear all invites when marked as personal
+                                selectedMemberIds.removeAll()
+                                guestNamesText = ""
+                            }
+                        }
                     DatePicker("Start", selection: $date, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     DatePicker("End", selection: $endDate, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     TextField("Location", text: $location)
@@ -100,23 +109,25 @@ struct EventEditorView: View {
                     }
                 }
 
-                Section("Invite group members") {
-                    ForEach(members) { member in
-                        Toggle(isOn: Binding(
-                            get: { selectedMemberIds.contains(member.id) },
-                            set: { newVal in
-                                if newVal { selectedMemberIds.insert(member.id) } else { selectedMemberIds.remove(member.id) }
+                if !isPersonalEvent {
+                    Section("Invite group members") {
+                        ForEach(members) { member in
+                            Toggle(isOn: Binding(
+                                get: { selectedMemberIds.contains(member.id) },
+                                set: { newVal in
+                                    if newVal { selectedMemberIds.insert(member.id) } else { selectedMemberIds.remove(member.id) }
+                                }
+                            )) {
+                                Text(member.displayName)
                             }
-                        )) {
-                            Text(member.displayName)
                         }
                     }
-                }
 
-                Section("Guests not in group") {
-                    TextField("Add names separated by commas", text: $guestNamesText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Section("Guests not in group") {
+                        TextField("Add names separated by commas", text: $guestNamesText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 
                 if existingEvent != nil && !currentAttendees.isEmpty {
@@ -304,6 +315,10 @@ struct EventEditorView: View {
                     }
                 }
 
+                // Ensure personal events have no attendees
+                let attendeeIds = isPersonalEvent ? [] : Array(selectedMemberIds)
+                let guestNames = isPersonalEvent ? [] : guestNamesText.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                
                 let input = NewEventInput(
                     groupId: selectedGroupId,
                     title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -312,8 +327,8 @@ struct EventEditorView: View {
                     isAllDay: isAllDay,
                     location: location.isEmpty ? nil : location,
                     notes: notes.isEmpty ? nil : notes,
-                    attendeeUserIds: Array(selectedMemberIds),
-                    guestNames: guestNamesText.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) },
+                    attendeeUserIds: attendeeIds,
+                    guestNames: guestNames,
                     originalEventId: ekId,
                     categoryId: selectedCategoryId
                 )
@@ -342,7 +357,7 @@ struct EventEditorView: View {
         location = ev.location ?? ""
         notes = ev.notes ?? ""
         selectedCategoryId = ev.category_id
-        // Load attendees preselection
+        // Load attendees preselection and determine if personal event
         Task {
             if let rows = try? await CalendarEventService.shared.loadAttendees(eventId: ev.id) {
                 var ids = Set<UUID>()
@@ -352,6 +367,11 @@ struct EventEditorView: View {
                 }
                 selectedMemberIds = ids
                 guestNamesText = guests.joined(separator: ", ")
+                // Mark as personal if no attendees
+                isPersonalEvent = ids.isEmpty && guests.isEmpty
+            } else {
+                // If no attendees loaded, assume personal
+                isPersonalEvent = true
             }
         }
     }

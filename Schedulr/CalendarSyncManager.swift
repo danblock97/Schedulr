@@ -321,6 +321,9 @@ final class CalendarSyncManager: ObservableObject {
             }
         }
 
+        // Get current user ID for filtering personal events
+        let currentUserId = try await client.auth.session.user.id
+        
         // Query events that overlap with our date range
         // An event overlaps if: (start_date <= end) AND (end_date >= start)
         // This captures all events that have any part within our range
@@ -334,9 +337,36 @@ final class CalendarSyncManager: ObservableObject {
             .execute()
             .value
 
-        // Convert to CalendarEventWithUser
+        // Fetch attendees for all events to determine which are personal vs shared
+        let eventIds = rows.map { $0.id }
+        struct AttendeeRow: Decodable {
+            let event_id: UUID
+        }
+        
+        let attendeeRows: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("event_id")
+            .in("event_id", values: eventIds)
+            .execute()
+            .value
+        
+        let eventsWithAttendees = Set(attendeeRows.map { $0.event_id })
+
+        // Filter events: show shared events (with attendees) to everyone, 
+        // but only show personal events (no attendees) to their creator
+        let filteredRows = rows.filter { row in
+            if eventsWithAttendees.contains(row.id) {
+                // Event has attendees = shared event, show to everyone
+                return true
+            } else {
+                // Event has no attendees = personal event, only show to creator
+                return row.user_id == currentUserId
+            }
+        }
+
+        // Convert to CalendarEventWithUser, marking which events have attendees
         // Since class is @MainActor, this assignment will automatically update on main thread
-        let mappedEvents = rows.map { row in
+        let mappedEvents = filteredRows.map { row in
             let user = row.users.map { userInfo in
                 DBUser(
                     id: userInfo.id,
@@ -359,6 +389,8 @@ final class CalendarSyncManager: ObservableObject {
                 )
             }
             
+            let hasAttendees = eventsWithAttendees.contains(row.id)
+            
             return CalendarEventWithUser(
                 id: row.id,
                 user_id: row.user_id,
@@ -378,7 +410,8 @@ final class CalendarSyncManager: ObservableObject {
                 notes: row.notes,
                 category_id: row.category_id,
                 user: user,
-                category: category
+                category: category,
+                hasAttendees: hasAttendees
             )
         }
         

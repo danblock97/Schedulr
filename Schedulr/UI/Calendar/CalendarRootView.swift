@@ -521,11 +521,27 @@ struct CalendarRootView: View {
     }
 
     private var displayEvents: [DisplayEvent] {
-        // Always deduplicate events: group identical events by normalized title + time range
+        // Deduplicate events: group by event ID first (same ID = same event, show once)
+        // Then group remaining by title+time, but only show as "shared" if multiple different users have them
         var result: [DisplayEvent] = []
         let calendar = Calendar.current
         
-        let groups = Dictionary(grouping: filteredEvents) { ev -> String in
+        // First pass: Group by event ID to handle true duplicates - each event ID appears once
+        let idGroups = Dictionary(grouping: filteredEvents) { $0.id }
+        
+        for (_, events) in idGroups {
+            // All events with same ID are the same event - show once with count 1
+            if let first = events.first {
+                result.append(DisplayEvent(base: first, sharedCount: 1))
+            }
+        }
+        
+        // Second pass: For events not already in result, group by title+time
+        // Only show as "shared" if multiple different users have different events with same title/time
+        let alreadyIncludedIds = Set(result.map { $0.base.id })
+        let remainingEvents = filteredEvents.filter { !alreadyIncludedIds.contains($0.id) }
+        
+        let groups = Dictionary(grouping: remainingEvents) { ev -> String in
             let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if ev.is_all_day {
                 // For all-day events, group by day + title
@@ -541,8 +557,18 @@ struct CalendarRootView: View {
         
         for (_, arr) in groups {
             if let first = arr.first {
-                // Always show with shared count if multiple users have the same event
-                result.append(DisplayEvent(base: first, sharedCount: arr.count))
+                // Only show as "shared" if there are multiple unique event IDs AND multiple unique users
+                // This ensures personal events from same user don't show as shared
+                let uniqueIds = Set(arr.map { $0.id })
+                let uniqueUsers = Set(arr.map { $0.user_id })
+                
+                if uniqueIds.count > 1 && uniqueUsers.count > 1 {
+                    // Multiple different events from different users with same title/time = shared
+                    result.append(DisplayEvent(base: first, sharedCount: uniqueIds.count))
+                } else {
+                    // Single event or events from same user = not shared, show once
+                    result.append(DisplayEvent(base: first, sharedCount: 1))
+                }
             }
         }
         

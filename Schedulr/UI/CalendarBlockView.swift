@@ -511,7 +511,8 @@ extension Date {
             notes: nil,
             category_id: nil,
             user: DBUser(id: UUID(), display_name: "John Doe", avatar_url: nil, created_at: Date(), updated_at: Date()),
-            category: nil
+            category: nil,
+            hasAttendees: true
         )
     ]
 

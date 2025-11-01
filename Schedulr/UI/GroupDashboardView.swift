@@ -514,34 +514,41 @@ struct GroupDashboardView: View {
                 }
             } else {
                 VStack(spacing: 12) {
-                    ForEach(viewModel.memberships) { membership in
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            viewModel.selectGroup(membership.id)
-                            }
-                        } label: {
-                            BubblyCard {
+                    Menu {
+                        ForEach(viewModel.memberships) { membership in
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    viewModel.selectGroup(membership.id)
+                                }
+                            } label: {
                                 HStack {
                                     Text(membership.name)
-                                        .font(.system(size: 17, weight: .regular, design: .default))
-                                        .foregroundStyle(.primary)
-                                    
-                                    Spacer()
-                                    
                                     if viewModel.selectedGroupID == membership.id {
+                                        Spacer()
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(.primary)
                                     }
                                 }
                             }
                         }
-                        .buttonStyle(.plain)
+                    } label: {
+                        BubblyCard {
+                            HStack {
+                                Text(currentGroup?.name ?? "Select a group")
+                                    .font(.system(size: 17, weight: .regular, design: .default))
+                                    .foregroundStyle(.primary)
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
-                }
 
-                if let selected = currentGroup {
-                    EnhancedGroupInviteView(inviteSlug: selected.inviteSlug)
+                    if let selected = currentGroup {
+                        EnhancedGroupInviteView(inviteSlug: selected.inviteSlug, groupName: selected.name)
+                    }
                 }
             }
         }
@@ -748,7 +755,13 @@ struct GroupDashboardView: View {
 
     private var filteredEvents: [CalendarEventWithUser] {
         let now = Date()
-        var list = calendarSync.groupEvents.filter { $0.end_date >= now }
+        // Only show events that are upcoming and have attendees (shared events)
+        // Personal events (no attendees) are excluded from upcoming - they show in calendar only
+        var list = calendarSync.groupEvents.filter { event in
+            // Only show upcoming events that have attendees (shared events)
+            event.end_date >= now && event.hasAttendees == true
+        }
+        
         if calendarPrefs.hideHolidays {
             list = list.filter { ev in
                 let name = (ev.calendar_name ?? ev.title).lowercased()
@@ -765,11 +778,27 @@ struct GroupDashboardView: View {
     }
 
     private var upcomingDisplayEvents: [DisplayEvent] {
-        // Always deduplicate events: group identical events by normalized title + time range
+        // Deduplicate events: group by event ID first (same ID = same event, show once)
+        // Then group remaining by title+time, but only show as "shared" if multiple different users have them
         var result: [DisplayEvent] = []
         let calendar = Calendar.current
         
-        let groups = Dictionary(grouping: filteredEvents) { ev -> String in
+        // First pass: Group by event ID to handle true duplicates - each event ID appears once
+        let idGroups = Dictionary(grouping: filteredEvents) { $0.id }
+        
+        for (_, events) in idGroups {
+            // All events with same ID are the same event - show once with count 1
+            if let first = events.first {
+                result.append(DisplayEvent(base: first, sharedCount: 1))
+            }
+        }
+        
+        // Second pass: For events not already in result, group by title+time
+        // Only show as "shared" if multiple different users have different events with same title/time
+        let alreadyIncludedIds = Set(result.map { $0.base.id })
+        let remainingEvents = filteredEvents.filter { !alreadyIncludedIds.contains($0.id) }
+        
+        let groups = Dictionary(grouping: remainingEvents) { ev -> String in
             let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if ev.is_all_day {
                 // For all-day events, group by day + title
@@ -785,8 +814,18 @@ struct GroupDashboardView: View {
         
         for (_, arr) in groups {
             if let first = arr.first {
-                // Always show with shared count if multiple users have the same event
-                result.append(DisplayEvent(base: first, sharedCount: arr.count))
+                // Only show as "shared" if there are multiple unique event IDs AND multiple unique users
+                // This ensures personal events from same user don't show as shared
+                let uniqueIds = Set(arr.map { $0.id })
+                let uniqueUsers = Set(arr.map { $0.user_id })
+                
+                if uniqueIds.count > 1 && uniqueUsers.count > 1 {
+                    // Multiple different events from different users with same title/time = shared
+                    result.append(DisplayEvent(base: first, sharedCount: uniqueIds.count))
+                } else {
+                    // Single event or events from same user = not shared, show once
+                    result.append(DisplayEvent(base: first, sharedCount: 1))
+                }
             }
         }
         
@@ -1643,6 +1682,7 @@ private struct EnhancedAvatarView: View {
 
 private struct EnhancedGroupInviteView: View {
     let inviteSlug: String
+    let groupName: String
     @State private var showCopied = false
     
     var body: some View {
@@ -1650,7 +1690,7 @@ private struct EnhancedGroupInviteView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     HStack(spacing: 8) {
-                        Text("Invite Link")
+                        Text("Invite link for \(groupName)")
                             .font(.system(size: 17, weight: .regular, design: .default))
                             .foregroundStyle(.primary)
                     }
