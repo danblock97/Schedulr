@@ -33,6 +33,7 @@ struct ContentView: View {
                 case 3:
                     ProfileView(viewModel: profileViewModel)
                         .environmentObject(authVM)
+                        .environmentObject(calendarManager)
                 default:
                     GroupDashboardView(viewModel: viewModel)
                 }

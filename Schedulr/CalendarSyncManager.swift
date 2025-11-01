@@ -409,6 +409,11 @@ final class CalendarSyncManager: ObservableObject {
         }
     }
 
+    /// Clear cached group events (useful when leaving a group)
+    func clearGroupEvents() {
+        groupEvents = []
+    }
+
     /// Get user color for consistent color coding
     func userColor(for userId: UUID) -> Color {
         let colors: [Color] = [

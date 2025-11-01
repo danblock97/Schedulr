@@ -6,6 +6,7 @@ import Auth
 struct ProfileView: View {
     @ObservedObject var viewModel: ProfileViewModel
     @EnvironmentObject var authViewModel: AuthViewModel
+    @EnvironmentObject var calendarManager: CalendarSyncManager
     @State private var isEditingName = false
     @State private var tempDisplayName = ""
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
@@ -346,6 +347,8 @@ struct ProfileView: View {
                     if let group = viewModel.groupToLeave {
                         Task {
                             await viewModel.leaveGroup(group)
+                            // Clear cached calendar events from the group we left
+                            calendarManager.clearGroupEvents()
                         }
                     }
                 }
