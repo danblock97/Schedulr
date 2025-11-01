@@ -53,6 +53,30 @@ final class SubscriptionLimitService {
         }
     }
     
+    /// Check if user can join a new group and return full limit check details
+    func canJoinGroupWithDetails() async -> GroupLimitCheck? {
+        guard let client else {
+            return nil
+        }
+        
+        do {
+            let userId = try await getCurrentUserId()
+            
+            let result: [GroupLimitCheck] = try await client.database.rpc(
+                "can_user_join_group",
+                params: ["p_user_id": userId]
+            )
+            .execute()
+            .value
+            
+            return result.first
+            
+        } catch {
+            print("[SubscriptionLimitService] Error checking group limit: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
     /// Get current group count and limit
     func getGroupLimitInfo() async -> (current: Int, max: Int)? {
         guard let client else { return nil }

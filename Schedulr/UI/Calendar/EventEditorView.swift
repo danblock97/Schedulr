@@ -5,7 +5,7 @@ import UIKit
 
 struct EventEditorView: View {
     let groupId: UUID
-    let members: [DashboardViewModel.MemberSummary]
+    @State private var members: [DashboardViewModel.MemberSummary]
     var existingEvent: CalendarEventWithUser? = nil
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
@@ -27,6 +27,16 @@ struct EventEditorView: View {
     @State private var isLoadingCategories = false
     @State private var currentAttendees: [(userId: UUID?, displayName: String, status: String)] = []
     @State private var isLoadingAttendees = false
+    @State private var selectedGroupId: UUID
+    @State private var availableGroups: [DashboardViewModel.GroupSummary] = []
+    @State private var isLoadingGroups = false
+    
+    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil) {
+        self.groupId = groupId
+        self.members = members
+        self.existingEvent = existingEvent
+        _selectedGroupId = State(initialValue: groupId)
+    }
 
     var body: some View {
         NavigationStack {
@@ -38,6 +48,32 @@ struct EventEditorView: View {
                     DatePicker("End", selection: $endDate, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     TextField("Location", text: $location)
                     TextField("Notes (optional)", text: $notes, axis: .vertical)
+                }
+                
+                Section("Group") {
+                    if isLoadingGroups {
+                        HStack {
+                            ProgressView()
+                            Text("Loading groups...")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if availableGroups.isEmpty {
+                        Text("No groups available")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Group", selection: $selectedGroupId) {
+                            ForEach(availableGroups) { group in
+                                Text(group.name).tag(group.id)
+                            }
+                        }
+                        .onChange(of: selectedGroupId) { oldValue, newValue in
+                            // Reload members and categories when group changes
+                            Task {
+                                await loadMembersForGroup(newValue)
+                                await loadCategoriesForGroup(newValue)
+                            }
+                        }
+                    }
                 }
                 
                 Section("Category") {
@@ -121,14 +157,27 @@ struct EventEditorView: View {
             }
         }
         .task {
-            await loadCategories()
+            await loadAvailableGroups()
+            // If editing, set group from existing event after groups are loaded
+            if let ev = existingEvent {
+                selectedGroupId = ev.group_id
+                // Ensure the group is in available groups
+                if !availableGroups.contains(where: { $0.id == ev.group_id }) {
+                    // If event's group not in available groups, use first available or keep original
+                    if let firstGroup = availableGroups.first {
+                        selectedGroupId = firstGroup.id
+                    }
+                }
+            }
+            await loadCategoriesForGroup(selectedGroupId)
+            await loadMembersForGroup(selectedGroupId)
             prefillIfEditing()
             if existingEvent != nil {
                 await loadCurrentAttendees()
             }
         }
         .sheet(isPresented: $showingCategoryCreator) {
-            CategoryCreatorView(groupId: groupId) { category in
+            CategoryCreatorView(groupId: selectedGroupId) { category in
                 categories.append(category)
                 selectedCategoryId = category.id
             }
@@ -136,6 +185,10 @@ struct EventEditorView: View {
     }
     
     private func loadCategories() async {
+        await loadCategoriesForGroup(selectedGroupId)
+    }
+    
+    private func loadCategoriesForGroup(_ groupId: UUID) async {
         guard !isLoadingCategories else { return }
         isLoadingCategories = true
         defer { isLoadingCategories = false }
@@ -144,6 +197,94 @@ struct EventEditorView: View {
             categories = try await CalendarEventService.shared.fetchCategories(userId: uid, groupId: groupId)
         } catch {
             errorMessage = "Failed to load categories: \(error.localizedDescription)"
+        }
+    }
+    
+    private func loadAvailableGroups() async {
+        guard !isLoadingGroups else { return }
+        isLoadingGroups = true
+        defer { isLoadingGroups = false }
+        do {
+            guard let client = SupabaseManager.shared.client else {
+                errorMessage = "Service unavailable"
+                return
+            }
+            let uid = try await client.auth.session.user.id
+            
+            struct GroupMembershipRow: Decodable {
+                let group_id: UUID
+                let role: String?
+                let joined_at: Date?
+                let groups: DBGroup?
+            }
+            
+            let rows: [GroupMembershipRow] = try await client.database
+                .from("group_members")
+                .select("group_id, role, joined_at, groups(id,name,invite_slug,created_at,created_by)")
+                .eq("user_id", value: uid)
+                .order("joined_at", ascending: true)
+                .execute()
+                .value
+            
+            availableGroups = rows.compactMap { row -> DashboardViewModel.GroupSummary? in
+                guard let group = row.groups else { return nil }
+                return DashboardViewModel.GroupSummary(
+                    id: group.id,
+                    name: group.name,
+                    role: row.role ?? "member",
+                    inviteSlug: group.invite_slug,
+                    createdAt: group.created_at,
+                    joinedAt: row.joined_at
+                )
+            }
+            
+            // Ensure selectedGroupId is valid, if not, select first group
+            if !availableGroups.contains(where: { $0.id == selectedGroupId }) {
+                if let firstGroup = availableGroups.first {
+                    selectedGroupId = firstGroup.id
+                }
+            }
+        } catch {
+            errorMessage = "Failed to load groups: \(error.localizedDescription)"
+        }
+    }
+    
+    private func loadMembersForGroup(_ groupId: UUID) async {
+        do {
+            guard let client = SupabaseManager.shared.client else {
+                return
+            }
+            
+            struct GroupMemberRow: Decodable {
+                let user_id: UUID
+                let role: String?
+                let joined_at: Date?
+                let users: DBUser?
+            }
+            
+            let rows: [GroupMemberRow] = try await client.database
+                .from("group_members")
+                .select("user_id, role, joined_at, users(id,display_name,avatar_url)")
+                .eq("group_id", value: groupId)
+                .order("joined_at", ascending: true)
+                .execute()
+                .value
+            
+            members = rows.map { row in
+                DashboardViewModel.MemberSummary(
+                    id: row.user_id,
+                    displayName: row.users?.display_name ?? "Member",
+                    role: row.role ?? "member",
+                    avatarURL: row.users?.avatar_url.flatMap(URL.init(string:)),
+                    joinedAt: row.joined_at
+                )
+            }
+            
+            // Clear selected members when group changes (they're no longer valid)
+            selectedMemberIds.removeAll()
+        } catch {
+            // Silently fail - members will just be empty
+            members = []
         }
     }
 
@@ -164,7 +305,7 @@ struct EventEditorView: View {
                 }
 
                 let input = NewEventInput(
-                    groupId: groupId,
+                    groupId: selectedGroupId,
                     title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                     start: date,
                     end: endDate,
@@ -183,7 +324,7 @@ struct EventEditorView: View {
                 }
                 
                 // Auto-refresh the calendar view to show the new/updated event
-                try? await calendarSync.fetchGroupEvents(groupId: groupId)
+                try? await calendarSync.fetchGroupEvents(groupId: selectedGroupId)
                 
                 dismiss()
             } catch {

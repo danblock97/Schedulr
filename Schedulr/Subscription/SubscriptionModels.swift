@@ -171,12 +171,14 @@ struct GroupLimitCheck: Decodable {
     let currentCount: Int
     let maxAllowed: Int
     let reason: String?
+    let currentTier: String?
     
     enum CodingKeys: String, CodingKey {
         case canJoin = "can_join"
         case currentCount = "current_count"
         case maxAllowed = "max_allowed"
         case reason
+        case currentTier = "current_tier"
     }
 }
 

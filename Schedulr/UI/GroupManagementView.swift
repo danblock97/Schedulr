@@ -13,6 +13,7 @@ struct GroupManagementView: View {
     @State private var showUpgradePrompt: Bool = false
     @State private var showPaywall: Bool = false
     @State private var groupLimitInfo: (current: Int, max: Int)?
+    @State private var limitCheckDetails: GroupLimitCheck?
     
     var body: some View {
         NavigationStack {
@@ -38,12 +39,20 @@ struct GroupManagementView: View {
                 }
             }
             .alert("Upgrade Required", isPresented: $showUpgradePrompt) {
-                Button("Upgrade") {
-                    showPaywall = true
+                if let details = limitCheckDetails, details.currentTier == "pro" {
+                    Button("OK", role: .cancel) {}
+                } else {
+                    Button("Upgrade") {
+                        showPaywall = true
+                    }
+                    Button("Cancel", role: .cancel) {}
                 }
-                Button("Cancel", role: .cancel) {}
             } message: {
-                Text("You've reached your group limit. Upgrade to Pro to create or join more groups!")
+                if let details = limitCheckDetails, details.currentTier == "pro" {
+                    Text("You've reached the maximum number of groups (\(details.maxAllowed)). Pro is the highest subscription tier.")
+                } else {
+                    Text("You've reached your group limit. Upgrade to Pro to create or join more groups!")
+                }
             }
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
@@ -238,6 +247,8 @@ struct GroupManagementView: View {
         let limitCheck = await SubscriptionLimitService.shared.canJoinGroup()
         if !limitCheck.canProceed {
             errorMessage = nil
+            // Get detailed limit check to determine if user is Pro
+            limitCheckDetails = await SubscriptionLimitService.shared.canJoinGroupWithDetails()
             showUpgradePrompt = true
             return
         }
@@ -287,6 +298,8 @@ struct GroupManagementView: View {
         let limitCheck = await SubscriptionLimitService.shared.canJoinGroup()
         if !limitCheck.canProceed {
             errorMessage = nil
+            // Get detailed limit check to determine if user is Pro
+            limitCheckDetails = await SubscriptionLimitService.shared.canJoinGroupWithDetails()
             showUpgradePrompt = true
             return
         }
