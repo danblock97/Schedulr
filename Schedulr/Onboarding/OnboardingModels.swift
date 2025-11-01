@@ -90,6 +90,7 @@ struct DBCalendarEvent: Codable, Identifiable, Equatable {
     let synced_at: Date?
     let notes: String?
     let category_id: UUID?
+    let event_type: String
 }
 
 struct DBCalendarEventInsert: Encodable {
@@ -106,6 +107,7 @@ struct DBCalendarEventInsert: Encodable {
     var calendar_color: ColorComponents?
     var notes: String?
     var category_id: UUID?
+    var event_type: String
 }
 
 struct CalendarEventWithUser: Codable, Identifiable, Equatable {
@@ -126,6 +128,7 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable {
     let synced_at: Date?
     let notes: String?
     let category_id: UUID?
+    let event_type: String
     let user: DBUser?
     let category: EventCategory?
     let hasAttendees: Bool?

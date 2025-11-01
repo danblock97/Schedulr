@@ -13,6 +13,7 @@ struct NewEventInput {
     let guestNames: [String]
     let originalEventId: String?
     let categoryId: UUID?
+    let eventType: String
 }
 
 final class CalendarEventService {
@@ -37,6 +38,7 @@ final class CalendarEventService {
             let notes: String?
             let original_event_id: String?
             let category_id: UUID?
+            let event_type: String
         }
 
         let row = InsertRow(
@@ -52,7 +54,8 @@ final class CalendarEventService {
             calendar_color: nil,
             notes: input.notes,
             original_event_id: input.originalEventId,
-            category_id: input.categoryId
+            category_id: input.categoryId,
+            event_type: input.eventType
         )
 
         struct Returned: Decodable { let id: UUID }
@@ -123,8 +126,9 @@ final class CalendarEventService {
             let notes: String?
             let original_event_id: String?
             let category_id: UUID?
+            let event_type: String
         }
-        let row = UpdateRow(title: input.title, start_date: input.start, end_date: input.end, is_all_day: input.isAllDay, location: input.location, notes: input.notes, original_event_id: input.originalEventId, category_id: input.categoryId)
+        let row = UpdateRow(title: input.title, start_date: input.start, end_date: input.end, is_all_day: input.isAllDay, location: input.location, notes: input.notes, original_event_id: input.originalEventId, category_id: input.categoryId, event_type: input.eventType)
         _ = try await client.from("calendar_events").update(row).eq("id", value: eventId).execute()
 
         // Replace attendees: delete then insert
@@ -272,11 +276,18 @@ final class CalendarEventService {
                 .execute()
                 .value
             
-            // Combine and deduplicate by ID
-            var combined = userCategories
+            // Combine with group categories first, then personal categories
+            // Deduplicate by ID, prioritize group categories
+            var combined: [EventCategory] = []
             let userCategoryIds = Set(userCategories.map { $0.id })
-            combined.append(contentsOf: groupCategories.filter { !userCategoryIds.contains($0.id) })
-            return combined.sorted { $0.name < $1.name }
+            
+            // Add group categories first
+            combined.append(contentsOf: groupCategories)
+            
+            // Add personal categories that aren't duplicates
+            combined.append(contentsOf: userCategories.filter { !combined.map { $0.id }.contains($0.id) })
+            
+            return combined
         }
         
         return userCategories

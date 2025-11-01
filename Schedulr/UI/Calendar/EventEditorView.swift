@@ -14,7 +14,7 @@ struct EventEditorView: View {
     @State private var date: Date = Date()
     @State private var endDate: Date = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date()
     @State private var isAllDay: Bool = false
-    @State private var isPersonalEvent: Bool = false
+    @State private var eventType: String = "personal"
     @State private var location: String = ""
     @State private var notes: String = ""
     @State private var selectedMemberIds: Set<UUID> = []
@@ -45,14 +45,19 @@ struct EventEditorView: View {
                 Section("Details") {
                     TextField("Title", text: $title)
                     Toggle("All day", isOn: $isAllDay)
-                    Toggle("Personal Event", isOn: $isPersonalEvent)
-                        .onChange(of: isPersonalEvent) { oldValue, newValue in
-                            if newValue {
-                                // Clear all invites when marked as personal
-                                selectedMemberIds.removeAll()
-                                guestNamesText = ""
-                            }
+                    
+                    Picker("Event Type", selection: $eventType) {
+                        Text("Personal").tag("personal")
+                        Text("Group").tag("group")
+                    }
+                    .onChange(of: eventType) { oldValue, newValue in
+                        if newValue == "personal" {
+                            // Clear all invites when marked as personal
+                            selectedMemberIds.removeAll()
+                            guestNamesText = ""
                         }
+                    }
+                    
                     DatePicker("Start", selection: $date, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     DatePicker("End", selection: $endDate, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
                     TextField("Location", text: $location)
@@ -75,6 +80,7 @@ struct EventEditorView: View {
                                 Text(group.name).tag(group.id)
                             }
                         }
+                        .disabled(eventType == "personal")
                         .onChange(of: selectedGroupId) { oldValue, newValue in
                             // Reload members and categories when group changes
                             Task {
@@ -89,7 +95,7 @@ struct EventEditorView: View {
                     Picker("Category", selection: $selectedCategoryId) {
                         Text("None").tag(nil as UUID?)
                         ForEach(categories) { category in
-                            HStack {
+                            HStack(spacing: 6) {
                                 Circle()
                                     .fill(Color(
                                         red: category.color.red,
@@ -99,6 +105,11 @@ struct EventEditorView: View {
                                     ))
                                     .frame(width: 12, height: 12)
                                 Text(category.name)
+                                if let groupId = category.group_id, groupId == selectedGroupId {
+                                    Image(systemName: "person.3.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                             .tag(category.id as UUID?)
                         }
@@ -109,7 +120,7 @@ struct EventEditorView: View {
                     }
                 }
 
-                if !isPersonalEvent {
+                if eventType == "group" {
                     Section("Invite group members") {
                         ForEach(members) { member in
                             Toggle(isOn: Binding(
@@ -147,7 +158,8 @@ struct EventEditorView: View {
 
                 Section("Apple Calendar") {
                     Toggle("Save to Apple Calendar", isOn: $saveToAppleCalendar)
-                        .accessibilityHint("Also creates/updates an Apple Calendar event")
+                        .disabled(eventType == "group")
+                        .accessibilityHint(eventType == "group" ? "Group events are not saved to Apple Calendar" : "Also creates/updates an Apple Calendar event")
                 }
 
                 if let errorMessage {
@@ -307,17 +319,24 @@ struct EventEditorView: View {
             do {
                 let uid = try await SupabaseManager.shared.client.auth.session.user.id
                 var ekId: String? = existingEvent?.original_event_id
-                if saveToAppleCalendar {
+                // Only save to Apple Calendar if it's a personal event AND the user enabled the toggle
+                if saveToAppleCalendar && eventType == "personal" {
                     if let existingId = ekId {
                         try await EventKitEventManager.shared.updateEvent(identifier: existingId, title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes)
                     } else {
                         ekId = try? await EventKitEventManager.shared.createEvent(title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes)
                     }
+                } else if eventType == "group" {
+                    // Don't save group events to Apple Calendar - delete if converting from personal to group
+                    if let existingId = ekId {
+                        try? await EventKitEventManager.shared.deleteEvent(identifier: existingId)
+                    }
+                    ekId = nil
                 }
 
                 // Ensure personal events have no attendees
-                let attendeeIds = isPersonalEvent ? [] : Array(selectedMemberIds)
-                let guestNames = isPersonalEvent ? [] : guestNamesText.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                let attendeeIds = eventType == "personal" ? [] : Array(selectedMemberIds)
+                let guestNames = eventType == "personal" ? [] : guestNamesText.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
                 
                 let input = NewEventInput(
                     groupId: selectedGroupId,
@@ -330,7 +349,8 @@ struct EventEditorView: View {
                     attendeeUserIds: attendeeIds,
                     guestNames: guestNames,
                     originalEventId: ekId,
-                    categoryId: selectedCategoryId
+                    categoryId: selectedCategoryId,
+                    eventType: eventType
                 )
                 if let existingEvent {
                     try await CalendarEventService.shared.updateEvent(eventId: existingEvent.id, input: input, currentUserId: uid)
@@ -357,7 +377,8 @@ struct EventEditorView: View {
         location = ev.location ?? ""
         notes = ev.notes ?? ""
         selectedCategoryId = ev.category_id
-        // Load attendees preselection and determine if personal event
+        eventType = ev.event_type
+        // Load attendees preselection
         Task {
             if let rows = try? await CalendarEventService.shared.loadAttendees(eventId: ev.id) {
                 var ids = Set<UUID>()
@@ -367,11 +388,6 @@ struct EventEditorView: View {
                 }
                 selectedMemberIds = ids
                 guestNamesText = guests.joined(separator: ", ")
-                // Mark as personal if no attendees
-                isPersonalEvent = ids.isEmpty && guests.isEmpty
-            } else {
-                // If no attendees loaded, assume personal
-                isPersonalEvent = true
             }
         }
     }

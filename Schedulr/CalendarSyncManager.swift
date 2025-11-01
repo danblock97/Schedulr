@@ -258,16 +258,50 @@ final class CalendarSyncManager: ObservableObject {
                 is_public: true,
                 original_event_id: eventId,
                 calendar_name: event.calendar.title,
-                calendar_color: dbColorComps
+                calendar_color: dbColorComps,
+                event_type: "personal"
             )
         }
 
         // Upload to Supabase (using upsert to handle duplicates)
         if !dbEvents.isEmpty {
-            try await client
-                .from("calendar_events")
-                .upsert(dbEvents, onConflict: "user_id,group_id,original_event_id")
-                .execute()
+            // For personal events, check if they already exist in ANY group for this user
+            // to prevent duplicates across different groups
+            var eventsToUpsert: [DBCalendarEventInsert] = []
+            
+            for event in dbEvents {
+                if event.event_type == "personal", let originalId = event.original_event_id {
+                    // Check if this personal event already exists for this user in any group
+                    struct ExistingEvent: Decodable {
+                        let id: UUID
+                    }
+                    let existing: [ExistingEvent] = try await client
+                        .from("calendar_events")
+                        .select("id")
+                        .eq("user_id", value: event.user_id)
+                        .eq("original_event_id", value: originalId)
+                        .eq("event_type", value: "personal")
+                        .limit(1)
+                        .execute()
+                        .value
+                    
+                    // Only include if it doesn't exist yet
+                    if existing.isEmpty {
+                        eventsToUpsert.append(event)
+                    }
+                } else {
+                    // Group events or events without original_event_id: include them
+                    eventsToUpsert.append(event)
+                }
+            }
+            
+            // Now upsert the filtered events
+            if !eventsToUpsert.isEmpty {
+                try await client
+                    .from("calendar_events")
+                    .upsert(eventsToUpsert, onConflict: "user_id,group_id,original_event_id")
+                    .execute()
+            }
         }
     }
 
@@ -301,6 +335,7 @@ final class CalendarSyncManager: ObservableObject {
             let synced_at: Date?
             let notes: String?
             let category_id: UUID?
+            let event_type: String
             let users: UserInfo?
             let event_categories: CategoryInfo?
 
@@ -324,21 +359,71 @@ final class CalendarSyncManager: ObservableObject {
         // Get current user ID for filtering personal events
         let currentUserId = try await client.auth.session.user.id
         
+        // For personal events to span all groups: fetch group events + personal events from all members
+        // First, get all group members' user IDs
+        struct GroupMemberRow: Decodable {
+            let user_id: UUID
+        }
+        let groupMemberRows: [GroupMemberRow] = try await client
+            .from("group_members")
+            .select("user_id")
+            .eq("group_id", value: groupId)
+            .execute()
+            .value
+        let groupMemberIds = groupMemberRows.map { $0.user_id }
+        
         // Query events that overlap with our date range
         // An event overlaps if: (start_date <= end) AND (end_date >= start)
         // This captures all events that have any part within our range
-        let rows: [EventRow] = try await client
+        // For group events: must be in this group
+        // For personal events: must be from a member of this group (span across all groups)
+        let groupEventRows: [EventRow] = try await client
             .from("calendar_events")
             .select("*, users(id, display_name, avatar_url), event_categories(*)")
             .eq("group_id", value: groupId)
-            .lte("start_date", value: end)  // Event starts before or on our end date
-            .gte("end_date", value: start)  // Event ends on or after our start date
+            .eq("event_type", value: "group")
+            .lte("start_date", value: end)
+            .gte("end_date", value: start)
             .order("start_date", ascending: true)
             .execute()
             .value
-
-        // Fetch attendees for all events to determine which are personal vs shared
-        let eventIds = rows.map { $0.id }
+        
+        // Query personal events from group members (can be in any group)
+        let personalEventRows: [EventRow] = try await client
+            .from("calendar_events")
+            .select("*, users(id, display_name, avatar_url), event_categories(*)")
+            .eq("event_type", value: "personal")
+            .in("user_id", values: groupMemberIds)
+            .lte("start_date", value: end)
+            .gte("end_date", value: start)
+            .order("start_date", ascending: true)
+            .execute()
+            .value
+        
+        // Combine both sets of events
+        var allRows = groupEventRows + personalEventRows
+        
+        // Deduplicate personal events by original_event_id if they exist
+        // Group personal events by original_event_id and keep only the oldest one per user
+        var personalEventMap: [String: EventRow] = [:]
+        for row in personalEventRows {
+            if let originalId = row.original_event_id {
+                if let existing = personalEventMap[originalId] {
+                    // Keep the older event (lower ID typically means older in PostgreSQL)
+                    if row.id.uuidString < existing.id.uuidString {
+                        personalEventMap[originalId] = row
+                    }
+                } else {
+                    personalEventMap[originalId] = row
+                }
+            }
+        }
+        
+        // Rebuild allRows with deduplicated personal events
+        allRows = groupEventRows + Array(personalEventMap.values)
+        
+        // Fetch attendees for all events to mark which have attendees
+        let eventIds = allRows.map { $0.id }
         struct AttendeeRow: Decodable {
             let event_id: UUID
         }
@@ -351,18 +436,9 @@ final class CalendarSyncManager: ObservableObject {
             .value
         
         let eventsWithAttendees = Set(attendeeRows.map { $0.event_id })
-
-        // Filter events: show shared events (with attendees) to everyone, 
-        // but only show personal events (no attendees) to their creator
-        let filteredRows = rows.filter { row in
-            if eventsWithAttendees.contains(row.id) {
-                // Event has attendees = shared event, show to everyone
-                return true
-            } else {
-                // Event has no attendees = personal event, only show to creator
-                return row.user_id == currentUserId
-            }
-        }
+        
+        // All events are shown (already filtered by queries above)
+        let filteredRows = allRows
 
         // Convert to CalendarEventWithUser, marking which events have attendees
         // Since class is @MainActor, this assignment will automatically update on main thread
@@ -409,6 +485,7 @@ final class CalendarSyncManager: ObservableObject {
                 synced_at: row.synced_at,
                 notes: row.notes,
                 category_id: row.category_id,
+                event_type: row.event_type,
                 user: user,
                 category: category,
                 hasAttendees: hasAttendees
