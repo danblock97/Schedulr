@@ -9,3 +9,6 @@ Schedulr.xcodeproj/project.pbxproj
 # Setup and utility files
 SETUP_GUIDE.md
 run-dual-simulators.sh
+
+# Swift Package Manager generated files
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
