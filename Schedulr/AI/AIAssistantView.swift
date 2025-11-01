@@ -32,151 +32,182 @@ struct AIAssistantView: View {
                 BubblyAIBackground()
                     .ignoresSafeArea()
                 
-                // Show Pro paywall modal for free users on first visit
-                if !subscriptionManager.isPro && !hasShownProPrompt {
-                    AIProPaywallModal(
-                        onUpgrade: { showPaywall = true },
-                        onDismiss: { hasShownProPrompt = true }
-                    )
-                    .transition(.opacity)
-                }
-                
-                VStack(spacing: 0) {
-                    // Messages list
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(spacing: 20) {
-                                ForEach(viewModel.messages) { message in
-                                    MessageBubble(message: message)
-                                        .id(message.id)
-                                        .transition(.asymmetric(
-                                            insertion: .scale(scale: 0.8).combined(with: .opacity),
-                                            removal: .opacity
-                                        ))
-                                }
-                                
-                                // Loading indicator
-                                if viewModel.isLoading {
-                                    LoadingBubble()
-                                        .id("loading")
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
-                            .padding(.bottom, 140) // Space for input area + tab bar
-                        }
-                        .onChange(of: viewModel.messages.count) { _, _ in
-                            if let lastMessage = viewModel.messages.last {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                }
-                            }
-                        }
-                        .onChange(of: viewModel.isLoading) { _, isLoading in
-                            if isLoading {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    proxy.scrollTo("loading", anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Input area
+                if subscriptionManager.isPro {
+                    // Pro users: Full chat interface
                     VStack(spacing: 0) {
-                        Divider()
-                            .opacity(0.3)
+                        // Messages list
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(spacing: 20) {
+                                    ForEach(viewModel.messages) { message in
+                                        MessageBubble(message: message)
+                                            .id(message.id)
+                                            .transition(.asymmetric(
+                                                insertion: .scale(scale: 0.8).combined(with: .opacity),
+                                                removal: .opacity
+                                            ))
+                                    }
+                                    
+                                    // Loading indicator
+                                    if viewModel.isLoading {
+                                        LoadingBubble()
+                                            .id("loading")
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .padding(.bottom, 140) // Space for input area + tab bar
+                            }
+                            .onAppear {
+                                // Scroll to bottom on initial load
+                                if let lastMessage = viewModel.messages.last {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        withAnimation {
+                                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                        }
+                                    }
+                                }
+                            }
+                            .onChange(of: viewModel.messages.count) { _, _ in
+                                if let lastMessage = viewModel.messages.last {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                                    }
+                                }
+                            }
+                            .onChange(of: viewModel.isLoading) { _, isLoading in
+                                if isLoading {
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        proxy.scrollTo("loading", anchor: .bottom)
+                                    }
+                                }
+                            }
+                        }
                         
-                        HStack(spacing: 12) {
-                            TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
-                                .textFieldStyle(.plain)
-                                .font(.system(size: 16, weight: .medium, design: .rounded))
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 14)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                        .fill(.ultraThinMaterial)
-                                        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                                .stroke(
-                                                    LinearGradient(
-                                                        colors: [
-                                                            Color.white.opacity(0.3),
-                                                            Color.white.opacity(0.1)
-                                                        ],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    ),
-                                                    lineWidth: 1
-                                                )
-                                        )
-                                )
-                                .focused($isInputFocused)
-                                .onSubmit {
+                        // Input area
+                        VStack(spacing: 0) {
+                            Divider()
+                                .opacity(0.3)
+                            
+                            HStack(spacing: 12) {
+                                TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 14)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                            .fill(.ultraThinMaterial)
+                                            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                                    .stroke(
+                                                        LinearGradient(
+                                                            colors: [
+                                                                Color.white.opacity(0.3),
+                                                                Color.white.opacity(0.1)
+                                                            ],
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        ),
+                                                        lineWidth: 1
+                                                    )
+                                            )
+                                    )
+                                    .focused($isInputFocused)
+                                    .onSubmit {
+                                        Task {
+                                            await viewModel.sendMessage()
+                                        }
+                                    }
+                                
+                                Button {
                                     Task {
                                         await viewModel.sendMessage()
                                     }
+                                } label: {
+                                    ZStack {
+                                        Circle()
+                                            .fill(
+                                                viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                ? AnyShapeStyle(Color.secondary.opacity(0.2))
+                                                : AnyShapeStyle(LinearGradient(
+                                                    colors: [
+                                                        Color(red: 0.98, green: 0.29, blue: 0.55),
+                                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                    ],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                ))
+                                            )
+                                            .frame(width: 44, height: 44)
+                                            .shadow(
+                                                color: viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                ? Color.clear
+                                                : Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4),
+                                                radius: 12,
+                                                x: 0,
+                                                y: 6
+                                            )
+                                        
+                                        Image(systemName: "arrow.up")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundStyle(
+                                                viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                                ? Color.secondary.opacity(0.6)
+                                                : Color.white
+                                            )
+                                    }
                                 }
-                            
-                            Button {
-                                Task {
-                                    await viewModel.sendMessage()
-                                }
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(
-                                            viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                            ? AnyShapeStyle(Color.secondary.opacity(0.2))
-                                            : AnyShapeStyle(LinearGradient(
-                                                colors: [
-                                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                    Color(red: 0.58, green: 0.41, blue: 0.87)
-                                                ],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ))
-                                        )
-                                        .frame(width: 44, height: 44)
-                                        .shadow(
-                                            color: viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                            ? Color.clear
-                                            : Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4),
-                                            radius: 12,
-                                            x: 0,
-                                            y: 6
-                                        )
-                                    
-                                    Image(systemName: "arrow.up")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundStyle(
-                                            viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                            ? Color.secondary.opacity(0.6)
-                                            : Color.white
-                                        )
-                                }
+                                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLoading)
+                                .buttonStyle(ScaleButtonStyle())
                             }
-                            .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLoading)
-                            .buttonStyle(ScaleButtonStyle())
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .padding(.bottom, 90) // Space for floating tab bar
+                            .background(.ultraThinMaterial)
+                            .background(Color(.systemGroupedBackground))
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
-                        .padding(.bottom, 90) // Space for floating tab bar
-                        .background(.ultraThinMaterial)
-                        .background(Color(.systemGroupedBackground))
+                    }
+                } else {
+                    // Free users: Show welcome message and inline upgrade prompt
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            // Welcome message
+                            if let welcomeMessage = viewModel.messages.first(where: { $0.role == .assistant }) {
+                                MessageBubble(message: welcomeMessage)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 12)
+                            }
+                            
+                            // Inline upgrade prompt
+                            AIInlineUpgradePrompt(onUpgrade: { showPaywall = true })
+                                .padding(.horizontal, 20)
+                                .padding(.top, 8)
+                            
+                            Spacer()
+                                .frame(height: 100)
+                        }
                     }
                 }
             }
-            .navigationTitle("Scheduly")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Scheduly")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        viewModel.clearMessages()
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.secondary)
+                    if subscriptionManager.isPro {
+                        Button {
+                            viewModel.clearMessages()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -184,7 +215,6 @@ struct AIAssistantView: View {
                 PaywallView()
             }
         }
-        .animation(.easeInOut, value: hasShownProPrompt)
     }
 }
 
@@ -568,6 +598,87 @@ private struct AIFeatureRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
+    }
+}
+
+// MARK: - AI Inline Upgrade Prompt
+
+private struct AIInlineUpgradePrompt: View {
+    let onUpgrade: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 48, weight: .medium))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.29, blue: 0.55),
+                            Color(red: 0.58, green: 0.41, blue: 0.87)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .symbolRenderingMode(.hierarchical)
+            
+            Text("Unlock AI Scheduling Assistant")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+            
+            Text("Upgrade to Pro to use Scheduly and find the perfect meeting times for your group.")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
+            
+            VStack(spacing: 10) {
+                AIFeatureRow(text: "Natural language queries")
+                AIFeatureRow(text: "100 AI requests per month")
+                AIFeatureRow(text: "Find free time slots instantly")
+            }
+            .padding(.vertical, 8)
+            
+            Button(action: onUpgrade) {
+                Text("Upgrade to Pro")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.29, blue: 0.55),
+                                Color(red: 0.58, green: 0.41, blue: 0.87)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: Capsule()
+                    )
+                    .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4), radius: 12, x: 0, y: 6)
+            }
+            .padding(.top, 8)
+        }
+        .padding(24)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
+                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.5
+                )
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
     }
 }
 

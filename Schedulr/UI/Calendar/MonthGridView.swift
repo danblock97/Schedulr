@@ -203,17 +203,22 @@ struct MonthGridView: View {
         let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
         
         return events.filter { event in
-            let eventStart = Calendar.current.startOfDay(for: event.base.start_date)
-            let eventEnd = Calendar.current.startOfDay(for: event.base.end_date)
-            // For all-day events, include the end date as part of the event
-            let adjustedEventEnd = event.base.is_all_day ? 
-                Calendar.current.date(byAdding: .day, value: 1, to: eventEnd) ?? eventEnd :
-                event.base.end_date
-            
-            // Event overlaps with the day if:
-            // - Event starts before or on the day AND
-            // - Event ends after the day starts
-            return eventStart <= dayEnd && adjustedEventEnd > dayStart
+            if event.base.is_all_day {
+                // For all-day events, check if the day falls within the inclusive date range
+                let eventStart = Calendar.current.startOfDay(for: event.base.start_date)
+                let eventEnd = Calendar.current.startOfDay(for: event.base.end_date)
+                // Day must be >= event start AND <= event end (inclusive)
+                return dayStart >= eventStart && dayStart <= eventEnd
+            } else {
+                // For timed events, use overlap logic
+                let eventStart = Calendar.current.startOfDay(for: event.base.start_date)
+                let eventEnd = event.base.end_date
+                
+                // Event overlaps with the day if:
+                // - Event starts before or on the day AND
+                // - Event ends after the day starts
+                return eventStart <= dayEnd && eventEnd > dayStart
+            }
         }
     }
 

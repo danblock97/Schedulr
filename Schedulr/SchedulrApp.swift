@@ -116,6 +116,8 @@ private struct RootContainer: View {
                     }
                 }
             default:
+                // Reset onboarding state when user signs out to prevent data from previous session
+                onboardingVM.reset()
                 routingInProgress = false
                 showOnboarding = false
             }

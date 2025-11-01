@@ -53,6 +53,25 @@ final class OnboardingViewModel: ObservableObject {
         wantsCalendarSync = calendarManager?.syncEnabled ?? false
     }
 
+    // MARK: - Reset
+    
+    /// Resets all onboarding state when user signs out
+    func reset() {
+        step = .avatar
+        pickedImageData = nil
+        isUploadingAvatar = false
+        avatarPublicURL = nil
+        displayName = ""
+        isSavingName = false
+        groupMode = .create
+        groupName = ""
+        joinInput = ""
+        isHandlingGroup = false
+        wantsCalendarSync = false
+        errorMessage = nil
+        onFinished = nil
+    }
+    
     // MARK: - Gating
     func needsOnboarding() async -> Bool {
         // Only consider onboarding when authenticated

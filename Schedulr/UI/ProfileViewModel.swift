@@ -132,8 +132,9 @@ class ProfileViewModel: ObservableObject {
             let session = try await client.auth.session
             let uid = session.user.id
 
-            // Upload to Supabase Storage
-            let fileName = "\(uid).jpg"
+            // Upload to Supabase Storage using same path format as onboarding
+            // This matches the pattern: {uid}/avatar_{timestamp}.jpg
+            let fileName = "\(uid.uuidString)/avatar_\(Int(Date().timeIntervalSince1970)).jpg"
 
             _ = try await client.storage
                 .from("avatars")
@@ -158,7 +159,13 @@ class ProfileViewModel: ObservableObject {
             avatarURL = url.absoluteString
 
         } catch {
-            errorMessage = "Failed to upload avatar: \(error.localizedDescription)"
+            // Provide more helpful error messages for RLS issues
+            let errorString = String(describing: error)
+            if errorString.contains("403") || errorString.contains("row-level security") {
+                errorMessage = "Failed to upload avatar: Permission denied. Please ensure your storage bucket policies allow avatar uploads."
+            } else {
+                errorMessage = "Failed to upload avatar: \(error.localizedDescription)"
+            }
             print("Error uploading avatar: \(error)")
         }
 
