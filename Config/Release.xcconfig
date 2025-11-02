@@ -1,0 +1,2 @@
+// Release.xcconfig - TestFlight & App Store configuration
+#include "Schedulr-Secrets.xcconfig"
