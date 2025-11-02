@@ -33,6 +33,8 @@ enum MessageRole: String, Codable {
 
 enum QueryType: String, Codable {
     case availability
+    case createEvent
+    case findAndCreate
     case general
     case unknown
 }
@@ -53,6 +55,22 @@ struct AvailabilityQuery: Codable, Equatable {
         var start: String // ISO 8601 date string
         var end: String   // ISO 8601 date string
     }
+}
+
+struct EventCreationQuery: Codable, Equatable {
+    var type: QueryType = .createEvent
+    var title: String?
+    var date: String? // ISO 8601 date string (YYYY-MM-DD)
+    var time: String? // HH:mm format (24-hour)
+    var durationMinutes: Int? // Duration in minutes
+    var isAllDay: Bool = false
+    var location: String?
+    var notes: String?
+    var groupName: String?
+    var attendeeNames: [String] = []
+    var guestNames: [String] = []
+    var categoryName: String?
+    var eventType: String? // "personal" or "group", defaults to "group" if attendees
 }
 
 // MARK: - Free Time Slot Models

@@ -71,15 +71,52 @@ final class AIAssistantViewModel: ObservableObject {
         }
         
         do {
-            // Check if query is about availability
-            let query = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers())
+            // Check if this is a combined query (find slots then create event)
+            let lowercasedQuery = userMessage.lowercased()
+            let combinedKeywords = ["after finding", "after you find", "find a free slot", "find a time when", "when are", "find when"]
+            let hasFindKeyword = combinedKeywords.contains { lowercasedQuery.contains($0) }
+            let hasCreateKeyword = ["create", "schedule", "add", "set up", "plan", "book", "make"].contains { lowercasedQuery.contains($0) }
+            let isCombinedQuery = hasFindKeyword && hasCreateKeyword
             
-            if query.type == .availability && !query.users.isEmpty {
-                // Handle availability query
-                await handleAvailabilityQuery(query: query)
+            if isCombinedQuery {
+                // Handle combined find-and-create query
+                await handleFindAndCreateQuery(userMessage: userMessage)
             } else {
-                // Handle general question
-                await handleGeneralQuestion(question: userMessage)
+                // Try to parse as event creation first
+                let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
+                let isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
+                
+                if isEventCreation {
+                    // Event creation requires a selected group
+                    guard let groupId = dashboardViewModel.selectedGroupID else {
+                        let response = ChatMessage(
+                            role: .assistant,
+                            content: "Please select a group first to create an event. Go to the Groups tab and select a group."
+                        )
+                        messages.append(response)
+                        isLoading = false
+                        return
+                    }
+                    
+                    let selectedGroupName = dashboardViewModel.memberships.first(where: { $0.id == groupId })?.name
+                    let eventQuery = try await aiService.parseEventCreationQuery(
+                        userMessage,
+                        groupMembers: getGroupMembers(),
+                        groupName: selectedGroupName
+                    )
+                    await handleEventCreationQuery(query: eventQuery)
+                } else {
+                    // Check if query is about availability
+                    let availabilityQuery = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers())
+                    
+                    if availabilityQuery.type == .availability && !availabilityQuery.users.isEmpty {
+                        // Handle availability query
+                        await handleAvailabilityQuery(query: availabilityQuery)
+                    } else {
+                        // Handle general question
+                        await handleGeneralQuestion(question: userMessage)
+                    }
+                }
             }
             
             // Track AI usage after successful request
@@ -189,6 +226,472 @@ final class AIAssistantViewModel: ObservableObject {
             let response = ChatMessage(
                 role: .assistant,
                 content: "I encountered an error while checking availability: \(error.localizedDescription). Please try again."
+            )
+            messages.append(response)
+        }
+    }
+    
+    private func handleFindAndCreateQuery(userMessage: String) async {
+        guard let groupId = dashboardViewModel.selectedGroupID else {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "Please select a group first. Go to the Groups tab and select a group."
+            )
+            messages.append(response)
+            return
+        }
+        
+        // Parse the query using AI to extract both availability requirements and event details
+        do {
+            let membersList = getGroupMembers().map { "\($0.name) (ID: \($0.id.uuidString))" }.joined(separator: ", ")
+            
+            // First, try to parse as a combined query
+            let systemPrompt = """
+You are Scheduly, a friendly AI scheduling assistant. The user wants to find free time slots AND then create an event at one of those slots.
+
+Available group members: \(membersList)
+Today's date: \(ISO8601DateFormatter().string(from: Date()).prefix(10))
+
+Parse the query to extract:
+1. Availability requirements (who, duration, time window, date range)
+   - Match user names to the available members list
+   - Extract duration in hours (e.g., "2 hours", "1 hour")
+   - Extract time window in 24-hour format (e.g., "9 AM to 5 PM" becomes "09:00-17:00")
+   - Extract date range in ISO 8601 format (e.g., "next week", "this weekend")
+2. Event creation details (title, location, category, attendees, notes)
+   - Match attendee names to available members or mark as guests
+
+Return JSON in this format:
+{
+  "type": "findAndCreate",
+  "availability": {
+    "users": ["Member Name 1", "Member Name 2"],
+    "durationHours": 2.0,
+    "timeWindow": {"start": "09:00", "end": "17:00"},
+    "dateRange": {"start": "2025-11-03", "end": "2025-11-10"}
+  },
+  "event": {
+    "title": "Event Title",
+    "location": "Location if mentioned",
+    "categoryName": "Category if mentioned",
+    "attendeeNames": ["Member Name"],
+    "guestNames": ["Guest Name"],
+    "notes": "Notes if mentioned"
+  }
+}
+
+Omit fields that are not mentioned. Ensure user names match exactly to the available members list.
+"""
+            
+            let aiMessages = [
+                ChatMessage(role: .system, content: systemPrompt),
+                ChatMessage(role: .user, content: userMessage)
+            ]
+            
+            let aiResponse = try await aiService.chatCompletion(messages: aiMessages)
+            
+            // Extract JSON
+            var jsonString = aiResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+            if jsonString.hasPrefix("```") {
+                let lines = jsonString.components(separatedBy: .newlines)
+                jsonString = lines.dropFirst().dropLast().joined(separator: "\n")
+            }
+            jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            guard let jsonData = jsonString.data(using: .utf8) else {
+                throw AIServiceError.invalidResponse
+            }
+            
+            // Parse the combined query
+            struct CombinedQuery: Decodable {
+                let type: String
+                let availability: AvailabilityPart?
+                let event: EventPart?
+                
+                struct AvailabilityPart: Decodable {
+                    let users: [String]?
+                    let durationHours: Double?
+                    let timeWindow: TimeWindowPart?
+                    let dateRange: DateRangePart?
+                }
+                
+                struct TimeWindowPart: Decodable {
+                    let start: String?
+                    let end: String?
+                }
+                
+                struct DateRangePart: Decodable {
+                    let start: String?
+                    let end: String?
+                }
+                
+                struct EventPart: Decodable {
+                    let title: String?
+                    let location: String?
+                    let categoryName: String?
+                    let attendeeNames: [String]?
+                    let guestNames: [String]?
+                    let notes: String?
+                }
+            }
+            
+            let combinedQuery = try JSONDecoder().decode(CombinedQuery.self, from: jsonData)
+            
+            guard let availabilityPart = combinedQuery.availability,
+                  let eventPart = combinedQuery.event,
+                  let eventTitle = eventPart.title, !eventTitle.isEmpty else {
+                // Fallback to general question if parsing fails
+                await handleGeneralQuestion(question: userMessage)
+                return
+            }
+            
+            // Map user names to user IDs for availability check
+            let memberMap = getMemberNameToIdMap()
+            var userIds: [UUID] = []
+            var foundNames: [String] = []
+            
+            for userName in availabilityPart.users ?? [] {
+                if let userId = memberMap[userName.lowercased()] {
+                    userIds.append(userId)
+                    foundNames.append(userName)
+                }
+            }
+            
+            if userIds.isEmpty {
+                let errorMessage = ChatMessage(
+                    role: .assistant,
+                    content: "I couldn't find the members mentioned for the availability check. Please make sure you're using their exact names as they appear in the group members list."
+                )
+                self.messages.append(errorMessage)
+                return
+            }
+            
+            // Find free time slots
+            let duration = availabilityPart.durationHours ?? 2.0
+            
+            var timeWindow: AvailabilityQuery.TimeWindow? = nil
+            if let tw = availabilityPart.timeWindow,
+               let start = tw.start, let end = tw.end {
+                timeWindow = AvailabilityQuery.TimeWindow(start: start, end: end)
+            }
+            
+            var dateRange: AvailabilityQuery.DateRange? = nil
+            if let dr = availabilityPart.dateRange,
+               let start = dr.start, let end = dr.end {
+                dateRange = AvailabilityQuery.DateRange(start: start, end: end)
+            }
+            
+            let slots = try await calendarAnalysisService.findFreeTimeSlots(
+                userIds: userIds,
+                groupId: groupId,
+                durationHours: duration,
+                timeWindow: timeWindow,
+                dateRange: dateRange
+            )
+            
+            if slots.isEmpty {
+                let errorMessage = ChatMessage(
+                    role: .assistant,
+                    content: "I couldn't find any free \(duration > 1 ? String(format: "%.1f", duration) : "1") hour time slots for \(foundNames.joined(separator: ", ")) in the requested time period. Try adjusting the duration or time window."
+                )
+                self.messages.append(errorMessage)
+                return
+            }
+            
+            // Use the first (best) available slot
+            let selectedSlot = slots[0]
+            
+            // Create the event at the selected slot time
+            let currentUserId: UUID
+            do {
+                let session = try await SupabaseManager.shared.client.auth.session
+                currentUserId = session.user.id
+            } catch {
+                let errorMessage = ChatMessage(
+                    role: .assistant,
+                    content: "⚠️ Unable to authenticate. Please try logging in again."
+                )
+                self.messages.append(errorMessage)
+                return
+            }
+            
+            // Map attendee names for event creation
+            var attendeeUserIds: [UUID] = []
+            var guestNames: [String] = []
+            
+            for name in eventPart.attendeeNames ?? [] {
+                if let userId = memberMap[name.lowercased()] {
+                    attendeeUserIds.append(userId)
+                } else {
+                    guestNames.append(name)
+                }
+            }
+            guestNames.append(contentsOf: eventPart.guestNames ?? [])
+            
+            // Get category ID if category name is provided
+            var categoryId: UUID? = nil
+            if let categoryName = eventPart.categoryName, !categoryName.isEmpty {
+                do {
+                    let categories = try await CalendarEventService.shared.fetchCategories(userId: currentUserId, groupId: groupId)
+                    if let category = categories.first(where: { $0.name.lowercased() == categoryName.lowercased() }) {
+                        categoryId = category.id
+                    }
+                } catch {
+                    // If category lookup fails, continue without category
+                }
+            }
+            
+            // Determine event type
+            let eventType = (attendeeUserIds.isEmpty && guestNames.isEmpty ? "personal" : "group")
+            
+            // Create the event
+            let eventInput = NewEventInput(
+                groupId: groupId,
+                title: eventTitle,
+                start: selectedSlot.startDate,
+                end: selectedSlot.endDate,
+                isAllDay: false,
+                location: eventPart.location,
+                notes: eventPart.notes,
+                attendeeUserIds: attendeeUserIds,
+                guestNames: guestNames,
+                originalEventId: nil,
+                categoryId: categoryId,
+                eventType: eventType
+            )
+            
+            let eventId = try await CalendarEventService.shared.createEvent(input: eventInput, currentUserId: currentUserId)
+            
+            // Refresh calendar data
+            await dashboardViewModel.refreshCalendarIfNeeded()
+            
+            // Format confirmation message
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = .short
+            
+            var confirmationMessage = "✅ Great! I found an available time slot and created \"\(eventTitle)\" on the calendar.\n\n"
+            confirmationMessage += "**Details:**\n"
+            confirmationMessage += "• Date: \(dateFormatter.string(from: selectedSlot.startDate))\n"
+            
+            let timeFormatter = DateFormatter()
+            timeFormatter.timeStyle = .short
+            confirmationMessage += "• Time: \(timeFormatter.string(from: selectedSlot.startDate))-\(timeFormatter.string(from: selectedSlot.endDate))\n"
+            
+            if let categoryName = eventPart.categoryName {
+                confirmationMessage += "• Category: \(categoryName)\n"
+            }
+            
+            if !attendeeUserIds.isEmpty || !guestNames.isEmpty {
+                let allAttendees = attendeeUserIds.compactMap { id in
+                    dashboardViewModel.members.first(where: { $0.id == id })?.displayName
+                } + guestNames
+                confirmationMessage += "• Attendees: \(allAttendees.joined(separator: ", "))\n"
+            }
+            
+            if let location = eventPart.location {
+                confirmationMessage += "• Location: \(location)\n"
+            }
+            
+            if let notes = eventPart.notes, !notes.isEmpty {
+                confirmationMessage += "• Notes: \(notes)\n"
+            }
+            
+            let confirmationResponse = ChatMessage(role: .assistant, content: confirmationMessage)
+            self.messages.append(confirmationResponse)
+            
+        } catch {
+            // If parsing fails, fall back to general question handling
+            #if DEBUG
+            print("Failed to parse find-and-create query: \(error)")
+            #endif
+            await handleGeneralQuestion(question: userMessage)
+        }
+    }
+    
+    private func handleEventCreationQuery(query: EventCreationQuery) async {
+        guard let groupId = dashboardViewModel.selectedGroupID else {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "Please select a group first to create an event. Go to the Groups tab and select a group."
+            )
+            messages.append(response)
+            return
+        }
+        
+        // Validate required fields
+        guard let title = query.title, !title.isEmpty else {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "I couldn't determine the event title from your request. Please specify what event you'd like to create."
+            )
+            messages.append(response)
+            return
+        }
+        
+        // Get current user ID
+        guard let client = SupabaseManager.shared.client else {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "⚠️ Unable to access your account. Please try again."
+            )
+            messages.append(response)
+            return
+        }
+        
+        let currentUserId: UUID
+        do {
+            let session = try await client.auth.session
+            currentUserId = session.user.id
+        } catch {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "⚠️ Unable to authenticate. Please try logging in again."
+            )
+            messages.append(response)
+            return
+        }
+        
+        // Parse date and time
+        let calendar = Calendar.current
+        let now = Date()
+        var startDate: Date
+        var endDate: Date
+        
+        // Parse date
+        if let dateString = query.date {
+            let dateFormatter = ISO8601DateFormatter()
+            dateFormatter.formatOptions = [.withFullDate]
+            if let date = dateFormatter.date(from: dateString) {
+                startDate = calendar.startOfDay(for: date)
+            } else {
+                // If parsing fails, default to today
+                startDate = calendar.startOfDay(for: now)
+            }
+        } else {
+            // Default to today if no date specified
+            startDate = calendar.startOfDay(for: now)
+        }
+        
+        // Parse time and duration
+        if query.isAllDay {
+            endDate = calendar.date(byAdding: .day, value: 1, to: startDate) ?? startDate
+        } else {
+            // Parse time
+            if let timeString = query.time {
+                let components = timeString.split(separator: ":")
+                if components.count == 2,
+                   let hour = Int(components[0]),
+                   let minute = Int(components[1]) {
+                    startDate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: startDate) ?? startDate
+                }
+            } else {
+                // Default to current time if not specified
+                let components = calendar.dateComponents([.hour, .minute], from: now)
+                startDate = calendar.date(bySettingHour: components.hour ?? 9, minute: components.minute ?? 0, second: 0, of: startDate) ?? startDate
+            }
+            
+            // Calculate end date based on duration
+            let durationMinutes = query.durationMinutes ?? 60 // Default to 1 hour
+            endDate = calendar.date(byAdding: .minute, value: durationMinutes, to: startDate) ?? startDate
+        }
+        
+        // Map attendee names to user IDs
+        let memberMap = getMemberNameToIdMap()
+        var attendeeUserIds: [UUID] = []
+        var guestNames: [String] = []
+        
+        for name in query.attendeeNames {
+            if let userId = memberMap[name.lowercased()] {
+                attendeeUserIds.append(userId)
+            } else {
+                // Not found in members, treat as guest
+                guestNames.append(name)
+            }
+        }
+        guestNames.append(contentsOf: query.guestNames)
+        
+        // Get category ID if category name is provided
+        var categoryId: UUID? = nil
+        if let categoryName = query.categoryName, !categoryName.isEmpty {
+            do {
+                let categories = try await CalendarEventService.shared.fetchCategories(userId: currentUserId, groupId: groupId)
+                if let category = categories.first(where: { $0.name.lowercased() == categoryName.lowercased() }) {
+                    categoryId = category.id
+                }
+            } catch {
+                // If category lookup fails, continue without category
+                #if DEBUG
+                print("Failed to fetch categories: \(error)")
+                #endif
+            }
+        }
+        
+        // Determine event type
+        let eventType = query.eventType ?? (attendeeUserIds.isEmpty && guestNames.isEmpty ? "personal" : "group")
+        
+        // Create the event
+        let eventInput = NewEventInput(
+            groupId: groupId,
+            title: title,
+            start: startDate,
+            end: endDate,
+            isAllDay: query.isAllDay,
+            location: query.location,
+            notes: query.notes,
+            attendeeUserIds: attendeeUserIds,
+            guestNames: guestNames,
+            originalEventId: nil,
+            categoryId: categoryId,
+            eventType: eventType
+        )
+        
+        do {
+            let eventId = try await CalendarEventService.shared.createEvent(input: eventInput, currentUserId: currentUserId)
+            
+            // Refresh calendar data
+            await dashboardViewModel.refreshCalendarIfNeeded()
+            
+            // Format confirmation message
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = query.isAllDay ? .none : .short
+            
+            var confirmationMessage = "✅ All set! I've created \"\(title)\" on the calendar.\n\n"
+            confirmationMessage += "**Details:**\n"
+            confirmationMessage += "• Date: \(dateFormatter.string(from: startDate))\n"
+            
+            if !query.isAllDay {
+                let timeFormatter = DateFormatter()
+                timeFormatter.timeStyle = .short
+                confirmationMessage += "• Time: \(timeFormatter.string(from: startDate))-\(timeFormatter.string(from: endDate))\n"
+            }
+            
+            if let categoryName = query.categoryName {
+                confirmationMessage += "• Category: \(categoryName)\n"
+            }
+            
+            if !attendeeUserIds.isEmpty || !guestNames.isEmpty {
+                let allAttendees = attendeeUserIds.compactMap { id in
+                    dashboardViewModel.members.first(where: { $0.id == id })?.displayName
+                } + guestNames
+                confirmationMessage += "• Attendees: \(allAttendees.joined(separator: ", "))\n"
+            }
+            
+            if let location = query.location {
+                confirmationMessage += "• Location: \(location)\n"
+            }
+            
+            if let notes = query.notes, !notes.isEmpty {
+                confirmationMessage += "• Notes: \(notes)\n"
+            }
+            
+            let response = ChatMessage(role: .assistant, content: confirmationMessage)
+            messages.append(response)
+        } catch {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "⚠️ I encountered an error while creating the event: \(error.localizedDescription). Please try again."
             )
             messages.append(response)
         }

@@ -7,6 +7,9 @@
 
 import SwiftUI
 import RevenueCat
+#if os(iOS)
+import UIKit
+#endif
 
 struct PaywallView: View {
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
@@ -222,7 +225,11 @@ struct PaywallView: View {
             
             HStack(spacing: 4) {
                 Button("Terms of Service") {
-                    // Open terms
+                    if let url = URL(string: "https://schedulr.co.uk/terms") {
+                        #if os(iOS)
+                        UIApplication.shared.open(url)
+                        #endif
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -231,7 +238,11 @@ struct PaywallView: View {
                     .foregroundStyle(.tertiary)
                 
                 Button("Privacy Policy") {
-                    // Open privacy
+                    if let url = URL(string: "https://schedulr.co.uk/privacy") {
+                        #if os(iOS)
+                        UIApplication.shared.open(url)
+                        #endif
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -2,6 +2,9 @@ import Foundation
 import SwiftUI
 import Combine
 import Supabase
+#if os(iOS)
+import AuthenticationServices
+#endif
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -12,6 +15,7 @@ final class AuthViewModel: ObservableObject {
 
     // UI State
     @Published var isLoadingGoogle: Bool = false
+    @Published var isLoadingApple: Bool = false
     @Published var isLoadingMagic: Bool = false
     @Published var magicSent: Bool = false
     @Published var errorMessage: String? = nil
@@ -165,6 +169,44 @@ final class AuthViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+    
+    #if os(iOS)
+    func signInWithApple(authorization: ASAuthorization) async {
+        guard !isLoadingApple else { return }
+        isLoadingApple = true
+        errorMessage = nil
+        defer { isLoadingApple = false }
+        
+        guard let client else { return }
+        guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            errorMessage = "Invalid Apple ID credential"
+            return
+        }
+        
+        guard let identityTokenData = appleIDCredential.identityToken,
+              let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            errorMessage = "Failed to get identity token"
+            return
+        }
+        
+        do {
+            // Sign in with Supabase using the Apple ID token
+            let session = try await client.auth.signInWithIdToken(
+                credentials: OpenIDConnectCredentials(
+                    provider: .apple,
+                    idToken: identityToken
+                )
+            )
+            
+            // Session is set, refresh auth state
+            refreshAuthState()
+            // Fetch subscription status after authentication
+            await SubscriptionManager.shared.fetchSubscriptionStatus()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    #endif
 
     func sendMagicLink() async {
         guard !isLoadingMagic else { return }

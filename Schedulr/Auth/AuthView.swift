@@ -1,6 +1,7 @@
 import SwiftUI
 #if os(iOS)
 import UIKit
+import AuthenticationServices
 #endif
 
 struct AuthView: View {
@@ -63,21 +64,48 @@ struct AuthView: View {
                         .padding(.horizontal)
                 }
 
-                // Google first (moved above email)
+                // Sign in with Apple (first option)
+                #if os(iOS)
+                SignInWithAppleButton(
+                    onRequest: { request in
+                        request.requestedScopes = [.fullName, .email]
+                    },
+                    onCompletion: { result in
+                        switch result {
+                        case .success(let authorization):
+                            Task {
+                                await viewModel.signInWithApple(authorization: authorization)
+                            }
+                        case .failure(let error):
+                            viewModel.errorMessage = error.localizedDescription
+                        }
+                    }
+                )
+                .signInWithAppleButtonStyle(.black)
+                .frame(height: isPad ? 56 : 50)
+                .cornerRadius(isPad ? 28 : 25)
+                .padding(.horizontal)
+                .disabled(viewModel.isLoadingApple)
+                
+                // Google sign in
                 Button(action: { Task { await viewModel.signInWithGoogle() } }) {
                     HStack(spacing: isPad ? 14 : 12) {
                         Image(systemName: "g.circle.fill")
                             .symbolRenderingMode(.multicolor)
                             .font(isPad ? .title : .title2)
-                        Text(viewModel.isLoadingGoogle ? "Connecting…" : "Continue with Google")
-                            .font(
-                                isPad
-                                ? .system(.title3, design: .rounded).weight(.semibold)
-                                : .system(.headline, design: .rounded).weight(.semibold)
-                            )
-                        Spacer(minLength: 0)
-                        if viewModel.isLoadingGoogle { ProgressView() }
+                        if viewModel.isLoadingGoogle {
+                            ProgressView()
+                                .tint(.black)
+                        } else {
+                            Text("Sign in with Google")
+                                .font(
+                                    isPad
+                                    ? .system(.title3, design: .rounded).weight(.semibold)
+                                    : .system(.headline, design: .rounded).weight(.semibold)
+                                )
+                        }
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal, isPad ? 24 : 20)
                     .padding(.vertical, isPad ? 16 : 14)
                     .background(.white)
@@ -91,6 +119,7 @@ struct AuthView: View {
                     .padding(.horizontal)
                 }
                 .disabled(viewModel.isLoadingGoogle)
+                #endif
 
                 // Playful divider
                 HStack(spacing: 10) {
@@ -184,10 +213,33 @@ struct AuthView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Text("By continuing, you agree to our Terms & Privacy Policy")
+                HStack(spacing: 4) {
+                    Text("By continuing, you agree to our")
+                        .font(isPad ? .footnote : .caption2)
+                        .foregroundStyle(.secondary)
+                    Button("Terms") {
+                        if let url = URL(string: "https://schedulr.co.uk/terms") {
+                            #if os(iOS)
+                            UIApplication.shared.open(url)
+                            #endif
+                        }
+                    }
                     .font(isPad ? .footnote : .caption2)
                     .foregroundStyle(.secondary)
-                    .padding(.bottom, 12)
+                    Text("&")
+                        .font(isPad ? .footnote : .caption2)
+                        .foregroundStyle(.secondary)
+                    Button("Privacy Policy") {
+                        if let url = URL(string: "https://schedulr.co.uk/privacy") {
+                            #if os(iOS)
+                            UIApplication.shared.open(url)
+                            #endif
+                        }
+                    }
+                    .font(isPad ? .footnote : .caption2)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 12)
             }
             .padding(.horizontal, isPad ? 28 : 16)
             .frame(maxWidth: isPad ? 560 : .infinity)

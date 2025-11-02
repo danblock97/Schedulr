@@ -113,6 +113,106 @@ final class AIService {
     
     // MARK: - Query Parsing
     
+    /// Uses AI to parse a natural language query and determine if it's an availability query or event creation query
+    /// - Parameter query: The user's natural language query
+    /// - Returns: A structured query (AvailabilityQuery or EventCreationQuery)
+    func parseQuery(_ query: String, groupMembers: [(id: UUID, name: String)], groupName: String?) async throws -> Any {
+        // First check if it's an event creation query
+        let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
+        let lowercasedQuery = query.lowercased()
+        let isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
+        
+        if isEventCreation {
+            return try await parseEventCreationQuery(query, groupMembers: groupMembers, groupName: groupName)
+        } else {
+            return try await parseAvailabilityQuery(query, groupMembers: groupMembers)
+        }
+    }
+    
+    /// Uses AI to parse a natural language query into a structured EventCreationQuery
+    /// - Parameter query: The user's natural language query
+    /// - Returns: A structured EventCreationQuery
+    func parseEventCreationQuery(_ query: String, groupMembers: [(id: UUID, name: String)], groupName: String?) async throws -> EventCreationQuery {
+        guard let apiKey = apiKey, !apiKey.isEmpty else {
+            throw AIServiceError.missingAPIKey
+        }
+        
+        let membersList = groupMembers.map { "\($0.name) (ID: \($0.id.uuidString))" }.joined(separator: ", ")
+        let groupNameText = groupName ?? "current group"
+        
+        let systemPrompt = """
+You are Scheduly, a friendly AI scheduling assistant. Parse event creation queries into structured JSON format.
+
+Available group members: \(membersList)
+Current group name: \(groupNameText)
+Today's date: \(ISO8601DateFormatter().string(from: Date()).prefix(10))
+
+Extract from the user's query:
+1. Event title
+2. Date (in ISO 8601 format YYYY-MM-DD, e.g., "tomorrow" becomes tomorrow's date, "next Friday" becomes that date)
+3. Time in 24-hour format HH:mm (e.g., "10 AM" becomes "10:00", "2:30 PM" becomes "14:30")
+4. Duration in minutes (e.g., "30 minutes", "1 hour", "2 hours")
+5. Location (if mentioned)
+6. Notes/description (if mentioned)
+7. Group name (if different from current)
+8. Attendee names (match to available members)
+9. Guest names (names not in member list)
+10. Category name (if mentioned like "Meetings", "Personal Development", etc.)
+11. Event type: "personal" or "group" (default to "group" if attendees are mentioned, "personal" otherwise)
+
+Return ONLY valid JSON in this exact format:
+{
+  "type": "createEvent",
+  "title": "Event Title",
+  "date": "2025-11-03",
+  "time": "10:00",
+  "durationMinutes": 30,
+  "isAllDay": false,
+  "location": "Location if mentioned",
+  "notes": "Notes if mentioned",
+  "groupName": "Group name if different",
+  "attendeeNames": ["Member Name 1", "Member Name 2"],
+  "guestNames": ["Guest Name"],
+  "categoryName": "Category Name",
+  "eventType": "group"
+}
+
+Omit fields that are not mentioned or can't be determined. If the query is not about creating an event, return {"type": "general"}.
+"""
+        
+        let messages = [
+            ChatMessage(role: .system, content: systemPrompt),
+            ChatMessage(role: .user, content: query)
+        ]
+        
+        let response = try await chatCompletion(messages: messages)
+        
+        // Extract JSON from response
+        var jsonString = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if jsonString.hasPrefix("```") {
+            let lines = jsonString.components(separatedBy: .newlines)
+            jsonString = lines.dropFirst().dropLast().joined(separator: "\n")
+        }
+        
+        jsonString = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard let jsonData = jsonString.data(using: .utf8) else {
+            throw AIServiceError.invalidResponse
+        }
+        
+        do {
+            let query = try JSONDecoder().decode(EventCreationQuery.self, from: jsonData)
+            return query
+        } catch {
+            #if DEBUG
+            print("Failed to parse AI response as EventCreationQuery: \(error)")
+            print("Response was: \(response)")
+            #endif
+            throw AIServiceError.invalidResponse
+        }
+    }
+    
     /// Uses AI to parse a natural language query into a structured AvailabilityQuery
     /// - Parameter query: The user's natural language query
     /// - Returns: A structured AvailabilityQuery
