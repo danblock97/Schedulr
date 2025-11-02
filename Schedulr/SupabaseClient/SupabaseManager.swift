@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+import Auth
 
 // Central access point for Supabase across iOS/iPadOS/watchOS.
 // Reads configuration from Info.plist (recommended for Apple platforms)
@@ -60,17 +61,18 @@ final class SupabaseManager {
 
     func start(configuration: SupabaseConfiguration) {
         self.configuration = configuration
-        // Initialize client with default options (PKCE flow is the default on Apple platforms).
+        // Initialize client with Keychain storage for session persistence.
         // Redirect handling is performed via onOpenURL -> client.auth.handle(url).
-        // Use basic initializer; SDK defaults to PKCE on Apple platforms. If needed, you can
-        // provide explicit auth configuration in the future.
         // Prefer implicit flow for email magic links to avoid PKCE flow-state issues on iOS.
         // PKCE remains supported for OAuth via handle(url).
         self.client = SupabaseClient(
             supabaseURL: configuration.url,
             supabaseKey: configuration.anonKey,
             options: .init(
-                auth: .init(flowType: .implicit)
+                auth: .init(
+                    storage: KeychainLocalStorage(service: "\(Bundle.main.bundleIdentifier ?? "com.schedulr").supabase.auth"),
+                    flowType: .implicit
+                )
             )
         )
     }
