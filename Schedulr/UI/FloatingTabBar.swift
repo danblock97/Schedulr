@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FloatingTabBar: View {
     @Binding var selectedTab: Int
+    @EnvironmentObject var themeManager: ThemeManager
     @Namespace private var animation
 
     var body: some View {
@@ -11,7 +12,8 @@ struct FloatingTabBar: View {
                 icon: "house.fill",
                 index: 0,
                 selectedTab: $selectedTab,
-                animation: animation
+                animation: animation,
+                themeManager: themeManager
             )
 
             // Calendar Tab
@@ -20,7 +22,8 @@ struct FloatingTabBar: View {
                 index: 1,
                 selectedTab: $selectedTab,
                 animation: animation,
-                isCenter: true
+                isCenter: true,
+                themeManager: themeManager
             )
 
             // Ask AI Tab
@@ -28,7 +31,8 @@ struct FloatingTabBar: View {
                 icon: "sparkles",
                 index: 2,
                 selectedTab: $selectedTab,
-                animation: animation
+                animation: animation,
+                themeManager: themeManager
             )
 
             // Profile Tab
@@ -36,7 +40,8 @@ struct FloatingTabBar: View {
                 icon: "person.crop.circle.fill",
                 index: 3,
                 selectedTab: $selectedTab,
-                animation: animation
+                animation: animation,
+                themeManager: themeManager
             )
         }
         .padding(.horizontal, 8)
@@ -61,6 +66,7 @@ struct TabBarButton: View {
     @Binding var selectedTab: Int
     let animation: Namespace.ID
     var isCenter: Bool = false
+    @ObservedObject var themeManager: ThemeManager
 
     var isSelected: Bool {
         selectedTab == index
@@ -79,18 +85,9 @@ struct TabBarButton: View {
                 if isSelected {
                     // Selected background
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                    Color(red: 0.58, green: 0.41, blue: 0.87)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .fill(themeManager.gradient)
                         .matchedGeometryEffect(id: "TAB", in: animation)
-                        .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4), radius: 8, x: 0, y: 4)
+                        .shadow(color: themeManager.primaryColor.opacity(0.4), radius: 8, x: 0, y: 4)
                 }
 
                 Image(systemName: icon)
@@ -125,6 +122,7 @@ struct ScaleButtonStyle: ButtonStyle {
         VStack {
             Spacer()
             FloatingTabBar(selectedTab: .constant(0))
+                .environmentObject(ThemeManager.shared)
         }
     }
 }

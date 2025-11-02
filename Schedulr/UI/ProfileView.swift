@@ -7,6 +7,7 @@ struct ProfileView: View {
     @ObservedObject var viewModel: ProfileViewModel
     @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var calendarManager: CalendarSyncManager
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var isEditingName = false
     @State private var tempDisplayName = ""
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
@@ -15,6 +16,16 @@ struct ProfileView: View {
     @State private var showPaywall = false
     @State private var aiUsageInfo: AIUsageInfo?
     @State private var groupLimitInfo: (current: Int, max: Int)?
+    @State private var showingThemePicker = false
+    
+    private var currentThemeName: String {
+        if case .preset = themeManager.currentTheme.type,
+           let name = themeManager.currentTheme.name,
+           let preset = PresetTheme(rawValue: name) {
+            return preset.displayName
+        }
+        return "Custom"
+    }
 
     var body: some View {
         NavigationStack {
@@ -46,8 +57,8 @@ struct ProfileView: View {
                                             .stroke(
                                                 LinearGradient(
                                                     colors: [
-                                                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                        themeManager.primaryColor,
+                                                        themeManager.secondaryColor
                                                     ],
                                                     startPoint: .topLeading,
                                                     endPoint: .bottomTrailing
@@ -61,8 +72,8 @@ struct ProfileView: View {
                                         .fill(
                                             LinearGradient(
                                                 colors: [
-                                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                    themeManager.primaryColor,
+                                                    themeManager.secondaryColor
                                                 ],
                                                 startPoint: .topLeading,
                                                 endPoint: .bottomTrailing
@@ -88,8 +99,8 @@ struct ProfileView: View {
                                                 .foregroundStyle(
                                                     LinearGradient(
                                                         colors: [
-                                                            Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                            Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                            themeManager.primaryColor,
+                                                            themeManager.secondaryColor
                                                         ],
                                                         startPoint: .topLeading,
                                                         endPoint: .bottomTrailing
@@ -147,15 +158,15 @@ struct ProfileView: View {
                                                 .background(
                                                     LinearGradient(
                                                         colors: [
-                                                            Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                            Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                            themeManager.primaryColor,
+                                                            themeManager.secondaryColor
                                                         ],
                                                         startPoint: .leading,
                                                         endPoint: .trailing
                                                     )
                                                 )
                                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                                .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 12, x: 0, y: 6)
+                                                .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 12, x: 0, y: 6)
                                         }
                                     }
                                 }
@@ -175,8 +186,8 @@ struct ProfileView: View {
                                             .foregroundStyle(
                                                 LinearGradient(
                                                     colors: [
-                                                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                        themeManager.primaryColor,
+                                                        themeManager.secondaryColor
                                                     ],
                                                     startPoint: .topLeading,
                                                     endPoint: .bottomTrailing
@@ -250,6 +261,54 @@ struct ProfileView: View {
                                     Text("Combines same‑title all‑day events on a day into one row with a shared count.")
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
+                                }
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                            .padding(.horizontal)
+                        }
+
+                        // Color Theme Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("🎨 Color Theme")
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal)
+                            
+                            Button {
+                                showingThemePicker = true
+                            } label: {
+                                HStack {
+                                    // Theme preview
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [
+                                                    themeManager.primaryColor,
+                                                    themeManager.secondaryColor
+                                                ],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        )
+                                        .frame(width: 40, height: 40)
+                                    
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("App Theme")
+                                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                            .foregroundColor(.primary)
+                                        
+                                        Text(currentThemeName)
+                                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.secondary)
                                 }
                                 .padding()
                                 .background(.ultraThinMaterial)
@@ -383,6 +442,13 @@ struct ProfileView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
             }
+            .sheet(isPresented: $showingThemePicker) {
+                ThemePickerView(themeManager: themeManager) { selectedTheme in
+                    Task {
+                        await viewModel.saveTheme(selectedTheme)
+                    }
+                }
+            }
             .refreshable {
                 await SubscriptionManager.shared.fetchSubscriptionStatus()
                 await loadSubscriptionInfo()
@@ -422,8 +488,8 @@ struct ProfileView: View {
                                         .fill(
                                             LinearGradient(
                                                 colors: [
-                                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                    themeManager.primaryColor,
+                                                    themeManager.secondaryColor
                                                 ],
                                                 startPoint: .leading,
                                                 endPoint: .trailing
@@ -445,7 +511,8 @@ struct ProfileView: View {
                         icon: "person.3.fill",
                         title: "Groups",
                         current: groupLimitInfo.current,
-                        max: groupLimitInfo.max
+                        max: groupLimitInfo.max,
+                        themeManager: themeManager
                     )
                 }
                 
@@ -455,7 +522,8 @@ struct ProfileView: View {
                         icon: "sparkles",
                         title: "AI Requests",
                         current: aiUsage.requestCount,
-                        max: aiUsage.maxRequests
+                        max: aiUsage.maxRequests,
+                        themeManager: themeManager
                     )
                 }
             }
@@ -487,12 +555,13 @@ private struct UsageStatRow: View {
     let title: String
     let current: Int
     let max: Int
+    @ObservedObject var themeManager: ThemeManager
     
     var body: some View {
         HStack {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(Color(red: 0.58, green: 0.41, blue: 0.87))
+                .foregroundColor(themeManager.secondaryColor)
                 .frame(width: 24)
             
             Text(title)

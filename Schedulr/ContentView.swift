@@ -12,6 +12,7 @@ struct ContentView: View {
     @ObservedObject private var calendarManager: CalendarSyncManager
     @StateObject private var viewModel: DashboardViewModel
     @StateObject private var profileViewModel = ProfileViewModel()
+    @StateObject private var themeManager = ThemeManager.shared
     @State private var selectedTab: Int = 0
 
     init(calendarManager: CalendarSyncManager) {
@@ -39,13 +40,33 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environmentObject(themeManager)
 
             // Floating tab bar
             VStack {
                 Spacer()
                 FloatingTabBar(selectedTab: $selectedTab)
+                    .environmentObject(themeManager)
             }
             .ignoresSafeArea(.keyboard)
+        }
+        .task {
+            await loadTheme()
+        }
+    }
+    
+    private func loadTheme() async {
+        do {
+            if let session = try? await SupabaseManager.shared.client.auth.session {
+                let uid = session.user.id
+                let theme = try await ThemePreferencesManager.shared.load(for: uid)
+                await MainActor.run {
+                    themeManager.setTheme(theme)
+                }
+            }
+        } catch {
+            print("⚠️ Could not load theme: \(error)")
+            // Use default theme (already set in ThemeManager.shared)
         }
     }
 }

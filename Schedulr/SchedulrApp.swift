@@ -56,6 +56,7 @@ private struct RootContainer: View {
                     ContentView(calendarManager: calendarManager)
                         .environmentObject(authVM)
                         .environmentObject(calendarManager)
+                        .environmentObject(ThemeManager.shared)
                         .zIndex(0)
                 }
             default:

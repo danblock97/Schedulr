@@ -20,6 +20,7 @@ enum MonthViewMode: String, CaseIterable, Identifiable {
 
 struct CalendarRootView: View {
     @EnvironmentObject private var calendarSync: CalendarSyncManager
+    @EnvironmentObject var themeManager: ThemeManager
     @ObservedObject var viewModel: DashboardViewModel
 
     @State private var mode: CalendarMode = .month
@@ -44,42 +45,15 @@ struct CalendarRootView: View {
                 
                 // Subtle soft color overlay
                 ZStack {
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.08),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.06)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    themeManager.backgroundGradient
                     
                     Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.06),
-                                    Color.clear
-                                ],
-                                center: .center,
-                                startRadius: 0,
-                                endRadius: 300
-                            )
-                        )
+                        .fill(themeManager.backgroundRadialGradient1)
                         .offset(x: -150, y: -200)
                         .blur(radius: 80)
                     
                     Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.05),
-                                    Color.clear
-                                ],
-                                center: .center,
-                                startRadius: 0,
-                                endRadius: 350
-                            )
-                        )
+                        .fill(themeManager.backgroundRadialGradient2)
                         .offset(x: 180, y: 400)
                         .blur(radius: 100)
                 }

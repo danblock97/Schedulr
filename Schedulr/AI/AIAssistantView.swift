@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AIAssistantView: View {
     @StateObject private var viewModel: AIAssistantViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @FocusState private var isInputFocused: Bool
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
@@ -29,7 +30,7 @@ struct AIAssistantView: View {
                     .ignoresSafeArea()
                 
                 // Bubbly background decoration
-                BubblyAIBackground()
+                BubblyAIBackground(themeManager: themeManager)
                     .ignoresSafeArea()
                 
                 if subscriptionManager.isPro {
@@ -431,15 +432,17 @@ private struct LoadingBubble: View {
 // MARK: - Bubbly Background
 
 private struct BubblyAIBackground: View {
+    @ObservedObject var themeManager: ThemeManager
+    
     var body: some View {
         ZStack {
-            // Large pink bubble
+            // Large primary bubble
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.08),
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.02)
+                            themeManager.primaryColor.opacity(0.08),
+                            themeManager.primaryColor.opacity(0.02)
                         ],
                         center: .center,
                         startRadius: 80,
@@ -450,13 +453,13 @@ private struct BubblyAIBackground: View {
                 .offset(x: -150, y: -300)
                 .blur(radius: 40)
             
-            // Purple bubble
+            // Secondary bubble
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.08),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.02)
+                            themeManager.secondaryColor.opacity(0.08),
+                            themeManager.secondaryColor.opacity(0.02)
                         ],
                         center: .center,
                         startRadius: 60,
@@ -473,8 +476,8 @@ private struct BubblyAIBackground: View {
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
+                            themeManager.primaryColor.opacity(0.3),
+                            themeManager.secondaryColor.opacity(0.3)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing

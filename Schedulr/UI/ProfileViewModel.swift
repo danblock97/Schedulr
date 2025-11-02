@@ -286,4 +286,17 @@ class ProfileViewModel: ObservableObject {
             return false
         }
     }
+    
+    func saveTheme(_ theme: ColorTheme) async {
+        do {
+            let session = try await client.auth.session
+            let uid = session.user.id
+            
+            try await ThemePreferencesManager.shared.save(theme, for: uid)
+            print("✅ Theme saved successfully")
+        } catch {
+            print("❌ Error saving theme: \(error)")
+            // Note: We don't set errorMessage here since theme picker handles its own errors
+        }
+    }
 }
