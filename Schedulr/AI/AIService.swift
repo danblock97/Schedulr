@@ -117,9 +117,18 @@ final class AIService {
     /// - Parameter query: The user's natural language query
     /// - Returns: A structured query (AvailabilityQuery or EventCreationQuery)
     func parseQuery(_ query: String, groupMembers: [(id: UUID, name: String)], groupName: String?) async throws -> Any {
-        // First check if it's an event creation query
-        let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
+        // Check if query asks "what times work?" or similar availability questions first
+        // This takes priority over event creation keywords
         let lowercasedQuery = query.lowercased()
+        let availabilityQuestionKeywords = ["what times work", "when are", "when can", "find times", "available times", "what times are", "when would"]
+        let isAvailabilityQuestion = availabilityQuestionKeywords.contains { lowercasedQuery.contains($0) }
+        
+        if isAvailabilityQuestion {
+            return try await parseAvailabilityQuery(query, groupMembers: groupMembers)
+        }
+        
+        // Then check if it's an event creation query
+        let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
         let isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
         
         if isEventCreation {
@@ -216,41 +225,75 @@ Omit fields that are not mentioned or can't be determined. If the query is not a
     /// Uses AI to parse a natural language query into a structured AvailabilityQuery
     /// - Parameter query: The user's natural language query
     /// - Returns: A structured AvailabilityQuery
-    func parseAvailabilityQuery(_ query: String, groupMembers: [(id: UUID, name: String)]) async throws -> AvailabilityQuery {
+    func parseAvailabilityQuery(_ query: String, groupMembers: [(id: UUID, name: String)], groupNames: [(id: UUID, name: String)] = []) async throws -> AvailabilityQuery {
         guard let apiKey = apiKey, !apiKey.isEmpty else {
             throw AIServiceError.missingAPIKey
         }
         
         // Build a system prompt that instructs the AI to parse the query
         let membersList = groupMembers.map { "\($0.name) (ID: \($0.id.uuidString))" }.joined(separator: ", ")
+        let groupsList = groupNames.isEmpty ? "" : "\nAvailable groups: \(groupNames.map { "\($0.name) (ID: \($0.id.uuidString))" }.joined(separator: ", "))"
+        
+        let calendar = Calendar.current
+        let today = Date()
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        let todayString = formatter.string(from: today)
+        
+        // Calculate next week dates
+        let weekday = calendar.component(.weekday, from: today)
+        let daysFromMonday = (weekday + 5) % 7 // Convert to Monday = 0, Sunday = 6
+        let daysToAddToNextMonday = 7 - daysFromMonday + 1 // Days until next Monday, then add 1 week
+        let nextWeekStart = calendar.date(byAdding: .day, value: daysToAddToNextMonday, to: today) ?? today
+        let nextWeekEnd = calendar.date(byAdding: .day, value: 6, to: nextWeekStart) ?? today
+        let nextWeekStartString = formatter.string(from: nextWeekStart)
+        let nextWeekEndString = formatter.string(from: nextWeekEnd)
         
         let systemPrompt = """
 You are Scheduly, a friendly AI scheduling assistant for the Schedulr app. Parse scheduling queries into structured JSON format.
 
-Available group members: \(membersList)
+Available group members: \(membersList)\(groupsList)
+Today's date: \(todayString)
+Next week dates: \(nextWeekStartString) to \(nextWeekEndString)
 
 Parse the user's query and extract:
 1. User names mentioned (match them to the available members list)
-2. Duration in hours (if mentioned)
+   - If query says "all team members" or "all members" from a group, include ALL members from the members list
+   - If query mentions a group name, include ALL members from that group (you'll see group names in the query, match them)
+   - Match user names exactly as they appear in the members list (case-insensitive matching)
+2. Duration in hours (e.g., "2 hours" = 2.0, "1 hour" = 1.0, "30 minutes" = 0.5)
 3. Time window in 24-hour format HH:mm (if mentioned, e.g., "12pm-5pm" becomes "12:00-17:00")
-4. Date range in ISO 8601 format YYYY-MM-DD (if mentioned, defaults to next 30 days)
+4. Date range in ISO 8601 format YYYY-MM-DD
+   - "next week" = \(nextWeekStartString) to \(nextWeekEndString)
+   - If specific days mentioned (e.g., "Tuesday, Wednesday, Thursday"), calculate those dates within the date range
+   - Default to next 30 days if no date range mentioned
 
-Return ONLY valid JSON in this exact format:
+IMPORTANT: If the query mentions days of the week (Monday, Tuesday, etc.) or "preferably" specific days:
+- Calculate the actual dates for those days within the specified date range
+- If "next week" + "Tuesday, Wednesday, Thursday" → calculate next week's Tue, Wed, Thu dates
+- Include those specific dates in the dateRange, or note them in the response
+
+Return ONLY valid JSON in this exact format (no markdown, no code blocks, just raw JSON):
 {
   "type": "availability",
   "users": ["User1", "User2"],
-  "durationHours": 5.0,
+  "durationHours": 2.0,
   "timeWindow": {
-    "start": "12:00",
+    "start": "09:00",
     "end": "17:00"
   },
   "dateRange": {
-    "start": "2025-01-20",
-    "end": "2025-02-20"
+    "start": "2025-11-03",
+    "end": "2025-11-10"
   }
 }
 
-If a field is not mentioned, omit it from the JSON. If the query is not about availability, return {"type": "general"}.
+CRITICAL RULES:
+- If "all team members" or "all members" is mentioned, include ALL members from the members list
+- Match user/group names exactly (case-insensitive)
+- If a field is not mentioned, omit it from the JSON
+- Always return valid JSON, never return text explanations
+- If the query is not about availability, return {"type": "general"}
 """
         
         let messages = [
@@ -286,7 +329,19 @@ If a field is not mentioned, omit it from the JSON. If the query is not about av
             #if DEBUG
             print("Failed to parse AI response as JSON: \(error)")
             print("Response was: \(response)")
+            print("JSON string was: \(jsonString)")
             #endif
+            
+            // Try to extract JSON from text if it's wrapped in explanation
+            if let jsonStart = jsonString.range(of: "{"),
+               let jsonEnd = jsonString.range(of: "}", options: .backwards) {
+                let extractedJSON = String(jsonString[jsonStart.lowerBound...jsonEnd.upperBound])
+                if let extractedData = extractedJSON.data(using: .utf8),
+                   let extractedQuery = try? JSONDecoder().decode(AvailabilityQuery.self, from: extractedData) {
+                    return extractedQuery
+                }
+            }
+            
             // Fallback: try keyword-based parsing
             return parseQueryFallback(query: query, groupMembers: groupMembers)
         }

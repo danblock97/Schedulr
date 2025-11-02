@@ -15,6 +15,12 @@ struct AIAssistantView: View {
     @State private var showPaywall = false
     @State private var hasShownProPrompt = false
     
+    #if os(iOS)
+    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    #else
+    private var isPad: Bool { false }
+    #endif
+    
     init(dashboardViewModel: DashboardViewModel, calendarManager: CalendarSyncManager) {
         _viewModel = StateObject(wrappedValue: AIAssistantViewModel(
             dashboardViewModel: dashboardViewModel,
@@ -39,9 +45,9 @@ struct AIAssistantView: View {
                         // Messages list
                         ScrollViewReader { proxy in
                             ScrollView {
-                                LazyVStack(spacing: 20) {
+                                LazyVStack(spacing: isPad ? 16 : 20) {
                                     ForEach(viewModel.messages) { message in
-                                        MessageBubble(message: message)
+                                        MessageBubble(message: message, isPad: isPad)
                                             .id(message.id)
                                             .transition(.asymmetric(
                                                 insertion: .scale(scale: 0.8).combined(with: .opacity),
@@ -51,13 +57,15 @@ struct AIAssistantView: View {
                                     
                                     // Loading indicator
                                     if viewModel.isLoading {
-                                        LoadingBubble()
+                                        LoadingBubble(isPad: isPad)
                                             .id("loading")
                                     }
                                 }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
+                                .frame(maxWidth: isPad ? 600 : .infinity, alignment: .leading)
+                                .padding(.horizontal, isPad ? 60 : 20)
+                                .padding(.vertical, isPad ? 24 : 12)
                                 .padding(.bottom, 140) // Space for input area + tab bar
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .onAppear {
                                 // Scroll to bottom on initial load
@@ -93,9 +101,9 @@ struct AIAssistantView: View {
                             HStack(spacing: 12) {
                                 TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
                                     .textFieldStyle(.plain)
-                                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                                    .padding(.horizontal, 18)
-                                    .padding(.vertical, 14)
+                                    .font(.system(size: isPad ? 17 : 16, weight: .medium, design: .rounded))
+                                    .padding(.horizontal, isPad ? 20 : 18)
+                                    .padding(.vertical, isPad ? 16 : 14)
                                     .background(
                                         RoundedRectangle(cornerRadius: 24, style: .continuous)
                                             .fill(.ultraThinMaterial)
@@ -141,7 +149,7 @@ struct AIAssistantView: View {
                                                     endPoint: .bottomTrailing
                                                 ))
                                             )
-                                            .frame(width: 44, height: 44)
+                                            .frame(width: isPad ? 48 : 44, height: isPad ? 48 : 44)
                                             .shadow(
                                                 color: viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                                 ? Color.clear
@@ -152,7 +160,7 @@ struct AIAssistantView: View {
                                             )
                                         
                                         Image(systemName: "arrow.up")
-                                            .font(.system(size: 18, weight: .bold))
+                                            .font(.system(size: isPad ? 19 : 18, weight: .bold))
                                             .foregroundStyle(
                                                 viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                                 ? Color.secondary.opacity(0.6)
@@ -163,9 +171,11 @@ struct AIAssistantView: View {
                                 .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLoading)
                                 .buttonStyle(ScaleButtonStyle())
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
+                            .frame(maxWidth: isPad ? 600 : .infinity)
+                            .padding(.horizontal, isPad ? 60 : 20)
+                            .padding(.vertical, isPad ? 18 : 16)
                             .padding(.bottom, 90) // Space for floating tab bar
+                            .frame(maxWidth: .infinity)
                             .background(.ultraThinMaterial)
                             .background(Color(.systemGroupedBackground))
                         }
@@ -176,8 +186,8 @@ struct AIAssistantView: View {
                         VStack(spacing: 24) {
                             // Welcome message
                             if let welcomeMessage = viewModel.messages.first(where: { $0.role == .assistant }) {
-                                MessageBubble(message: welcomeMessage)
-                                    .padding(.horizontal, 20)
+                                MessageBubble(message: welcomeMessage, isPad: isPad)
+                                    .padding(.horizontal, isPad ? 40 : 20)
                                     .padding(.top, 12)
                             }
                             
@@ -223,15 +233,16 @@ struct AIAssistantView: View {
 
 private struct MessageBubble: View {
     let message: ChatMessage
+    let isPad: Bool
     
     var isUser: Bool {
         message.role == .user
     }
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: isPad ? 14 : 12) {
             if isUser {
-                Spacer(minLength: 50)
+                Spacer(minLength: isPad ? 80 : 50)
             }
             
             // AI avatar for assistant messages (Scheduly)
@@ -248,7 +259,7 @@ private struct MessageBubble: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 36, height: 36)
+                        .frame(width: isPad ? 40 : 36, height: isPad ? 40 : 36)
                         .overlay(
                             Circle()
                                 .stroke(
@@ -267,7 +278,7 @@ private struct MessageBubble: View {
                     Image("schedulr-logo")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 24, height: 24)
+                        .frame(width: isPad ? 26 : 24, height: isPad ? 26 : 24)
                         .clipShape(Circle())
                 }
                 .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 8, x: 0, y: 4)
@@ -275,11 +286,11 @@ private struct MessageBubble: View {
             
             VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
                 Text(message.content)
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .font(.system(size: isPad ? 17 : 16, weight: .regular, design: .rounded))
                     .foregroundColor(isUser ? .white : .primary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
+                    .padding(.horizontal, isPad ? 20 : 18)
+                    .padding(.vertical, isPad ? 16 : 14)
                     .background(
                         Group {
                             if isUser {
@@ -323,10 +334,13 @@ private struct MessageBubble: View {
                     )
             }
             
-            if isUser {
-                Spacer(minLength: 50)
+            if !isUser {
+                Spacer(minLength: isPad ? 40 : 20)
+            } else {
+                Spacer(minLength: 0)
             }
         }
+        .frame(maxWidth: isPad ? 600 : .infinity)
     }
 }
 
@@ -334,9 +348,10 @@ private struct MessageBubble: View {
 
 private struct LoadingBubble: View {
     @State private var animate = false
+    let isPad: Bool
     
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: isPad ? 14 : 12) {
             // AI avatar (Scheduly)
             ZStack {
                 Circle()
@@ -350,7 +365,7 @@ private struct LoadingBubble: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 36, height: 36)
+                    .frame(width: isPad ? 40 : 36, height: isPad ? 40 : 36)
                     .overlay(
                         Circle()
                             .stroke(
@@ -369,7 +384,7 @@ private struct LoadingBubble: View {
                 Image("schedulr-logo")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 24, height: 24)
+                    .frame(width: isPad ? 26 : 24, height: isPad ? 26 : 24)
                     .clipShape(Circle())
             }
             .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 8, x: 0, y: 4)
@@ -388,7 +403,7 @@ private struct LoadingBubble: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 10, height: 10)
+                        .frame(width: isPad ? 11 : 10, height: isPad ? 11 : 10)
                         .scaleEffect(animate ? 1.0 : 0.6)
                         .opacity(animate ? 1.0 : 0.5)
                         .animation(
@@ -399,8 +414,8 @@ private struct LoadingBubble: View {
                         )
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.horizontal, isPad ? 20 : 18)
+            .padding(.vertical, isPad ? 16 : 14)
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(Color(.systemBackground))
@@ -421,8 +436,9 @@ private struct LoadingBubble: View {
                     )
             )
             
-            Spacer(minLength: 50)
+            Spacer(minLength: isPad ? 40 : 50)
         }
+        .frame(maxWidth: isPad ? 600 : .infinity, alignment: .leading)
         .onAppear {
             animate = true
         }

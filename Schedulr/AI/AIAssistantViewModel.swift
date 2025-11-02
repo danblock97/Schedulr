@@ -71,18 +71,45 @@ final class AIAssistantViewModel: ObservableObject {
         }
         
         do {
-            // Check if this is a combined query (find slots then create event)
             let lowercasedQuery = userMessage.lowercased()
-            let combinedKeywords = ["after finding", "after you find", "find a free slot", "find a time when", "when are", "find when"]
+            
+            // PRIORITY 1: Check if query asks "what times work?" or similar availability questions
+            // This takes priority even if "schedule" is mentioned
+            let availabilityQuestionKeywords = ["what times work", "when are", "when can", "find times", "available times", "what times are", "when would", "times work"]
+            let isAvailabilityQuestion = availabilityQuestionKeywords.contains { lowercasedQuery.contains($0) }
+            
+            // PRIORITY 2: Check if this is a combined query (find slots then create event)
+            let combinedKeywords = ["after finding", "after you find", "find a free slot", "find a time when", "find when"]
             let hasFindKeyword = combinedKeywords.contains { lowercasedQuery.contains($0) }
             let hasCreateKeyword = ["create", "schedule", "add", "set up", "plan", "book", "make"].contains { lowercasedQuery.contains($0) }
-            let isCombinedQuery = hasFindKeyword && hasCreateKeyword
+            let isCombinedQuery = hasFindKeyword && hasCreateKeyword && !isAvailabilityQuestion
             
-            if isCombinedQuery {
+            if isAvailabilityQuestion {
+                // Handle as availability query (even if "schedule" is mentioned)
+                let groupNames = dashboardViewModel.memberships.map { (id: $0.id, name: $0.name) }
+                let availabilityQuery = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers(), groupNames: groupNames)
+                
+                // Handle group name references (e.g., "all team members from Work Team")
+                var finalQuery = availabilityQuery
+                var groupIdToUse = dashboardViewModel.selectedGroupID
+                if availabilityQuery.type == .availability {
+                    let (resolvedQuery, groupId) = await resolveGroupNameReferences(query: availabilityQuery, userMessage: userMessage)
+                    finalQuery = resolvedQuery
+                    groupIdToUse = groupId ?? groupIdToUse
+                }
+                
+                if finalQuery.type == .availability && !finalQuery.users.isEmpty {
+                    // Handle availability query with the correct group ID
+                    await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
+                } else {
+                    // Handle general question
+                    await handleGeneralQuestion(question: userMessage)
+                }
+            } else if isCombinedQuery {
                 // Handle combined find-and-create query
                 await handleFindAndCreateQuery(userMessage: userMessage)
             } else {
-                // Try to parse as event creation first
+                // Try to parse as event creation
                 let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
                 let isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
                 
@@ -107,11 +134,22 @@ final class AIAssistantViewModel: ObservableObject {
                     await handleEventCreationQuery(query: eventQuery)
                 } else {
                     // Check if query is about availability
-                    let availabilityQuery = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers())
+                    // Get available group names for better parsing
+                    let groupNames = dashboardViewModel.memberships.map { (id: $0.id, name: $0.name) }
+                    let availabilityQuery = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers(), groupNames: groupNames)
                     
-                    if availabilityQuery.type == .availability && !availabilityQuery.users.isEmpty {
-                        // Handle availability query
-                        await handleAvailabilityQuery(query: availabilityQuery)
+                    // Handle group name references (e.g., "all team members from Work Team")
+                    var finalQuery = availabilityQuery
+                    var groupIdToUse = dashboardViewModel.selectedGroupID
+                    if availabilityQuery.type == .availability {
+                        let (resolvedQuery, groupId) = await resolveGroupNameReferences(query: availabilityQuery, userMessage: userMessage)
+                        finalQuery = resolvedQuery
+                        groupIdToUse = groupId ?? groupIdToUse
+                    }
+                    
+                    if finalQuery.type == .availability && !finalQuery.users.isEmpty {
+                        // Handle availability query with the correct group ID
+                        await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
                     } else {
                         // Handle general question
                         await handleGeneralQuestion(question: userMessage)
@@ -144,8 +182,9 @@ final class AIAssistantViewModel: ObservableObject {
     
     // MARK: - Query Handling
     
-    private func handleAvailabilityQuery(query: AvailabilityQuery) async {
-        guard let groupId = dashboardViewModel.selectedGroupID else {
+    private func handleAvailabilityQuery(query: AvailabilityQuery, groupId: UUID? = nil) async {
+        let groupIdToUse = groupId ?? dashboardViewModel.selectedGroupID
+        guard let groupId = groupIdToUse else {
             let response = ChatMessage(
                 role: .assistant,
                 content: "Please select a group first to check member availability. Go to the Groups tab and select a group."
@@ -750,6 +789,63 @@ Be concise and friendly in your responses. If asked about availability, remind u
             map[member.displayName.lowercased()] = member.id
         }
         return map
+    }
+    
+    /// Resolves group name references in availability queries (e.g., "all team members from Work Team")
+    /// Returns the resolved query and the group ID to use for the availability check
+    private func resolveGroupNameReferences(query: AvailabilityQuery, userMessage: String) async -> (AvailabilityQuery, UUID?) {
+        var resolvedQuery = query
+        let lowercasedMessage = userMessage.lowercased()
+        
+        // Check if query mentions "all team members" or "all members"
+        let allMembersKeywords = ["all team members", "all members", "everyone", "every team member", "all the team members"]
+        let mentionsAllMembers = allMembersKeywords.contains { lowercasedMessage.contains($0) }
+        
+        // Check if query mentions a specific group name
+        var mentionedGroupName: String? = nil
+        var mentionedGroupId: UUID? = nil
+        for membership in dashboardViewModel.memberships {
+            if lowercasedMessage.contains(membership.name.lowercased()) {
+                mentionedGroupName = membership.name
+                mentionedGroupId = membership.id
+                break
+            }
+        }
+        
+        var groupIdToUse: UUID? = dashboardViewModel.selectedGroupID
+        
+        // If "all members" is mentioned
+        if mentionsAllMembers {
+            // If a specific group is mentioned, fetch members from that group
+            if let groupId = mentionedGroupId {
+                groupIdToUse = groupId
+                // Check if this is the currently selected group
+                if dashboardViewModel.selectedGroupID == groupId {
+                    // Use current members
+                    if !dashboardViewModel.members.isEmpty {
+                        resolvedQuery.users = dashboardViewModel.members.map { $0.displayName }
+                    }
+                } else {
+                    // Fetch members from the mentioned group
+                    await dashboardViewModel.fetchMembers(for: groupId)
+                    // Wait a bit for the fetch to complete
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    // Use the members from that group
+                    if !dashboardViewModel.members.isEmpty {
+                        resolvedQuery.users = dashboardViewModel.members.map { $0.displayName }
+                    }
+                }
+            } else if dashboardViewModel.selectedGroupID != nil && !dashboardViewModel.members.isEmpty {
+                // If no specific group mentioned, use all members from selected group
+                resolvedQuery.users = dashboardViewModel.members.map { $0.displayName }
+            }
+        } else if resolvedQuery.users.isEmpty && dashboardViewModel.selectedGroupID != nil && !dashboardViewModel.members.isEmpty {
+            // If no users were parsed but members are available, use all members as fallback
+            // This handles cases where the AI didn't parse "all members" correctly
+            resolvedQuery.users = dashboardViewModel.members.map { $0.displayName }
+        }
+        
+        return (resolvedQuery, groupIdToUse)
     }
     
     private func addWelcomeMessage() {
