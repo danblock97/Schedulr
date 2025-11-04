@@ -361,6 +361,13 @@ struct EventEditorView: View {
                 // Auto-refresh the calendar view to show the new/updated event
                 try? await calendarSync.fetchGroupEvents(groupId: selectedGroupId)
                 
+                // Record significant action for rating prompt (only for new events)
+                if existingEvent == nil {
+                    RatingManager.shared.recordSignificantAction()
+                    // Check if we should show rating prompt
+                    _ = RatingManager.shared.requestReviewIfAppropriate()
+                }
+                
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

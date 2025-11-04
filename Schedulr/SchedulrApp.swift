@@ -32,6 +32,7 @@ private struct RootContainer: View {
     @StateObject private var authVM = AuthViewModel()
     @StateObject private var calendarManager: CalendarSyncManager
     @StateObject private var onboardingVM: OnboardingViewModel
+    @StateObject private var consentManager = ConsentManager.shared
     @State private var showOnboarding: Bool = false
     @State private var routingInProgress: Bool = false
 
@@ -69,6 +70,16 @@ private struct RootContainer: View {
                     .transition(.opacity)
                     .zIndex(1)
             }
+            
+            // Consent banner - show after splash, before auth/onboarding
+            if !showSplash && consentManager.shouldShowConsent {
+                VStack {
+                    Spacer()
+                    ConsentBannerView(consentManager: consentManager)
+                        .environmentObject(ThemeManager.shared)
+                        .zIndex(2)
+                }
+            }
         }
         .ignoresSafeArea()
         .task {
@@ -88,6 +99,8 @@ private struct RootContainer: View {
             await SubscriptionManager.shared.configure()
             // Check and enforce grace periods if needed
             await GracePeriodManager.shared.checkAndEnforceIfNeeded()
+            // Initialize rating manager (tracks launches automatically)
+            _ = RatingManager.shared
             // Do not pre-check onboarding here to avoid race with async auth validation.
             // Keep splash until auth phase leaves .checking (with a safety timeout).
             var remainingChecks = 20 // ~2.0s max at 100ms intervals
@@ -130,6 +143,8 @@ private struct RootContainer: View {
                     onboardingVM.onFinished = {
                         showOnboarding = false
                         routingInProgress = false
+                        // Record onboarding completion for rating prompt
+                        RatingManager.shared.recordOnboardingCompleted()
                         Task { await calendarManager.refreshEvents() }
                     }
                 }

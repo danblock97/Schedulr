@@ -186,6 +186,12 @@ struct CalendarRootView: View {
                             Task {
                                 if let userId = try? await viewModel.client?.auth.session.user.id {
                                     await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
+                                    // Record significant action for rating prompt after successful sync
+                                    if calendarSync.lastSyncError == nil {
+                                        RatingManager.shared.recordSignificantAction()
+                                        // Check if we should show rating prompt
+                                        _ = RatingManager.shared.requestReviewIfAppropriate()
+                                    }
                                 }
                             }
                         } label: {

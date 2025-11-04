@@ -281,6 +281,11 @@ struct GroupManagementView: View {
                 // Refresh dashboard
                 await dashboardVM.reloadMemberships()
                 
+                // Record significant action for rating prompt
+                RatingManager.shared.recordSignificantAction()
+                // Check if we should show rating prompt
+                _ = RatingManager.shared.requestReviewIfAppropriate()
+                
                 // Clear and dismiss
                 groupName = ""
                 dismiss()
@@ -354,6 +359,11 @@ struct GroupManagementView: View {
             
             // Refresh dashboard
             await dashboardVM.reloadMemberships()
+            
+            // Record significant action for rating prompt
+            RatingManager.shared.recordSignificantAction()
+            // Check if we should show rating prompt
+            _ = RatingManager.shared.requestReviewIfAppropriate()
             
             // Clear and dismiss
             inviteCode = ""
