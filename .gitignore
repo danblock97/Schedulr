@@ -3,9 +3,6 @@ Config/Schedulr-Secrets.xcconfig
 Supabase_Migrations/
 supabase/*
 
-# Xcode project file (may contain API keys)
-Schedulr.xcodeproj/project.pbxproj
-
 # Setup and utility files
 SETUP_GUIDE.md
 run-dual-simulators.sh
