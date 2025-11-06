@@ -248,6 +248,7 @@ struct GroupDashboardView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
     var onSignOut: (() -> Void)?
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
@@ -507,12 +508,12 @@ struct GroupDashboardView: View {
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                                         .fill(Color(.secondarySystemBackground))
                                     
-                                    // Inverted emboss - pressed in look
+                                    // Inverted emboss - pressed in look (more subtle in dark mode)
                                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                                         .fill(
                                             LinearGradient(
                                                 colors: [
-                                                    Color.black.opacity(0.05),
+                                                    Color.black.opacity(colorScheme == .dark ? 0.15 : 0.05),
                                                     Color.clear
                                                 ],
                                                 startPoint: .topLeading,
@@ -521,8 +522,8 @@ struct GroupDashboardView: View {
                                         )
                                 }
                             )
-                            .shadow(color: Color.black.opacity(0.2), radius: 2, x: 1, y: 1)
-                            .shadow(color: Color.white.opacity(0.7), radius: 1, x: -1, y: -1)
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.2), radius: 2, x: 1, y: 1)
+                            .shadow(color: colorScheme == .dark ? Color.clear : Color.white.opacity(0.7), radius: 1, x: -1, y: -1)
                         }
                     }
                     .padding(.vertical, 8)
@@ -1436,6 +1437,7 @@ private struct SectionHeader: View {
 private struct BubblyCard<Content: View>: View {
     @ViewBuilder let content: Content
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         content
@@ -1459,24 +1461,26 @@ private struct BubblyCard<Content: View>: View {
                         )
                     )
                 
-                // Embossed effect - light highlight
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.6),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .center
+                // Embossed effect - light highlight (reduced in dark mode)
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.6),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .center
+                            )
                         )
-                    )
+                }
             }
         )
-            // Inverted emboss shadows - dual shadow for 3D effect
-            .shadow(color: Color.white.opacity(0.8), radius: 1, x: -1, y: -1)
-            .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
-            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+            // Inverted emboss shadows - more subtle in dark mode
+            .shadow(color: colorScheme == .light ? Color.white.opacity(0.8) : Color.clear, radius: 1, x: -1, y: -1)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 4, x: 2, y: 2)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.05), radius: 8, x: 0, y: 4)
     }
 }
 
@@ -1508,6 +1512,7 @@ private struct EnhancedUpcomingEventRow: View {
     var sharedCount: Int = 1
     @State private var isPressed = false
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         HStack(spacing: 14) {
@@ -1598,26 +1603,28 @@ private struct EnhancedUpcomingEventRow: View {
                         )
                     )
                 
-                // Enhanced embossed highlight
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.7),
-                                Color.white.opacity(0.4),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                // Enhanced embossed highlight (reduced in dark mode)
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.7),
+                                    Color.white.opacity(0.4),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
+                }
             }
         )
-        // Enhanced emboss shadows for more depth
-        .shadow(color: Color.white.opacity(0.8), radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
-        .shadow(color: dotColor.opacity(0.1), radius: 12, x: 0, y: 6)
+        // Enhanced emboss shadows - more subtle in dark mode
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.8) : Color.clear, radius: 2, x: -2, y: -2)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 4, x: 2, y: 2)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.06), radius: 8, x: 0, y: 4)
+        .shadow(color: dotColor.opacity(colorScheme == .dark ? 0.05 : 0.1), radius: 12, x: 0, y: 6)
         .scaleEffect(isPressed ? 0.99 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
     }
@@ -1657,6 +1664,7 @@ private struct EnhancedMemberRow: View {
     let onTransferOwnership: () -> Void
     @State private var isPressed = false
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         HStack(spacing: 14) {
@@ -1743,25 +1751,27 @@ private struct EnhancedMemberRow: View {
                         )
                     )
                 
-                // Enhanced embossed highlight
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.7),
-                                Color.white.opacity(0.4),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                // Enhanced embossed highlight (reduced in dark mode)
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.7),
+                                    Color.white.opacity(0.4),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
+                }
             }
         )
-        // Enhanced emboss shadows for more depth
-        .shadow(color: Color.white.opacity(0.8), radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 2, y: 2)
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+        // Enhanced emboss shadows - more subtle in dark mode
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.8) : Color.clear, radius: 2, x: -2, y: -2)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 4, x: 2, y: 2)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.06), radius: 8, x: 0, y: 4)
         .scaleEffect(isPressed ? 0.99 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
     }
@@ -1780,6 +1790,7 @@ private struct EnhancedMemberRow: View {
 private struct EnhancedGroupSelectorCard: View {
     let groupName: String
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         HStack(spacing: 12) {
@@ -1837,25 +1848,27 @@ private struct EnhancedGroupSelectorCard: View {
                         )
                     )
                 
-                // Embossed highlight with more depth
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.7),
-                                Color.white.opacity(0.3),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                // Embossed highlight with more depth (reduced in dark mode)
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.7),
+                                    Color.white.opacity(0.3),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
+                }
             }
         )
-        // Enhanced emboss shadows for more depth
-        .shadow(color: Color.white.opacity(0.9), radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(0.15), radius: 5, x: 3, y: 3)
-        .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 5)
+        // Enhanced emboss shadows - more subtle in dark mode
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 2, x: -2, y: -2)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 5, x: 3, y: 3)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -1884,6 +1897,7 @@ private struct EnhancedGroupInviteView: View {
     @State private var showCopied = false
     
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1973,12 +1987,12 @@ private struct EnhancedGroupInviteView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color(.secondarySystemBackground))
                         
-                        // Inverted emboss
+                        // Inverted emboss (more subtle in dark mode)
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        Color.black.opacity(0.04),
+                                        Color.black.opacity(colorScheme == .dark ? 0.15 : 0.04),
                                         Color.clear
                                     ],
                                     startPoint: .topLeading,
@@ -1987,8 +2001,8 @@ private struct EnhancedGroupInviteView: View {
                             )
                     }
                 )
-                .shadow(color: Color.black.opacity(0.15), radius: 2, x: 1, y: 1)
-                .shadow(color: Color.white.opacity(0.6), radius: 1, x: -1, y: -1)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 2, x: 1, y: 1)
+                .shadow(color: colorScheme == .light ? Color.white.opacity(0.6) : Color.clear, radius: 1, x: -1, y: -1)
             }
         }
         .padding(20)
@@ -2010,24 +2024,26 @@ private struct EnhancedGroupInviteView: View {
                         )
                     )
                 
-                // Enhanced embossed highlight
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.7),
-                                Color.white.opacity(0.4),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                // Enhanced embossed highlight (reduced in dark mode)
+                if colorScheme == .light {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.7),
+                                    Color.white.opacity(0.4),
+                                    Color.clear
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
+                }
             }
         )
-        // Enhanced emboss shadows for more depth
-        .shadow(color: Color.white.opacity(0.9), radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(0.15), radius: 5, x: 3, y: 3)
-        .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 5)
+        // Enhanced emboss shadows - more subtle in dark mode
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 2, x: -2, y: -2)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 5, x: 3, y: 3)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
     }
 }

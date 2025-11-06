@@ -58,6 +58,7 @@ enum PresetTheme: String, CaseIterable {
     case orangeRed = "orange_red"
     case purpleBlue = "purple_blue"
     case tealGreen = "teal_green"
+    case dark = "dark"
     
     var displayName: String {
         switch self {
@@ -67,6 +68,7 @@ enum PresetTheme: String, CaseIterable {
         case .orangeRed: return "Orange & Red"
         case .purpleBlue: return "Purple & Blue"
         case .tealGreen: return "Teal & Green"
+        case .dark: return "Dark Mode"
         }
     }
     
@@ -101,6 +103,12 @@ enum PresetTheme: String, CaseIterable {
             return (
                 Color(red: 0.18, green: 0.80, blue: 0.74),
                 Color(red: 0.20, green: 0.78, blue: 0.35)
+            )
+        case .dark:
+            // Dark theme accent colors: dark gray to black gradient
+            return (
+                Color(red: 0.25, green: 0.25, blue: 0.25),
+                Color(red: 0.15, green: 0.15, blue: 0.15)
             )
         }
     }
@@ -192,6 +200,15 @@ class ThemeManager: ObservableObject {
             }
             return (colorComps[0].color, colorComps[1].color)
         }
+    }
+    
+    var preferredColorScheme: ColorScheme? {
+        if case .preset = currentTheme.type,
+           let name = currentTheme.name,
+           name == PresetTheme.dark.rawValue {
+            return .dark
+        }
+        return nil
     }
     
     // MARK: - Theme Management

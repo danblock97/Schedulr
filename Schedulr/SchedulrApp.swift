@@ -33,6 +33,7 @@ private struct RootContainer: View {
     @StateObject private var calendarManager: CalendarSyncManager
     @StateObject private var onboardingVM: OnboardingViewModel
     @StateObject private var consentManager = ConsentManager.shared
+    @ObservedObject private var themeManager = ThemeManager.shared
     @State private var showOnboarding: Bool = false
     @State private var routingInProgress: Bool = false
 
@@ -82,6 +83,7 @@ private struct RootContainer: View {
             }
         }
         .ignoresSafeArea()
+        .preferredColorScheme(themeManager.preferredColorScheme)
         .task {
             // Initialize services and then dismiss the splash.
             do {
