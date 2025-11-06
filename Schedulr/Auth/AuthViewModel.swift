@@ -9,15 +9,17 @@ import AuthenticationServices
 @MainActor
 final class AuthViewModel: ObservableObject {
     enum AuthPhase: Equatable { case checking, unauthenticated, authenticated }
+    enum AuthMode: Equatable { case signIn, signUp }
 
     // Input
     @Published var email: String = ""
+    @Published var password: String = ""
 
     // UI State
     @Published var isLoadingGoogle: Bool = false
     @Published var isLoadingApple: Bool = false
-    @Published var isLoadingMagic: Bool = false
-    @Published var magicSent: Bool = false
+    @Published var isLoadingEmail: Bool = false
+    @Published var authMode: AuthMode = .signIn
     @Published var errorMessage: String? = nil
     @Published var noticeMessage: String? = nil
 
@@ -145,9 +147,6 @@ final class AuthViewModel: ObservableObject {
             await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
             errorMessage = error.localizedDescription
-            if error.localizedDescription.localizedCaseInsensitiveContains("invalid flow state") {
-                showNotice("Magic link expired or not initiated here. Request a new link in the app.")
-            }
             #if DEBUG
             print("[Auth] handleOpenURL error:", error.localizedDescription)
             #endif
@@ -208,26 +207,87 @@ final class AuthViewModel: ObservableObject {
     }
     #endif
 
-    func sendMagicLink() async {
-        guard !isLoadingMagic else { return }
-        isLoadingMagic = true
+    func signInWithEmail() async {
+        guard !isLoadingEmail else { return }
+        isLoadingEmail = true
         errorMessage = nil
-        magicSent = false
-        defer { isLoadingMagic = false }
+        defer { isLoadingEmail = false }
 
         guard let client else { return }
         do {
-            let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
+            let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            guard !trimmedEmail.isEmpty else {
                 errorMessage = "Please enter your email."
                 return
             }
-            // Enforce redirect to match app callback path to ensure handler receives PKCE result.
-            // Adjust if your chosen path differs.
+            guard !trimmedPassword.isEmpty else {
+                errorMessage = "Please enter your password."
+                return
+            }
+            guard trimmedPassword.count >= 6 else {
+                errorMessage = "Password must be at least 6 characters."
+                return
+            }
+            
+            _ = try await client.auth.signIn(email: trimmedEmail, password: trimmedPassword)
+            refreshAuthState()
+            await SubscriptionManager.shared.fetchSubscriptionStatus()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func signUpWithEmail() async {
+        guard !isLoadingEmail else { return }
+        isLoadingEmail = true
+        errorMessage = nil
+        defer { isLoadingEmail = false }
+
+        guard let client else { return }
+        do {
+            let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            guard !trimmedEmail.isEmpty else {
+                errorMessage = "Please enter your email."
+                return
+            }
+            guard !trimmedPassword.isEmpty else {
+                errorMessage = "Please enter your password."
+                return
+            }
+            guard trimmedPassword.count >= 6 else {
+                errorMessage = "Password must be at least 6 characters."
+                return
+            }
+            
+            _ = try await client.auth.signUp(email: trimmedEmail, password: trimmedPassword)
+            refreshAuthState()
+            await SubscriptionManager.shared.fetchSubscriptionStatus()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func resetPassword() async {
+        guard !isLoadingEmail else { return }
+        isLoadingEmail = true
+        errorMessage = nil
+        defer { isLoadingEmail = false }
+
+        guard let client else { return }
+        do {
+            let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedEmail.isEmpty else {
+                errorMessage = "Please enter your email."
+                return
+            }
+            
             let callback = URL(string: "schedulr://auth-callback")
-            try await client.auth.signInWithOTP(email: trimmed, redirectTo: callback)
-            magicSent = true
-            showNotice("Magic link sent! Check your email.", duration: 4.0)
+            try await client.auth.resetPasswordForEmail(trimmedEmail, redirectTo: callback)
+            showNotice("Password reset email sent! Check your inbox.", duration: 5.0)
         } catch {
             errorMessage = error.localizedDescription
         }

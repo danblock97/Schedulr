@@ -23,7 +23,7 @@ struct SupabaseConfiguration {
     let anonKey: String
     // Not for client use in production; present for completeness/testing.
     let serviceRoleKey: String?
-    // URL scheme used for OAuth / magic-link redirects (must exist in Info.plist URL Types)
+    // URL scheme used for OAuth redirects and password reset (must exist in Info.plist URL Types)
     let oauthCallbackScheme: String?
     // OpenAI API key for AI features
     let openAIAPIKey: String?
@@ -63,7 +63,7 @@ final class SupabaseManager {
         self.configuration = configuration
         // Initialize client with Keychain storage for session persistence.
         // Redirect handling is performed via onOpenURL -> client.auth.handle(url).
-        // Prefer implicit flow for email magic links to avoid PKCE flow-state issues on iOS.
+        // Implicit flow is used for OAuth and password reset redirects.
         // PKCE remains supported for OAuth via handle(url).
         self.client = SupabaseClient(
             supabaseURL: configuration.url,

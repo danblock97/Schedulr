@@ -8,6 +8,8 @@ struct AuthView: View {
     @ObservedObject var viewModel: AuthViewModel
     @State private var emblem: String = "🫧💖🌈"
     @State private var sparkle: String = "✨"
+    @State private var showPassword: Bool = false
+    @State private var showForgotPassword: Bool = false
 
     #if os(iOS)
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -135,8 +137,9 @@ struct AuthView: View {
                 }
                 .padding(.horizontal)
 
-                // Email card
+                // Email/Password card
                 VStack(spacing: isPad ? 14 : 12) {
+                    // Email field
                     HStack(spacing: isPad ? 14 : 12) {
                         ZStack {
                             Circle()
@@ -165,28 +168,151 @@ struct AuthView: View {
                         .frame(height: isPad ? 52 : 44)
                     }
 
-                    Button(action: { Task { await viewModel.sendMagicLink() } }) {
-                        HStack(spacing: isPad ? 10 : 8) {
-                            if viewModel.isLoadingMagic { ProgressView() }
-                            Text(viewModel.isLoadingMagic ? "Sending…" : "Send Magic Link")
-                                .font(
-                                    isPad
-                                    ? .system(.title3, design: .rounded).weight(.semibold)
-                                    : .system(.headline, design: .rounded).weight(.semibold)
-                                )
+                    // Password field
+                    HStack(spacing: isPad ? 14 : 12) {
+                        ZStack {
+                            Circle()
+                                .fill(.purple.gradient)
+                                .frame(width: isPad ? 48 : 40, height: isPad ? 48 : 40)
+                                .shadow(color: .purple.opacity(0.25), radius: isPad ? 10 : 8, x: 0, y: 4)
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(.white)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, isPad ? 16 : 14)
-                        .background(
-                            LinearGradient(colors: [.purple.opacity(0.95), .pink.opacity(0.95)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .foregroundStyle(.white)
-                        .clipShape(Capsule())
-                        .shadow(color: .purple.opacity(0.25), radius: isPad ? 12 : 10, x: 0, y: 8)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(.thinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5)
+                                )
+                            HStack {
+                                if showPassword {
+                                    TextField("Password", text: $viewModel.password)
+                                        .textContentType(viewModel.authMode == .signUp ? .newPassword : .password)
+                                        .autocapitalization(.none)
+                                        .disableAutocorrection(true)
+                                        .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
+                                } else {
+                                    SecureField("Password", text: $viewModel.password)
+                                        .textContentType(viewModel.authMode == .signUp ? .newPassword : .password)
+                                        .autocapitalization(.none)
+                                        .disableAutocorrection(true)
+                                        .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
+                                }
+                                Button(action: { showPassword.toggle() }) {
+                                    Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                        .foregroundStyle(.secondary)
+                                        .font(isPad ? .title3 : .body)
+                                }
+                            }
+                            .padding(.horizontal, isPad ? 16 : 14)
+                            .padding(.vertical, isPad ? 12 : 10)
+                        }
+                        .frame(height: isPad ? 52 : 44)
                     }
-                    .disabled(viewModel.isLoadingMagic)
 
-                    // Magic link notice now shown via noticeMessage for consistency.
+                    // Forgot password link (only show in sign in mode)
+                    if viewModel.authMode == .signIn && !showForgotPassword {
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                showForgotPassword = true
+                            }) {
+                                Text("Forgot Password?")
+                                    .font(isPad ? .footnote : .caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.trailing, isPad ? 4 : 2)
+                        }
+                    }
+
+                    // Forgot password email input (when forgot password is active)
+                    if showForgotPassword {
+                        Button(action: {
+                            Task {
+                                await viewModel.resetPassword()
+                                showForgotPassword = false
+                            }
+                        }) {
+                            HStack(spacing: isPad ? 10 : 8) {
+                                if viewModel.isLoadingEmail { ProgressView() }
+                                Text(viewModel.isLoadingEmail ? "Sending…" : "Send Reset Email")
+                                    .font(
+                                        isPad
+                                        ? .system(.title3, design: .rounded).weight(.semibold)
+                                        : .system(.headline, design: .rounded).weight(.semibold)
+                                    )
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, isPad ? 16 : 14)
+                            .background(
+                                LinearGradient(colors: [.blue.opacity(0.95), .cyan.opacity(0.95)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            )
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                            .shadow(color: .blue.opacity(0.25), radius: isPad ? 12 : 10, x: 0, y: 8)
+                        }
+                        .disabled(viewModel.isLoadingEmail)
+                        
+                        Button(action: {
+                            showForgotPassword = false
+                        }) {
+                            Text("Back to Sign In")
+                                .font(isPad ? .footnote : .caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    } else {
+                        // Sign in/Sign up button
+                        Button(action: {
+                            Task {
+                                if viewModel.authMode == .signIn {
+                                    await viewModel.signInWithEmail()
+                                } else {
+                                    await viewModel.signUpWithEmail()
+                                }
+                            }
+                        }) {
+                            HStack(spacing: isPad ? 10 : 8) {
+                                if viewModel.isLoadingEmail { ProgressView() }
+                                Text(viewModel.isLoadingEmail ? "Please wait…" : (viewModel.authMode == .signIn ? "Sign In" : "Sign Up"))
+                                    .font(
+                                        isPad
+                                        ? .system(.title3, design: .rounded).weight(.semibold)
+                                        : .system(.headline, design: .rounded).weight(.semibold)
+                                    )
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, isPad ? 16 : 14)
+                            .background(
+                                LinearGradient(colors: [.purple.opacity(0.95), .pink.opacity(0.95)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            )
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                            .shadow(color: .purple.opacity(0.25), radius: isPad ? 12 : 10, x: 0, y: 8)
+                        }
+                        .disabled(viewModel.isLoadingEmail)
+
+                        // Toggle between sign in and sign up
+                        Button(action: {
+                            withAnimation {
+                                viewModel.authMode = viewModel.authMode == .signIn ? .signUp : .signIn
+                                viewModel.password = ""
+                                viewModel.errorMessage = nil
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Text(viewModel.authMode == .signIn ? "Don't have an account?" : "Already have an account?")
+                                    .font(isPad ? .footnote : .caption)
+                                    .foregroundStyle(.secondary)
+                                Text(viewModel.authMode == .signIn ? "Sign Up" : "Sign In")
+                                    .font(isPad ? .footnote : .caption)
+                                    .foregroundStyle(.purple)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
                 }
                 .padding(isPad ? 18 : 16)
                 .background(
