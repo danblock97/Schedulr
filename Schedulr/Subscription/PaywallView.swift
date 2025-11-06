@@ -151,7 +151,7 @@ struct PaywallView: View {
                 PricingOptionCard(
                     product: .proYearly,
                     isSelected: selectedProduct == .proYearly,
-                    savings: "Save £15/year"
+                    savings: "Save £13/year"
                 )
             }
             

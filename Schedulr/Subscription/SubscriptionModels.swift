@@ -238,8 +238,8 @@ enum SubscriptionProduct: String, CaseIterable {
     
     var price: String {
         switch self {
-        case .proMonthly: return "£4.99"
-        case .proYearly: return "£44.99"
+        case .proMonthly: return "£3.99"
+        case .proYearly: return "£34.99"
         }
     }
     
@@ -253,7 +253,7 @@ enum SubscriptionProduct: String, CaseIterable {
     var savings: String? {
         switch self {
         case .proMonthly: return nil
-        case .proYearly: return "Save £15"
+        case .proYearly: return "Save £13"
         }
     }
 }
