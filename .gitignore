@@ -1,5 +1,7 @@
 # Local secret configuration (do not commit)
 Config/Schedulr-Secrets.xcconfig
+Config/Schedulr-Debug-Secrets.xcconfig
+Config/Schedulr-Release-Secrets.xcconfig
 Supabase_Migrations/
 supabase/*
 

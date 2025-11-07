@@ -1,2 +1,2 @@
 // Debug.xcconfig - Local development configuration
-#include "Schedulr-Secrets.xcconfig"
+#include "Schedulr-Debug-Secrets.xcconfig"
