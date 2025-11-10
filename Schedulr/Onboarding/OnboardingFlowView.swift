@@ -11,6 +11,13 @@ struct OnboardingFlowView: View {
             ZStack {
                 BubblyBackground()
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        // Dismiss keyboard when tapping background
+                        #if os(iOS)
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        #endif
+                    }
 
                 VStack(spacing: 24) {
                     OnboardingHeader(step: viewModel.step)
@@ -113,6 +120,7 @@ struct OnboardingFlowView: View {
                         )
                         .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 8, x: 0, y: 4)
                     }
+                    .buttonStyle(.plain)
                     .disabled(
                         (viewModel.step == .name && viewModel.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         || (viewModel.step == .avatar && viewModel.isUploadingAvatar)
@@ -243,7 +251,7 @@ private struct AvatarStep: View {
 
 private struct NameStep: View {
     @ObservedObject var viewModel: OnboardingViewModel
-    @FocusState private var isFocused: Bool
+    @FocusState private var nameFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 16) {
@@ -260,9 +268,9 @@ private struct NameStep: View {
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.words)
                     .disableAutocorrection(true)
-                    .focused($isFocused)
+                    .focused($nameFieldFocused)
             }
-            .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isFocused = true } }
+            .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { nameFieldFocused = true } }
             if viewModel.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Display name is required.")
                     .font(.footnote)
@@ -276,6 +284,9 @@ private struct NameStep: View {
 
 private struct GroupStep: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @FocusState private var groupNameFieldFocused: Bool
+    @FocusState private var joinInputFieldFocused: Bool
+    
     var body: some View {
         VStack(spacing: 18) {
             // Create by default
@@ -284,6 +295,7 @@ private struct GroupStep: View {
                     .font(.subheadline.weight(.semibold))
                 TextField("e.g. Weekend Warriors", text: $viewModel.groupName)
                     .textFieldStyle(.roundedBorder)
+                    .focused($groupNameFieldFocused)
                     .onChange(of: viewModel.groupName) { _, val in
                         // If user types a name, prefer create mode
                         if !val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -314,6 +326,7 @@ private struct GroupStep: View {
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
                     .disableAutocorrection(true)
+                    .focused($joinInputFieldFocused)
                     .onChange(of: viewModel.joinInput) { _, val in
                         let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
                         viewModel.groupMode = trimmed.isEmpty ? .create : .join

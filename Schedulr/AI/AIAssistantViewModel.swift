@@ -48,13 +48,16 @@ final class AIAssistantViewModel: ObservableObject {
         
         // Show loading state
         isLoading = true
+        defer {
+            // Always reset loading state, even if there's an unexpected error
+            isLoading = false
+        }
         
         // Check AI usage limits
         let canUseAI = await AIUsageTracker.shared.canMakeRequest()
         
         guard canUseAI else {
             // Show limit reached message
-            isLoading = false
             let limitMsg = ChatMessage(
                 role: .assistant,
                 content: "⚠️ You've reached your AI usage limit for this month. Upgrade to Pro to get 100 AI requests per month!"
@@ -121,7 +124,6 @@ final class AIAssistantViewModel: ObservableObject {
                             content: "Please select a group first to create an event. Go to the Groups tab and select a group."
                         )
                         messages.append(response)
-                        isLoading = false
                         return
                     }
                     
@@ -176,8 +178,6 @@ final class AIAssistantViewModel: ObservableObject {
             )
             messages.append(errorMsg)
         }
-        
-        isLoading = false
     }
     
     // MARK: - Query Handling
@@ -438,12 +438,23 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
             }
             
             // Use the first (best) available slot
+            guard !slots.isEmpty else {
+                let errorMessage = ChatMessage(
+                    role: .assistant,
+                    content: "I couldn't find any available time slots. Please try again."
+                )
+                self.messages.append(errorMessage)
+                return
+            }
             let selectedSlot = slots[0]
             
             // Create the event at the selected slot time
             let currentUserId: UUID
             do {
-                let session = try await SupabaseManager.shared.client.auth.session
+                guard let client = SupabaseManager.shared.client else {
+                    throw NSError(domain: "AIAssistantViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Supabase client not initialized"])
+                }
+                let session = try await client.auth.session
                 currentUserId = session.user.id
             } catch {
                 let errorMessage = ChatMessage(

@@ -34,6 +34,11 @@ struct AIAssistantView: View {
                 // Background
                 Color(.systemGroupedBackground)
                     .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        // Dismiss keyboard when tapping background
+                        isInputFocused = false
+                    }
                 
                 // Bubbly background decoration
                 BubblyAIBackground(themeManager: themeManager)
@@ -66,7 +71,15 @@ struct AIAssistantView: View {
                                 .padding(.vertical, isPad ? 24 : 12)
                                 .padding(.bottom, 140) // Space for input area + tab bar
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
                             }
+                            .simultaneousGesture(
+                                TapGesture()
+                                    .onEnded { _ in
+                                        // Dismiss keyboard when tapping on scroll view
+                                        isInputFocused = false
+                                    }
+                            )
                             .onAppear {
                                 // Scroll to bottom on initial load
                                 if let lastMessage = viewModel.messages.last {
@@ -199,7 +212,15 @@ struct AIAssistantView: View {
                             Spacer()
                                 .frame(height: 100)
                         }
+                        .contentShape(Rectangle())
                     }
+                    .simultaneousGesture(
+                        TapGesture()
+                            .onEnded { _ in
+                                // Dismiss keyboard when tapping on scroll view
+                                isInputFocused = false
+                            }
+                    )
                 }
             }
             .navigationBarTitleDisplayMode(.inline)

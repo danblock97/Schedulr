@@ -10,6 +10,8 @@ struct AuthView: View {
     @State private var sparkle: String = "✨"
     @State private var showPassword: Bool = false
     @State private var showForgotPassword: Bool = false
+    @FocusState private var isEmailFocused: Bool
+    @FocusState private var isPasswordFocused: Bool
 
     #if os(iOS)
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -37,6 +39,12 @@ struct AuthView: View {
     var body: some View {
         ZStack {
             gradient.ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Dismiss keyboard when tapping background
+                    isEmailFocused = false
+                    isPasswordFocused = false
+                }
 
             // Playful, bubbly background circles
             BubbleBackground()
@@ -61,7 +69,7 @@ struct AuthView: View {
                             ? .system(.title3, design: .rounded).weight(.medium)
                             : .system(.subheadline, design: .rounded).weight(.medium)
                         )
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.7))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
@@ -105,7 +113,7 @@ struct AuthView: View {
                         .frame(height: 2)
                     Text("or use email")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.6))
                     RoundedRectangle(cornerRadius: 2)
                         .fill(Color.primary.opacity(0.12))
                         .frame(height: 2)
@@ -139,6 +147,7 @@ struct AuthView: View {
                                 .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
                                 .padding(.horizontal, isPad ? 16 : 14)
                                 .padding(.vertical, isPad ? 12 : 10)
+                                .focused($isEmailFocused)
                         }
                         .frame(height: isPad ? 52 : 44)
                     }
@@ -167,12 +176,14 @@ struct AuthView: View {
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
                                         .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
+                                        .focused($isPasswordFocused)
                                 } else {
                                     SecureField("Password", text: $viewModel.password)
                                         .textContentType(viewModel.authMode == .signUp ? .newPassword : .password)
                                         .autocapitalization(.none)
                                         .disableAutocorrection(true)
                                         .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
+                                        .focused($isPasswordFocused)
                                 }
                                 Button(action: { showPassword.toggle() }) {
                                     Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
@@ -195,7 +206,7 @@ struct AuthView: View {
                             }) {
                                 Text("Forgot Password?")
                                     .font(isPad ? .footnote : .caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.primary.opacity(0.7))
                             }
                             .padding(.trailing, isPad ? 4 : 2)
                         }
@@ -234,7 +245,7 @@ struct AuthView: View {
                         }) {
                             Text("Back to Sign In")
                                 .font(isPad ? .footnote : .caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.primary.opacity(0.7))
                         }
                         .padding(.top, 4)
                     } else {
@@ -279,7 +290,7 @@ struct AuthView: View {
                             HStack(spacing: 4) {
                                 Text(viewModel.authMode == .signIn ? "Don't have an account?" : "Already have an account?")
                                     .font(isPad ? .footnote : .caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.primary.opacity(0.7))
                                 Text(viewModel.authMode == .signIn ? "Sign Up" : "Sign In")
                                     .font(isPad ? .footnote : .caption)
                                     .foregroundStyle(.purple)
@@ -308,7 +319,7 @@ struct AuthView: View {
                 if let notice = viewModel.noticeMessage, !notice.isEmpty {
                     Text(notice)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.7))
                         .padding(.top, 2)
                         .padding(.horizontal)
                         .multilineTextAlignment(.center)
@@ -317,7 +328,7 @@ struct AuthView: View {
                 HStack(spacing: 4) {
                     Text("By continuing, you agree to our")
                         .font(isPad ? .footnote : .caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.7))
                     Button("Terms") {
                         if let url = URL(string: "https://schedulr.co.uk/terms") {
                             #if os(iOS)
@@ -326,10 +337,10 @@ struct AuthView: View {
                         }
                     }
                     .font(isPad ? .footnote : .caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.primary.opacity(0.7))
                     Text("&")
                         .font(isPad ? .footnote : .caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.7))
                     Button("Privacy Policy") {
                         if let url = URL(string: "https://schedulr.co.uk/privacy") {
                             #if os(iOS)
@@ -338,7 +349,7 @@ struct AuthView: View {
                         }
                     }
                     .font(isPad ? .footnote : .caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.primary.opacity(0.7))
                 }
                 .padding(.bottom, 12)
             }
