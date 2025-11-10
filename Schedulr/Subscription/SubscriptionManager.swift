@@ -69,6 +69,37 @@ final class SubscriptionManager: ObservableObject {
         return apiKey
     }
     
+    // MARK: - User Identification
+    
+    /// Identifies the current user with RevenueCat using their Supabase user ID
+    /// This should be called after successful authentication to link RevenueCat customer ID with Supabase user ID
+    func identifyUser() async {
+        guard getRevenueCatAPIKey() != nil else { return }
+        
+        guard let client else {
+            print("[SubscriptionManager] No Supabase client available for user identification")
+            return
+        }
+        
+        do {
+            let session = try await client.auth.session
+            let userId = session.user.id.uuidString
+            
+            // Identify user with RevenueCat
+            let (customerInfo, _) = try await Purchases.shared.logIn(userId)
+            print("[SubscriptionManager] Identified user with RevenueCat: \(userId)")
+            
+            // Update subscription info from RevenueCat
+            await updateFromCustomerInfo(customerInfo)
+            
+            // Sync to Supabase to ensure database is up to date
+            try await syncSubscriptionToSupabase(userId: session.user.id, customerInfo: customerInfo)
+        } catch {
+            print("[SubscriptionManager] Failed to identify user with RevenueCat: \(error.localizedDescription)")
+            // Don't throw - allow app to continue
+        }
+    }
+    
     // MARK: - Fetch Subscription Status
     
     func fetchSubscriptionStatus() async {
@@ -167,21 +198,46 @@ final class SubscriptionManager: ObservableObject {
         defer { isLoading = false }
         
         do {
+            // Ensure user is identified with RevenueCat before purchase
+            await identifyUser()
+            
             let (transaction, customerInfo, userCancelled) = try await Purchases.shared.purchase(package: package)
             
             if userCancelled {
+                print("[SubscriptionManager] Purchase cancelled by user")
                 return false
             }
+            
+            print("[SubscriptionManager] Purchase completed successfully")
             
             // Update subscription info from RevenueCat response
             await updateFromCustomerInfo(customerInfo)
             
-            // Sync with Supabase
-            if let userId = try? await getCurrentUserId() {
+            // Sync with Supabase - ensure this completes successfully
+            do {
+                let userId = try await getCurrentUserId()
                 try await syncSubscriptionToSupabase(userId: userId, customerInfo: customerInfo)
+                print("[SubscriptionManager] Successfully synced purchase to Supabase")
+            } catch {
+                // Retry sync once after a short delay
+                print("[SubscriptionManager] Initial sync failed, retrying: \(error.localizedDescription)")
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+                
+                do {
+                    let userId = try await getCurrentUserId()
+                    try await syncSubscriptionToSupabase(userId: userId, customerInfo: customerInfo)
+                    print("[SubscriptionManager] Retry sync successful")
+                } catch {
+                    print("[SubscriptionManager] Retry sync failed: \(error.localizedDescription)")
+                    // Even if sync fails, purchase was successful, so we continue
+                    // The sync will be retried on next app launch or when fetchSubscriptionStatus is called
+                }
             }
             
-            print("[SubscriptionManager] Purchase successful")
+            // Refresh subscription status to ensure local state is up to date
+            await fetchSubscriptionStatus()
+            
+            print("[SubscriptionManager] Purchase flow completed successfully")
             return true
             
         } catch {
@@ -199,15 +255,36 @@ final class SubscriptionManager: ObservableObject {
         defer { isLoading = false }
         
         do {
+            // Ensure user is identified with RevenueCat before restore
+            await identifyUser()
+            
             let customerInfo = try await Purchases.shared.restorePurchases()
             
             // Update subscription info
             await updateFromCustomerInfo(customerInfo)
             
-            // Sync with Supabase
-            if let userId = try? await getCurrentUserId() {
+            // Sync with Supabase - ensure this completes successfully
+            do {
+                let userId = try await getCurrentUserId()
                 try await syncSubscriptionToSupabase(userId: userId, customerInfo: customerInfo)
+                print("[SubscriptionManager] Successfully synced restored purchases to Supabase")
+            } catch {
+                // Retry sync once after a short delay
+                print("[SubscriptionManager] Initial restore sync failed, retrying: \(error.localizedDescription)")
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+                
+                do {
+                    let userId = try await getCurrentUserId()
+                    try await syncSubscriptionToSupabase(userId: userId, customerInfo: customerInfo)
+                    print("[SubscriptionManager] Retry restore sync successful")
+                } catch {
+                    print("[SubscriptionManager] Retry restore sync failed: \(error.localizedDescription)")
+                    // Even if sync fails, restore was successful, so we continue
+                }
             }
+            
+            // Refresh subscription status to ensure local state is up to date
+            await fetchSubscriptionStatus()
             
             print("[SubscriptionManager] Restored purchases")
             return true
@@ -225,11 +302,8 @@ final class SubscriptionManager: ObservableObject {
         guard let client else { return }
         
         do {
-            // Get customer info from RevenueCat
-            let customerInfo = try await Purchases.shared.customerInfo()
-            
-            // Identify user if we have their user ID
-            try await Purchases.shared.logIn(userId.uuidString)
+            // Identify user with RevenueCat first
+            let (customerInfo, _) = try await Purchases.shared.logIn(userId.uuidString)
             
             // Sync to Supabase
             try await syncSubscriptionToSupabase(userId: userId, customerInfo: customerInfo)
@@ -257,12 +331,17 @@ final class SubscriptionManager: ObservableObject {
     }
     
     private func syncSubscriptionToSupabase(userId: UUID, customerInfo: CustomerInfo) async throws {
-        guard let client else { throw SubscriptionError.noClient }
+        guard let client else { 
+            print("[SubscriptionManager] Cannot sync: No Supabase client available")
+            throw SubscriptionError.noClient 
+        }
         
         // Determine subscription state from RevenueCat
         let hasProEntitlement = customerInfo.entitlements.all["pro"]?.isActive == true
         let tier = hasProEntitlement ? "pro" : "free"
         let status = hasProEntitlement ? "active" : "expired"
+        
+        print("[SubscriptionManager] Syncing subscription to Supabase - User: \(userId), Tier: \(tier), Status: \(status)")
         
         // Create an encodable struct for the update
         struct SubscriptionUpdate: Encodable {
@@ -279,13 +358,18 @@ final class SubscriptionManager: ObservableObject {
             subscription_updated_at: ISO8601DateFormatter().string(from: Date())
         )
         
-        try await client.database
-            .from("users")
-            .update(update)
-            .eq("id", value: userId)
-            .execute()
-        
-        print("[SubscriptionManager] Synced subscription to Supabase")
+        do {
+            try await client.database
+                .from("users")
+                .update(update)
+                .eq("id", value: userId)
+                .execute()
+            
+            print("[SubscriptionManager] Successfully synced subscription to Supabase - User: \(userId), Tier: \(tier), Status: \(status)")
+        } catch {
+            print("[SubscriptionManager] Failed to sync subscription to Supabase: \(error.localizedDescription)")
+            throw error
+        }
     }
     
     private func getCurrentUserId() async throws -> UUID {

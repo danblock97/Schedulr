@@ -16,7 +16,6 @@ final class AuthViewModel: ObservableObject {
     @Published var password: String = ""
 
     // UI State
-    @Published var isLoadingGoogle: Bool = false
     @Published var isLoadingApple: Bool = false
     @Published var isLoadingEmail: Bool = false
     @Published var authMode: AuthMode = .signIn
@@ -68,7 +67,8 @@ final class AuthViewModel: ObservableObject {
                     self.isAuthenticated = true
                     self.phase = .authenticated
                 }
-                // Fetch subscription status after successful authentication
+                // Identify user with RevenueCat and fetch subscription status after successful authentication
+                await SubscriptionManager.shared.identifyUser()
                 await SubscriptionManager.shared.fetchSubscriptionStatus()
             } catch {
                 #if DEBUG
@@ -143,7 +143,8 @@ final class AuthViewModel: ObservableObject {
                 }
             }
             refreshAuthState()
-            // Fetch subscription status after authentication
+            // Identify user with RevenueCat and fetch subscription status after authentication
+            await SubscriptionManager.shared.identifyUser()
             await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
             errorMessage = error.localizedDescription
@@ -153,22 +154,6 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    func signInWithGoogle() async {
-        guard !isLoadingGoogle else { return }
-        isLoadingGoogle = true
-        errorMessage = nil
-        defer { isLoadingGoogle = false }
-
-        guard let client else { return }
-        do {
-            // OAuth sign-in; redirect is handled via onOpenURL + client.auth.handle(url).
-            try await client.auth.signInWithOAuth(provider: .google)
-            // The session will be set after redirect returns and handleOpenURL is called.
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-    
     #if os(iOS)
     func signInWithApple(authorization: ASAuthorization) async {
         guard !isLoadingApple else { return }
@@ -176,17 +161,38 @@ final class AuthViewModel: ObservableObject {
         errorMessage = nil
         defer { isLoadingApple = false }
         
-        guard let client else { return }
-        guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-            errorMessage = "Invalid Apple ID credential"
+        guard let client else {
+            errorMessage = "Authentication service unavailable"
             return
         }
         
-        guard let identityTokenData = appleIDCredential.identityToken,
-              let identityToken = String(data: identityTokenData, encoding: .utf8) else {
-            errorMessage = "Failed to get identity token"
+        guard let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            errorMessage = "Invalid Apple ID credential"
+            #if DEBUG
+            print("[Auth] Failed to cast credential to ASAuthorizationAppleIDCredential")
+            #endif
             return
         }
+        
+        guard let identityTokenData = appleIDCredential.identityToken else {
+            errorMessage = "Failed to get identity token from Apple"
+            #if DEBUG
+            print("[Auth] identityToken is nil")
+            #endif
+            return
+        }
+        
+        guard let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            errorMessage = "Failed to encode identity token"
+            #if DEBUG
+            print("[Auth] Failed to convert identityToken data to string")
+            #endif
+            return
+        }
+        
+        #if DEBUG
+        print("[Auth] Attempting to sign in with Apple ID token, user: \(appleIDCredential.user)")
+        #endif
         
         do {
             // Sign in with Supabase using the Apple ID token
@@ -197,12 +203,23 @@ final class AuthViewModel: ObservableObject {
                 )
             )
             
+            #if DEBUG
+            print("[Auth] Apple Sign In successful, session user ID: \(session.user.id)")
+            #endif
+            
             // Session is set, refresh auth state
             refreshAuthState()
-            // Fetch subscription status after authentication
+            // Identify user with RevenueCat and fetch subscription status after authentication
+            await SubscriptionManager.shared.identifyUser()
             await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
-            errorMessage = error.localizedDescription
+            #if DEBUG
+            print("[Auth] Apple Sign In error: \(error.localizedDescription)")
+            if let nsError = error as NSError? {
+                print("[Auth] Error domain: \(nsError.domain), code: \(nsError.code), userInfo: \(nsError.userInfo)")
+            }
+            #endif
+            errorMessage = "Failed to sign in with Apple: \(error.localizedDescription)"
         }
     }
     #endif
@@ -233,6 +250,8 @@ final class AuthViewModel: ObservableObject {
             
             _ = try await client.auth.signIn(email: trimmedEmail, password: trimmedPassword)
             refreshAuthState()
+            // Identify user with RevenueCat and fetch subscription status
+            await SubscriptionManager.shared.identifyUser()
             await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
             errorMessage = error.localizedDescription
@@ -265,6 +284,8 @@ final class AuthViewModel: ObservableObject {
             
             _ = try await client.auth.signUp(email: trimmedEmail, password: trimmedPassword)
             refreshAuthState()
+            // Identify user with RevenueCat and fetch subscription status
+            await SubscriptionManager.shared.identifyUser()
             await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
             errorMessage = error.localizedDescription

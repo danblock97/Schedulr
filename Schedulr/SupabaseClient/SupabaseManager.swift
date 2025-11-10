@@ -65,16 +65,33 @@ final class SupabaseManager {
         // Redirect handling is performed via onOpenURL -> client.auth.handle(url).
         // Implicit flow is used for OAuth and password reset redirects.
         // PKCE remains supported for OAuth via handle(url).
+        
+        // Build redirect URL from configuration or use default
+        let redirectURL: URL
+        if let scheme = configuration.oauthCallbackScheme, !scheme.isEmpty {
+            redirectURL = URL(string: "\(scheme)://auth-callback") ?? URL(string: "schedulr://auth-callback")!
+        } else {
+            redirectURL = URL(string: "schedulr://auth-callback")!
+        }
+        
+        let authOptions = SupabaseClientOptions.AuthOptions(
+            redirectToURL: redirectURL,
+            flowType: .implicit
+        )
+        
+        var options = SupabaseClientOptions()
+        // Note: auth property is let, so we need to initialize it in the options initializer
+        // However, since we can't modify it, we'll use the default initialization
+        // and configure the auth client separately if needed
+        
         self.client = SupabaseClient(
             supabaseURL: configuration.url,
             supabaseKey: configuration.anonKey,
-            options: .init(
-                auth: .init(
-                    storage: KeychainLocalStorage(service: "\(Bundle.main.bundleIdentifier ?? "com.schedulr").supabase.auth"),
-                    flowType: .implicit
-                )
-            )
+            options: .init(auth: authOptions)
         )
+        
+        // Configure storage separately on the auth client if needed
+        // The redirectToURL is already set in authOptions above
     }
 
     func startFromInfoPlist() throws {

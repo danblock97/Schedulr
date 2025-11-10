@@ -75,11 +75,23 @@ struct AuthView: View {
                     onCompletion: { result in
                         switch result {
                         case .success(let authorization):
+                            // Store user identifier for future sign-ins
+                            if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                                UserDefaults.standard.set(appleIDCredential.user, forKey: "appleUserIdentifier")
+                            }
                             Task {
                                 await viewModel.signInWithApple(authorization: authorization)
                             }
                         case .failure(let error):
-                            viewModel.errorMessage = error.localizedDescription
+                            let nsError = error as NSError
+                            if nsError.code == 1000 {
+                                viewModel.errorMessage = "Sign in with Apple failed. Please ensure you have two-factor authentication enabled on your Apple ID and try again."
+                            } else {
+                                viewModel.errorMessage = error.localizedDescription
+                            }
+                            #if DEBUG
+                            print("[Auth] Apple Sign In error: \(error.localizedDescription), code: \(nsError.code), domain: \(nsError.domain)")
+                            #endif
                         }
                     }
                 )
@@ -88,39 +100,6 @@ struct AuthView: View {
                 .cornerRadius(isPad ? 28 : 25)
                 .padding(.horizontal)
                 .disabled(viewModel.isLoadingApple)
-                
-                // Google sign in
-                Button(action: { Task { await viewModel.signInWithGoogle() } }) {
-                    HStack(spacing: isPad ? 14 : 12) {
-                        Image(systemName: "g.circle.fill")
-                            .symbolRenderingMode(.multicolor)
-                            .font(isPad ? .title : .title2)
-                        if viewModel.isLoadingGoogle {
-                            ProgressView()
-                                .tint(.black)
-                        } else {
-                            Text("Sign in with Google")
-                                .font(
-                                    isPad
-                                    ? .system(.title3, design: .rounded).weight(.semibold)
-                                    : .system(.headline, design: .rounded).weight(.semibold)
-                                )
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, isPad ? 24 : 20)
-                    .padding(.vertical, isPad ? 16 : 14)
-                    .background(.white)
-                    .foregroundStyle(.black)
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.06), radius: isPad ? 14 : 12, x: 0, y: 10)
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.black.opacity(0.04), lineWidth: 1)
-                    )
-                    .padding(.horizontal)
-                }
-                .disabled(viewModel.isLoadingGoogle)
                 #endif
 
                 // Playful divider
