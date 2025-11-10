@@ -163,9 +163,15 @@ final class AuthViewModel: ObservableObject {
     func prepareSignInWithAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
         request.requestedScopes = [.fullName, .email]
         
+        // Always generate a fresh nonce for each request
         let nonce = randomNonceString()
         currentAppleNonce = nonce
-        request.nonce = sha256(nonce)
+        let hashedNonce = sha256(nonce)
+        request.nonce = hashedNonce
+        
+        #if DEBUG
+        print("[Auth] Generated new nonce for Apple Sign In request")
+        #endif
     }
     
     func signInWithApple(authorization: ASAuthorization) async {
@@ -238,13 +244,23 @@ final class AuthViewModel: ObservableObject {
             await SubscriptionManager.shared.identifyUser()
             await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
-            #if DEBUG
+            // Always log full error details for debugging
+            let nsError = error as NSError
             print("[Auth] Apple Sign In error: \(error.localizedDescription)")
-            if let nsError = error as NSError? {
-                print("[Auth] Error domain: \(nsError.domain), code: \(nsError.code), userInfo: \(nsError.userInfo)")
-            }
-            #endif
-            if let friendly = friendlyAppleSignInErrorMessage(from: error) {
+            print("[Auth] Error domain: \(nsError.domain), code: \(nsError.code), userInfo: \(nsError.userInfo)")
+            
+            // Check if it's a Supabase error
+            if nsError.domain.contains("supabase") || nsError.domain.contains("postgrest") || 
+               nsError.userInfo["statusCode"] != nil || nsError.userInfo["hint"] != nil {
+                // This is likely a Supabase configuration or server error
+                if let hint = nsError.userInfo["hint"] as? String {
+                    errorMessage = "Sign in failed: \(hint)"
+                } else if let message = nsError.userInfo["message"] as? String {
+                    errorMessage = "Sign in failed: \(message)"
+                } else {
+                    errorMessage = "Failed to sign in with Apple. Please check your connection and try again. If the problem persists, contact support."
+                }
+            } else if let friendly = friendlyAppleSignInErrorMessage(from: error) {
                 errorMessage = friendly
             } else {
                 errorMessage = "Failed to sign in with Apple: \(error.localizedDescription)"
@@ -253,21 +269,35 @@ final class AuthViewModel: ObservableObject {
     }
     
     func handleAppleAuthorizationError(_ error: Error) {
+        // Always log the full error for debugging
+        let nsError = error as NSError
+        print("[Auth] Apple Authorization error: \(error.localizedDescription)")
+        print("[Auth] Error domain: \(nsError.domain), code: \(nsError.code), userInfo: \(nsError.userInfo)")
+        
         if let friendly = friendlyAppleSignInErrorMessage(from: error) {
             errorMessage = friendly
             return
         }
         
-        let nsError = error as NSError
         if nsError.domain == ASAuthorizationError.errorDomain,
            let code = ASAuthorizationError.Code(rawValue: nsError.code) {
             switch code {
             case .canceled:
                 errorMessage = "Apple sign-in was canceled. Please try again when you're ready."
-            case .failed, .invalidResponse, .notHandled, .unknown:
+            case .unknown:
+                // Error 1000 - often related to nonce, configuration, or Apple ID issues
+                errorMessage = """
+                Apple sign-in encountered an issue. This can happen if:
+                • Your Apple ID needs two-factor authentication enabled
+                • There's a temporary network issue
+                • The sign-in request wasn't properly configured
+                
+                Please try again. If the problem persists, ensure two-factor authentication is enabled in Settings -> Apple ID -> Sign-In & Security.
+                """
+            case .failed, .invalidResponse, .notHandled:
                 errorMessage = "Apple couldn't complete the sign-in. Please try again."
             @unknown default:
-                errorMessage = error.localizedDescription
+                errorMessage = "Apple sign-in error (code \(nsError.code)): \(error.localizedDescription)"
             }
         } else {
             errorMessage = error.localizedDescription
