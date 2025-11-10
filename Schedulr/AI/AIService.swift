@@ -334,8 +334,14 @@ CRITICAL RULES:
             
             // Try to extract JSON from text if it's wrapped in explanation
             if let jsonStart = jsonString.range(of: "{"),
-               let jsonEnd = jsonString.range(of: "}", options: .backwards) {
-                let extractedJSON = String(jsonString[jsonStart.lowerBound...jsonEnd.upperBound])
+               let jsonEnd = jsonString.range(of: "}", options: .backwards),
+               jsonStart.lowerBound < jsonString.endIndex,
+               jsonEnd.upperBound <= jsonString.endIndex,
+               jsonStart.lowerBound < jsonEnd.upperBound {
+                // Safely extract the substring including the closing brace
+                // jsonEnd.upperBound is already after the '}', so we use it directly
+                let endIndex = jsonEnd.upperBound
+                let extractedJSON = String(jsonString[jsonStart.lowerBound..<endIndex])
                 if let extractedData = extractedJSON.data(using: .utf8),
                    let extractedQuery = try? JSONDecoder().decode(AvailabilityQuery.self, from: extractedData) {
                     return extractedQuery
