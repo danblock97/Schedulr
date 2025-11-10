@@ -20,6 +20,8 @@ final class SubscriptionManager: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var currentOffering: Offering?
     
+    private let defaultProEntitlementId = "pro"
+    private var proEntitlementId: String = "pro"
     private var client: SupabaseClient? { SupabaseManager.shared.client }
     private var configureTask: Task<Void, Never>?
     private var fetchTask: Task<Void, Never>?
@@ -36,6 +38,14 @@ final class SubscriptionManager: ObservableObject {
                 guard let apiKey = getRevenueCatAPIKey() else {
                     print("[SubscriptionManager] RevenueCat API key not found in Info.plist")
                     return
+                }
+                if let configuredEntitlement = getRevenueCatProEntitlementId() {
+                    proEntitlementId = configuredEntitlement
+                } else {
+                    proEntitlementId = defaultProEntitlementId
+                    #if DEBUG
+                    print("[SubscriptionManager] Pro entitlement identifier not found in Info.plist, defaulting to '\(defaultProEntitlementId)'")
+                    #endif
                 }
                 
                 // Configure RevenueCat with your API key
@@ -56,17 +66,29 @@ final class SubscriptionManager: ObservableObject {
     }
     
     private func getRevenueCatAPIKey() -> String? {
+        getInfoPlistString(for: "REVENUECAT_API_KEY")
+    }
+    
+    private func getRevenueCatProEntitlementId() -> String? {
+        getInfoPlistString(for: "REVENUECAT_PRO_ENTITLEMENT")
+    }
+    
+    private func getInfoPlistString(for key: String) -> String? {
         guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
-              let plist = NSDictionary(contentsOfFile: path) else {
+              let plist = NSDictionary(contentsOfFile: path),
+              let value = plist[key] as? String else {
             return nil
         }
         
-        guard let apiKey = plist["REVENUECAT_API_KEY"] as? String,
-              !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
+        var trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        
+        if trimmed.hasPrefix("\""), trimmed.hasSuffix("\""), trimmed.count >= 2 {
+            trimmed = String(trimmed.dropFirst().dropLast())
         }
         
-        return apiKey
+        trimmed = trimmed.replacingOccurrences(of: "\\ ", with: " ")
+        return trimmed
     }
     
     // MARK: - User Identification
@@ -316,7 +338,7 @@ final class SubscriptionManager: ObservableObject {
     
     private func updateFromCustomerInfo(_ customerInfo: CustomerInfo) async {
         // Determine tier from entitlements
-        let hasProEntitlement = customerInfo.entitlements.all["pro"]?.isActive == true
+        let hasProEntitlement = hasActiveProEntitlement(customerInfo)
         
         let tier: SubscriptionTier = hasProEntitlement ? .pro : .free
         let status: SubscriptionStatus = hasProEntitlement ? .active : .expired
@@ -337,7 +359,7 @@ final class SubscriptionManager: ObservableObject {
         }
         
         // Determine subscription state from RevenueCat
-        let hasProEntitlement = customerInfo.entitlements.all["pro"]?.isActive == true
+        let hasProEntitlement = hasActiveProEntitlement(customerInfo)
         let tier = hasProEntitlement ? "pro" : "free"
         let status = hasProEntitlement ? "active" : "expired"
         
@@ -376,6 +398,17 @@ final class SubscriptionManager: ObservableObject {
         guard let client else { throw SubscriptionError.noClient }
         let session = try await client.auth.session
         return session.user.id
+    }
+    
+    private func hasActiveProEntitlement(_ customerInfo: CustomerInfo) -> Bool {
+        if customerInfo.entitlements.all[proEntitlementId]?.isActive == true {
+            return true
+        }
+        if proEntitlementId != defaultProEntitlementId,
+           customerInfo.entitlements.all[defaultProEntitlementId]?.isActive == true {
+            return true
+        }
+        return false
     }
     
     // MARK: - Convenience Properties

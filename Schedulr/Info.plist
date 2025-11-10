@@ -48,6 +48,8 @@
 	<string>$(OPENAI_API_KEY)</string>
 	<key>REVENUECAT_API_KEY</key>
 	<string>$(REVENUECAT_API_KEY)</string>
+	<key>REVENUECAT_PRO_ENTITLEMENT</key>
+	<string>$(REVENUECAT_PRO_ENTITLEMENT)</string>
 	<key>REVERSED_CLIENT_ID</key>
 	<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
 	<key>SUPABASE_ANON_KEY</key>

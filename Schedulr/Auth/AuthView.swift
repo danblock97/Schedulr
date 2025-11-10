@@ -70,7 +70,7 @@ struct AuthView: View {
                 #if os(iOS)
                 SignInWithAppleButton(
                     onRequest: { request in
-                        request.requestedScopes = [.fullName, .email]
+                        viewModel.prepareSignInWithAppleRequest(request)
                     },
                     onCompletion: { result in
                         switch result {
@@ -83,13 +83,9 @@ struct AuthView: View {
                                 await viewModel.signInWithApple(authorization: authorization)
                             }
                         case .failure(let error):
-                            let nsError = error as NSError
-                            if nsError.code == 1000 {
-                                viewModel.errorMessage = "Sign in with Apple failed. Please ensure you have two-factor authentication enabled on your Apple ID and try again."
-                            } else {
-                                viewModel.errorMessage = error.localizedDescription
-                            }
+                            viewModel.handleAppleAuthorizationError(error)
                             #if DEBUG
+                            let nsError = error as NSError
                             print("[Auth] Apple Sign In error: \(error.localizedDescription), code: \(nsError.code), domain: \(nsError.domain)")
                             #endif
                         }

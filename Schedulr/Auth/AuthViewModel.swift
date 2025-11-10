@@ -4,6 +4,8 @@ import Combine
 import Supabase
 #if os(iOS)
 import AuthenticationServices
+import CryptoKit
+import Security
 #endif
 
 @MainActor
@@ -36,6 +38,9 @@ final class AuthViewModel: ObservableObject {
     @Published private(set) var phase: AuthPhase = .checking
 
     private var client: SupabaseClient? { SupabaseManager.shared.client }
+#if os(iOS)
+    private var currentAppleNonce: String?
+#endif
 
     func loadInitialSession() {
         // Best-effort async check; session may be nil until OAuth completes.
@@ -155,11 +160,22 @@ final class AuthViewModel: ObservableObject {
     }
 
     #if os(iOS)
+    func prepareSignInWithAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+        request.requestedScopes = [.fullName, .email]
+        
+        let nonce = randomNonceString()
+        currentAppleNonce = nonce
+        request.nonce = sha256(nonce)
+    }
+    
     func signInWithApple(authorization: ASAuthorization) async {
         guard !isLoadingApple else { return }
         isLoadingApple = true
         errorMessage = nil
-        defer { isLoadingApple = false }
+        defer {
+            isLoadingApple = false
+            currentAppleNonce = nil
+        }
         
         guard let client else {
             errorMessage = "Authentication service unavailable"
@@ -190,6 +206,14 @@ final class AuthViewModel: ObservableObject {
             return
         }
         
+        guard let nonce = currentAppleNonce else {
+            errorMessage = "We couldn't verify the Apple sign-in request. Please try again."
+            #if DEBUG
+            print("[Auth] Missing nonce for Apple Sign In")
+            #endif
+            return
+        }
+        
         #if DEBUG
         print("[Auth] Attempting to sign in with Apple ID token, user: \(appleIDCredential.user)")
         #endif
@@ -199,7 +223,8 @@ final class AuthViewModel: ObservableObject {
             let session = try await client.auth.signInWithIdToken(
                 credentials: OpenIDConnectCredentials(
                     provider: .apple,
-                    idToken: identityToken
+                    idToken: identityToken,
+                    nonce: nonce
                 )
             )
             
@@ -219,8 +244,92 @@ final class AuthViewModel: ObservableObject {
                 print("[Auth] Error domain: \(nsError.domain), code: \(nsError.code), userInfo: \(nsError.userInfo)")
             }
             #endif
-            errorMessage = "Failed to sign in with Apple: \(error.localizedDescription)"
+            if let friendly = friendlyAppleSignInErrorMessage(from: error) {
+                errorMessage = friendly
+            } else {
+                errorMessage = "Failed to sign in with Apple: \(error.localizedDescription)"
+            }
         }
+    }
+    
+    func handleAppleAuthorizationError(_ error: Error) {
+        if let friendly = friendlyAppleSignInErrorMessage(from: error) {
+            errorMessage = friendly
+            return
+        }
+        
+        let nsError = error as NSError
+        if nsError.domain == ASAuthorizationError.errorDomain,
+           let code = ASAuthorizationError.Code(rawValue: nsError.code) {
+            switch code {
+            case .canceled:
+                errorMessage = "Apple sign-in was canceled. Please try again when you're ready."
+            case .failed, .invalidResponse, .notHandled, .unknown:
+                errorMessage = "Apple couldn't complete the sign-in. Please try again."
+            @unknown default:
+                errorMessage = error.localizedDescription
+            }
+        } else {
+            errorMessage = error.localizedDescription
+        }
+    }
+    
+    private func friendlyAppleSignInErrorMessage(from error: Error) -> String? {
+        let nsError = error as NSError
+        var messages: [String] = [error.localizedDescription]
+        
+        if let description = nsError.userInfo["error_description"] as? String {
+            messages.append(description)
+        }
+        if let message = nsError.userInfo["message"] as? String {
+            messages.append(message)
+        }
+        
+        let lowercasedMessages = messages.map { $0.lowercased() }
+        if lowercasedMessages.contains(where: { message in
+            message.contains("two-factor") || message.contains("2fa") || message.contains("two factor")
+        }) {
+            return """
+Apple requires two-factor authentication for the Apple ID used with Sign in with Apple. \
+Open Settings -> Apple ID -> Sign-In & Security to confirm it is enabled. \
+If it's already on, try signing out of iCloud and back in, then retry or contact support for more help.
+"""
+        }
+        
+        return nil
+    }
+    
+    private func randomNonceString(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remainingLength = length
+        
+        while remainingLength > 0 {
+            var randomBytes = [UInt8](repeating: 0, count: 16)
+            let status = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
+            if status != errSecSuccess {
+                fatalError("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(status)")
+            }
+            
+            randomBytes.forEach { random in
+                if remainingLength == 0 {
+                    return
+                }
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                    remainingLength -= 1
+                }
+            }
+        }
+        
+        return result
+    }
+    
+    private func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        return hashedData.map { String(format: "%02x", $0) }.joined()
     }
     #endif
 
