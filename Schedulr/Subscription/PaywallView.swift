@@ -7,6 +7,7 @@
 
 import SwiftUI
 import RevenueCat
+import StoreKit
 #if os(iOS)
 import UIKit
 #endif
@@ -15,7 +16,9 @@ struct PaywallView: View {
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @Environment(\.dismiss) private var dismiss
     
-    @State private var selectedProduct: SubscriptionProduct = .proYearly
+    @State private var selectedPackage: Package?
+    @State private var monthlyPackage: Package?
+    @State private var yearlyPackage: Package?
     @State private var showLoading = false
     @State private var showError = false
     @State private var errorMessage = ""
@@ -105,6 +108,7 @@ struct PaywallView: View {
             }
             .task {
                 await subscriptionManager.configure()
+                await loadPackages()
             }
         }
     }
@@ -165,24 +169,40 @@ struct PaywallView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             
             // Yearly option
-            Button {
-                selectedProduct = .proYearly
-            } label: {
-                PricingOptionCard(
-                    product: .proYearly,
-                    isSelected: selectedProduct == .proYearly,
-                    savings: "Save £13/year"
-                )
+            if let yearlyPackage = yearlyPackage {
+                Button {
+                    selectedPackage = yearlyPackage
+                } label: {
+                    PricingOptionCard(
+                        package: yearlyPackage,
+                        monthlyPackage: monthlyPackage,
+                        isSelected: selectedPackage?.identifier == yearlyPackage.identifier
+                    )
+                }
             }
             
             // Monthly option
-            Button {
-                selectedProduct = .proMonthly
-            } label: {
-                PricingOptionCard(
-                    product: .proMonthly,
-                    isSelected: selectedProduct == .proMonthly
-                )
+            if let monthlyPackage = monthlyPackage {
+                Button {
+                    selectedPackage = monthlyPackage
+                } label: {
+                    PricingOptionCard(
+                        package: monthlyPackage,
+                        monthlyPackage: nil,
+                        isSelected: selectedPackage?.identifier == monthlyPackage.identifier
+                    )
+                }
+            }
+            
+            // Loading state if packages aren't available yet
+            if monthlyPackage == nil && yearlyPackage == nil {
+                HStack {
+                    ProgressView()
+                    Text("Loading subscription options...")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
             }
         }
     }
@@ -217,7 +237,7 @@ struct PaywallView: View {
             )
             .cornerRadius(16)
         }
-        .disabled(showLoading)
+        .disabled(showLoading || selectedPackage == nil)
     }
     
     private var restorePurchasesButton: some View {
@@ -280,28 +300,29 @@ struct PaywallView: View {
         }
     }
     
-    private func handlePurchase() async {
-        showLoading = true
-        
-        // Get package from RevenueCat
+    private func loadPackages() async {
         guard let offering = subscriptionManager.currentOffering else {
-            errorMessage = "Subscription options not available"
-            showError = true
-            showLoading = false
             return
         }
         
-        // Find the appropriate package
-        let package: Package?
-        switch selectedProduct {
-        case .proMonthly:
-            package = offering.availablePackages.first { $0.storeProduct.productIdentifier == SubscriptionProduct.proMonthly.rawValue }
-        case .proYearly:
-            package = offering.availablePackages.first { $0.storeProduct.productIdentifier == SubscriptionProduct.proYearly.rawValue }
+        // Find monthly and yearly packages
+        monthlyPackage = offering.availablePackages.first { package in
+            package.storeProduct.productIdentifier == SubscriptionProduct.proMonthly.rawValue
         }
         
-        guard let selectedPackage = package else {
-            errorMessage = "Product not found"
+        yearlyPackage = offering.availablePackages.first { package in
+            package.storeProduct.productIdentifier == SubscriptionProduct.proYearly.rawValue
+        }
+        
+        // Set default selection to yearly if available, otherwise monthly
+        selectedPackage = yearlyPackage ?? monthlyPackage
+    }
+    
+    private func handlePurchase() async {
+        showLoading = true
+        
+        guard let selectedPackage = selectedPackage else {
+            errorMessage = "Please select a subscription plan"
             showError = true
             showLoading = false
             return
@@ -357,19 +378,100 @@ private struct FeatureComparisonRow: View {
 }
 
 private struct PricingOptionCard: View {
-    let product: SubscriptionProduct
+    let package: Package
+    let monthlyPackage: Package?
     let isSelected: Bool
-    var savings: String? = nil
+    
+    private var productTitle: String {
+        package.storeProduct.localizedTitle
+    }
+    
+    private var productPrice: String {
+        package.storeProduct.localizedPriceString
+    }
+    
+    private var subscriptionPeriod: String {
+        guard let subscriptionPeriod = package.storeProduct.subscriptionPeriod else {
+            return ""
+        }
+        
+        switch subscriptionPeriod.unit {
+        case .day:
+            return subscriptionPeriod.value == 1 ? "per day" : "per \(subscriptionPeriod.value) days"
+        case .week:
+            return subscriptionPeriod.value == 1 ? "per week" : "per \(subscriptionPeriod.value) weeks"
+        case .month:
+            return subscriptionPeriod.value == 1 ? "per month" : "per \(subscriptionPeriod.value) months"
+        case .year:
+            return subscriptionPeriod.value == 1 ? "per year" : "per \(subscriptionPeriod.value) years"
+        @unknown default:
+            return ""
+        }
+    }
+    
+    private var monthlyEquivalent: String? {
+        // Calculate monthly equivalent for yearly subscriptions
+        guard let subscriptionPeriod = package.storeProduct.subscriptionPeriod,
+              subscriptionPeriod.unit == .year,
+              subscriptionPeriod.value == 1,
+              let monthlyPackage = monthlyPackage else {
+            return nil
+        }
+        
+        let yearlyPrice = NSDecimalNumber(decimal: package.storeProduct.price).doubleValue
+        let monthlyPrice = NSDecimalNumber(decimal: monthlyPackage.storeProduct.price).doubleValue
+        let monthlyEquivalentPrice = yearlyPrice / 12.0
+        
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        // Use current locale since priceLocale is unavailable on iOS
+        // The localizedPriceString already handles locale formatting
+        formatter.locale = Locale.current
+        
+        if let formattedPrice = formatter.string(from: NSNumber(value: monthlyEquivalentPrice)) {
+            return "\(formattedPrice)/month"
+        }
+        
+        return nil
+    }
+    
+    private var savingsText: String? {
+        guard let subscriptionPeriod = package.storeProduct.subscriptionPeriod,
+              subscriptionPeriod.unit == .year,
+              subscriptionPeriod.value == 1,
+              let monthlyPackage = monthlyPackage else {
+            return nil
+        }
+        
+        let yearlyPrice = NSDecimalNumber(decimal: package.storeProduct.price).doubleValue
+        let monthlyPrice = NSDecimalNumber(decimal: monthlyPackage.storeProduct.price).doubleValue
+        let yearlyEquivalent = monthlyPrice * 12.0
+        let savings = yearlyEquivalent - yearlyPrice
+        
+        guard savings > 0 else { return nil }
+        
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        // Use current locale since priceLocale is unavailable on iOS
+        // The localizedPriceString already handles locale formatting
+        formatter.locale = Locale.current
+        
+        if let formattedSavings = formatter.string(from: NSNumber(value: savings)) {
+            return "Save \(formattedSavings)/year"
+        }
+        
+        return nil
+    }
     
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(product.displayName)
+                    Text(productTitle)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.primary)
                     
-                    if let savings = savings {
+                    if let savings = savingsText {
                         Text(savings)
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.white)
@@ -380,9 +482,17 @@ private struct PricingOptionCard: View {
                     }
                 }
                 
-                Text(product.price + " " + product.period)
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(productPrice) \(subscriptionPeriod)")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.secondary)
+                    
+                    if let monthlyEquivalent = monthlyEquivalent {
+                        Text(monthlyEquivalent)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
             
             Spacer()
