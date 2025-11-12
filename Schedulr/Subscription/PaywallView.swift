@@ -85,6 +85,21 @@ struct PaywallView: View {
             }
             .alert("Purchase Error", isPresented: $showError) {
                 Button("OK", role: .cancel) {}
+                if errorMessage.contains("test account") || errorMessage.contains("restore") {
+                    Button("Restore Purchases") {
+                        Task {
+                            showLoading = true
+                            let success = await subscriptionManager.restorePurchases()
+                            showLoading = false
+                            if success {
+                                dismiss()
+                            } else {
+                                errorMessage = subscriptionManager.errorMessage ?? "Failed to restore purchases"
+                                showError = true
+                            }
+                        }
+                    }
+                }
             } message: {
                 Text(errorMessage)
             }
@@ -139,10 +154,15 @@ struct PaywallView: View {
     
     private var pricingOptionsSection: some View {
         VStack(spacing: 12) {
-            Text("Choose your plan")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Choose your plan")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.primary)
+                Text("Auto-renewing subscription")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             
             // Yearly option
             Button {
@@ -224,11 +244,9 @@ struct PaywallView: View {
                 .foregroundStyle(.tertiary)
             
             HStack(spacing: 4) {
-                Button("Terms of Service") {
-                    if let url = URL(string: "https://schedulr.co.uk/terms") {
-                        #if os(iOS)
-                        UIApplication.shared.open(url)
-                        #endif
+                Button("Terms of Use (EULA)") {
+                    Task {
+                        await openURLWithTrackingPermission(urlString: "https://schedulr.co.uk/terms")
                     }
                 }
                 .font(.caption)
@@ -238,15 +256,27 @@ struct PaywallView: View {
                     .foregroundStyle(.tertiary)
                 
                 Button("Privacy Policy") {
-                    if let url = URL(string: "https://schedulr.co.uk/privacy") {
-                        #if os(iOS)
-                        UIApplication.shared.open(url)
-                        #endif
+                    Task {
+                        await openURLWithTrackingPermission(urlString: "https://schedulr.co.uk/privacy")
                     }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+        }
+    }
+    
+    private func openURLWithTrackingPermission(urlString: String) async {
+        // Request tracking permission before opening URLs that may track
+        let authorized = await TrackingPermissionManager.shared.requestTrackingIfNeeded()
+        
+        // Open URL regardless of tracking permission status
+        // The tracking permission is for tracking purposes, not for accessing the URL itself
+        // However, if tracking is denied, cookies for tracking should not be collected
+        if let url = URL(string: urlString) {
+            #if os(iOS)
+            await UIApplication.shared.open(url)
+            #endif
         }
     }
     
@@ -284,8 +314,11 @@ struct PaywallView: View {
         if success {
             dismiss()
         } else {
-            errorMessage = subscriptionManager.errorMessage ?? "Purchase failed"
-            showError = true
+            // Only show error if there's a message (user cancellation won't have a message)
+            if let message = subscriptionManager.errorMessage, !message.isEmpty {
+                errorMessage = message
+                showError = true
+            }
         }
     }
 }

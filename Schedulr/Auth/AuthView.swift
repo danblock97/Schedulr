@@ -330,10 +330,8 @@ struct AuthView: View {
                         .font(isPad ? .footnote : .caption2)
                         .foregroundStyle(Color.primary.opacity(0.7))
                     Button("Terms") {
-                        if let url = URL(string: "https://schedulr.co.uk/terms") {
-                            #if os(iOS)
-                            UIApplication.shared.open(url)
-                            #endif
+                        Task {
+                            await openURLWithTrackingPermission(urlString: "https://schedulr.co.uk/terms")
                         }
                     }
                     .font(isPad ? .footnote : .caption2)
@@ -342,10 +340,8 @@ struct AuthView: View {
                         .font(isPad ? .footnote : .caption2)
                         .foregroundStyle(Color.primary.opacity(0.7))
                     Button("Privacy Policy") {
-                        if let url = URL(string: "https://schedulr.co.uk/privacy") {
-                            #if os(iOS)
-                            UIApplication.shared.open(url)
-                            #endif
+                        Task {
+                            await openURLWithTrackingPermission(urlString: "https://schedulr.co.uk/privacy")
                         }
                     }
                     .font(isPad ? .footnote : .caption2)
@@ -364,7 +360,20 @@ struct AuthView: View {
             emblem = emblemOptions.randomElement() ?? emblem
             sparkle = sparkleOptions.randomElement() ?? sparkle
         }
-
+    }
+    
+    private func openURLWithTrackingPermission(urlString: String) async {
+        // Request tracking permission before opening URLs that may track
+        let authorized = await TrackingPermissionManager.shared.requestTrackingIfNeeded()
+        
+        // Open URL regardless of tracking permission status
+        // The tracking permission is for tracking purposes, not for accessing the URL itself
+        // However, if tracking is denied, cookies for tracking should not be collected
+        if let url = URL(string: urlString) {
+            #if os(iOS)
+            await UIApplication.shared.open(url)
+            #endif
+        }
     }
 }
 

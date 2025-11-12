@@ -223,6 +223,8 @@ final class SubscriptionManager: ObservableObject {
             // Ensure user is identified with RevenueCat before purchase
             await identifyUser()
             
+            // Attempt purchase - RevenueCat will handle sandbox receipt validation automatically
+            // If production app gets sandbox receipt, RevenueCat's server will validate against sandbox environment
             let (transaction, customerInfo, userCancelled) = try await Purchases.shared.purchase(package: package)
             
             if userCancelled {
@@ -264,7 +266,60 @@ final class SubscriptionManager: ObservableObject {
             
         } catch {
             print("[SubscriptionManager] Purchase error: \(error.localizedDescription)")
-            errorMessage = "Purchase failed: \(error.localizedDescription)"
+            print("[SubscriptionManager] Error type: \(type(of: error))")
+            
+            // Provide more specific error messages based on error description
+            let errorString = error.localizedDescription.lowercased()
+            let errorDescription = error.localizedDescription
+            
+            // Check for user cancellation (don't show error)
+            if errorString.contains("cancelled") || errorString.contains("canceled") {
+                errorMessage = nil
+                return false
+            }
+            
+            // Check for sandbox receipt errors (common during App Review)
+            if errorString.contains("sandbox") || 
+               errorDescription.contains("Sandbox receipt used in production") ||
+               errorString.contains("test environment") {
+                errorMessage = "Please ensure you're signed in with a test account. If this persists, try restoring purchases."
+                return false
+            }
+            
+            // Check for network errors
+            if errorString.contains("network") || 
+               errorString.contains("internet") ||
+               errorString.contains("connection") ||
+               errorString.contains("timeout") {
+                errorMessage = "Network error. Please check your internet connection and try again."
+                return false
+            }
+            
+            // Check for product availability errors
+            if errorString.contains("not available") || 
+               errorString.contains("unavailable") ||
+               errorString.contains("product not found") {
+                errorMessage = "This subscription is not available. Please try again later."
+                return false
+            }
+            
+            // Check for purchase not allowed errors
+            if errorString.contains("not allowed") || 
+               errorString.contains("purchases disabled") ||
+               errorString.contains("restrictions") {
+                errorMessage = "Purchases are not allowed on this device. Please check your device settings."
+                return false
+            }
+            
+            // Check for receipt errors
+            if errorString.contains("receipt") && 
+               (errorString.contains("invalid") || errorString.contains("error")) {
+                errorMessage = "There was an issue validating your purchase. Please try again or contact support."
+                return false
+            }
+            
+            // Generic error message for unknown errors
+            errorMessage = "Purchase failed. Please try again or contact support if the problem persists."
             return false
         }
     }
