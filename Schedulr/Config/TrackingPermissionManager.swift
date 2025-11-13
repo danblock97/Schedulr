@@ -17,7 +17,7 @@ public final class TrackingPermissionManager {
     private init() {}
     
     /// Check if tracking authorization status is available (iOS 14+)
-    var isTrackingAvailable: Bool {
+    public var isTrackingAvailable: Bool {
         if #available(iOS 14, *) {
             return true
         }
@@ -26,12 +26,12 @@ public final class TrackingPermissionManager {
     
     /// Get current tracking authorization status
     @available(iOS 14, *)
-    var trackingAuthorizationStatus: ATTrackingManager.AuthorizationStatus {
+    public var trackingAuthorizationStatus: ATTrackingManager.AuthorizationStatus {
         ATTrackingManager.trackingAuthorizationStatus
     }
     
     /// Check if tracking is currently authorized
-    var isTrackingAuthorized: Bool {
+    public var isTrackingAuthorized: Bool {
         if #available(iOS 14, *) {
             return ATTrackingManager.trackingAuthorizationStatus == .authorized
         }
@@ -41,7 +41,7 @@ public final class TrackingPermissionManager {
     /// Request tracking authorization from the user
     /// - Returns: The authorization status after the request
     @available(iOS 14, *)
-    func requestTrackingAuthorization() async -> ATTrackingManager.AuthorizationStatus {
+    public func requestTrackingAuthorization() async -> ATTrackingManager.AuthorizationStatus {
         return await ATTrackingManager.requestTrackingAuthorization()
     }
     

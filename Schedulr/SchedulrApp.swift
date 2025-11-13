@@ -36,6 +36,7 @@ private struct RootContainer: View {
     @ObservedObject private var themeManager = ThemeManager.shared
     @State private var showOnboarding: Bool = false
     @State private var routingInProgress: Bool = false
+    @State private var hasRequestedTracking: Bool = false
 
     init() {
         let calendarManager = CalendarSyncManager()
@@ -72,8 +73,8 @@ private struct RootContainer: View {
                     .zIndex(1)
             }
             
-            // Consent banner - show after splash, before auth/onboarding
-            if !showSplash && consentManager.shouldShowConsent {
+            // Consent banner - show after splash and tracking permission request, before auth/onboarding
+            if !showSplash && hasRequestedTracking && consentManager.shouldShowConsent {
                 VStack {
                     Spacer()
                     ConsentBannerView(consentManager: consentManager)
@@ -95,8 +96,6 @@ private struct RootContainer: View {
             }
             // Determine initial auth state before splash hides
             authVM.loadInitialSession()
-            // Register for push notifications
-            PushManager.shared.registerForPush()
             // Initialize subscription manager
             await SubscriptionManager.shared.configure()
             // Check and enforce grace periods if needed
@@ -111,6 +110,30 @@ private struct RootContainer: View {
                 remainingChecks -= 1
             }
             withAnimation(.easeInOut(duration: 0.35)) { showSplash = false }
+            
+            // Small delay to ensure splash animation completes before showing permission prompts
+            try? await Task.sleep(nanoseconds: 400_000_000) // 0.4 seconds
+            
+            // Request App Tracking Transparency permission FIRST, before any other permissions or data collection
+            // This must happen before push notifications, consent banner, auth, etc.
+            if #available(iOS 14, *) {
+                if TrackingPermissionManager.shared.isTrackingAvailable {
+                    let status = TrackingPermissionManager.shared.trackingAuthorizationStatus
+                    // Always request if status is not determined (both new devices and reset devices)
+                    if status == .notDetermined {
+                        // Request tracking permission - this shows the system prompt
+                        _ = await TrackingPermissionManager.shared.requestTrackingAuthorization()
+                    }
+                }
+                // Mark tracking as requested (whether newly requested, already determined, or not available)
+                hasRequestedTracking = true
+            } else {
+                // iOS < 14, tracking not available - proceed without requesting
+                hasRequestedTracking = true
+            }
+            
+            // Now request push notification permission AFTER tracking permission
+            PushManager.shared.registerForPush()
         }
         .onOpenURL { url in
             #if DEBUG
