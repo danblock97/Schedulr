@@ -2,6 +2,7 @@ import SwiftUI
 #if os(iOS)
 import UIKit
 import AuthenticationServices
+import SafariServices
 #endif
 
 struct AuthView: View {
@@ -10,7 +11,6 @@ struct AuthView: View {
     @State private var sparkle: String = "✨"
     @State private var showPassword: Bool = false
     @State private var showForgotPassword: Bool = false
-    @State private var showWebAccessBlockedAlert: Bool = false
     @FocusState private var isEmailFocused: Bool
     @FocusState private var isPasswordFocused: Bool
 
@@ -361,28 +361,34 @@ struct AuthView: View {
             emblem = emblemOptions.randomElement() ?? emblem
             sparkle = sparkleOptions.randomElement() ?? sparkle
         }
-        .alert("Web Access Blocked", isPresented: $showWebAccessBlockedAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Web content access requires tracking permission. Please enable tracking in Settings to view this content.")
-        }
     }
     
     private func openURLWithTrackingPermission(urlString: String) async {
-        // Request tracking permission before opening URLs that may track
-        let authorized = await TrackingPermissionManager.shared.requestTrackingIfNeeded()
+        guard let url = URL(string: urlString) else { return }
         
-        // Only open URL if tracking is authorized to prevent cookie collection when tracking is denied
-        guard TrackingPermissionManager.shared.canAccessWebContent else {
-            showWebAccessBlockedAlert = true
-            return
+        #if os(iOS)
+        // Always allow access to Terms and Privacy Policy regardless of tracking status
+        // Use SFSafariViewController for better in-app experience
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        
+        let safariVC = SFSafariViewController(url: url, configuration: config)
+        safariVC.preferredControlTintColor = .systemPurple
+        safariVC.preferredBarTintColor = .systemBackground
+        if #available(iOS 11.0, *) {
+            safariVC.dismissButtonStyle = .close
         }
         
-        if let url = URL(string: urlString) {
-            #if os(iOS)
-            await UIApplication.shared.open(url)
-            #endif
+        // Present the Safari view controller
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            var presentingVC = rootViewController
+            while let presented = presentingVC.presentedViewController {
+                presentingVC = presented
+            }
+            presentingVC.present(safariVC, animated: true)
         }
+        #endif
     }
 }
 

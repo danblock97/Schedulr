@@ -10,6 +10,7 @@ import RevenueCat
 import StoreKit
 #if os(iOS)
 import UIKit
+import SafariServices
 #endif
 
 struct PaywallView: View {
@@ -287,21 +288,31 @@ struct PaywallView: View {
     }
     
     private func openURLWithTrackingPermission(urlString: String) async {
-        // Request tracking permission before opening URLs that may track
-        let authorized = await TrackingPermissionManager.shared.requestTrackingIfNeeded()
+        guard let url = URL(string: urlString) else { return }
         
-        // Only open URL if tracking is authorized to prevent cookie collection when tracking is denied
-        guard TrackingPermissionManager.shared.canAccessWebContent else {
-            errorMessage = "Web content access requires tracking permission. Please enable tracking in Settings to view this content."
-            showError = true
-            return
+        #if os(iOS)
+        // Always allow access to Terms and Privacy Policy regardless of tracking status
+        // Use SFSafariViewController for better in-app experience
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        
+        let safariVC = SFSafariViewController(url: url, configuration: config)
+        safariVC.preferredControlTintColor = UIColor(red: 0.98, green: 0.29, blue: 0.55, alpha: 1.0)
+        safariVC.preferredBarTintColor = .systemBackground
+        if #available(iOS 11.0, *) {
+            safariVC.dismissButtonStyle = .close
         }
         
-        if let url = URL(string: urlString) {
-            #if os(iOS)
-            await UIApplication.shared.open(url)
-            #endif
+        // Present the Safari view controller
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            var presentingVC = rootViewController
+            while let presented = presentingVC.presentedViewController {
+                presentingVC = presented
+            }
+            presentingVC.present(safariVC, animated: true)
         }
+        #endif
     }
     
     private func loadPackages() async {

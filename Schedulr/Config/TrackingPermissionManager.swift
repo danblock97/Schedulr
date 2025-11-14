@@ -38,12 +38,6 @@ public final class TrackingPermissionManager {
         return false
     }
     
-    /// Check if web content can be accessed
-    /// Returns true only if tracking is authorized, preventing cookie collection when tracking is denied
-    public var canAccessWebContent: Bool {
-        return isTrackingAuthorized
-    }
-    
     /// Request tracking authorization from the user
     /// - Returns: The authorization status after the request
     @available(iOS 14, *)
