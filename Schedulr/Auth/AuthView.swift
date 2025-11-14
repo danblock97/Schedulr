@@ -10,6 +10,7 @@ struct AuthView: View {
     @State private var sparkle: String = "✨"
     @State private var showPassword: Bool = false
     @State private var showForgotPassword: Bool = false
+    @State private var showWebAccessBlockedAlert: Bool = false
     @FocusState private var isEmailFocused: Bool
     @FocusState private var isPasswordFocused: Bool
 
@@ -360,15 +361,23 @@ struct AuthView: View {
             emblem = emblemOptions.randomElement() ?? emblem
             sparkle = sparkleOptions.randomElement() ?? sparkle
         }
+        .alert("Web Access Blocked", isPresented: $showWebAccessBlockedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Web content access requires tracking permission. Please enable tracking in Settings to view this content.")
+        }
     }
     
     private func openURLWithTrackingPermission(urlString: String) async {
         // Request tracking permission before opening URLs that may track
         let authorized = await TrackingPermissionManager.shared.requestTrackingIfNeeded()
         
-        // Open URL regardless of tracking permission status
-        // The tracking permission is for tracking purposes, not for accessing the URL itself
-        // However, if tracking is denied, cookies for tracking should not be collected
+        // Only open URL if tracking is authorized to prevent cookie collection when tracking is denied
+        guard TrackingPermissionManager.shared.canAccessWebContent else {
+            showWebAccessBlockedAlert = true
+            return
+        }
+        
         if let url = URL(string: urlString) {
             #if os(iOS)
             await UIApplication.shared.open(url)

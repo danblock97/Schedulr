@@ -290,9 +290,13 @@ struct PaywallView: View {
         // Request tracking permission before opening URLs that may track
         let authorized = await TrackingPermissionManager.shared.requestTrackingIfNeeded()
         
-        // Open URL regardless of tracking permission status
-        // The tracking permission is for tracking purposes, not for accessing the URL itself
-        // However, if tracking is denied, cookies for tracking should not be collected
+        // Only open URL if tracking is authorized to prevent cookie collection when tracking is denied
+        guard TrackingPermissionManager.shared.canAccessWebContent else {
+            errorMessage = "Web content access requires tracking permission. Please enable tracking in Settings to view this content."
+            showError = true
+            return
+        }
+        
         if let url = URL(string: urlString) {
             #if os(iOS)
             await UIApplication.shared.open(url)
