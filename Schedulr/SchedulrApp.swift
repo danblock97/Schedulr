@@ -86,7 +86,29 @@ private struct RootContainer: View {
         .ignoresSafeArea()
         .preferredColorScheme(themeManager.preferredColorScheme)
         .task {
-            // Initialize services and then dismiss the splash.
+            // Small delay to ensure splash animation completes before showing permission prompts
+            try? await Task.sleep(nanoseconds: 400_000_000) // 0.4 seconds
+            
+            // Request App Tracking Transparency permission FIRST, before any other permissions or data collection
+            // This must happen before Supabase initialization, network requests, push notifications, consent banner, auth, etc.
+            if #available(iOS 14, *) {
+                if TrackingPermissionManager.shared.isTrackingAvailable {
+                    let status = TrackingPermissionManager.shared.trackingAuthorizationStatus
+                    // Always request if status is not determined (both new devices and reset devices)
+                    if status == .notDetermined {
+                        // Request tracking permission - this shows the system prompt
+                        _ = await TrackingPermissionManager.shared.requestTrackingAuthorization()
+                    }
+                }
+                // Mark tracking as requested (whether newly requested, already determined, or not available)
+                hasRequestedTracking = true
+            } else {
+                // iOS < 14, tracking not available - proceed without requesting
+                hasRequestedTracking = true
+            }
+            
+            // Initialize Supabase AFTER tracking permission request to ensure compliance
+            // No network requests should occur before user makes tracking decision
             do {
                 try SupabaseManager.shared.startFromInfoPlist()
             } catch {
@@ -94,6 +116,7 @@ private struct RootContainer: View {
                 print("Supabase init error:", error.localizedDescription)
                 #endif
             }
+            
             // Determine initial auth state before splash hides
             authVM.loadInitialSession()
             // Initialize subscription manager
@@ -110,27 +133,6 @@ private struct RootContainer: View {
                 remainingChecks -= 1
             }
             withAnimation(.easeInOut(duration: 0.35)) { showSplash = false }
-            
-            // Small delay to ensure splash animation completes before showing permission prompts
-            try? await Task.sleep(nanoseconds: 400_000_000) // 0.4 seconds
-            
-            // Request App Tracking Transparency permission FIRST, before any other permissions or data collection
-            // This must happen before push notifications, consent banner, auth, etc.
-            if #available(iOS 14, *) {
-                if TrackingPermissionManager.shared.isTrackingAvailable {
-                    let status = TrackingPermissionManager.shared.trackingAuthorizationStatus
-                    // Always request if status is not determined (both new devices and reset devices)
-                    if status == .notDetermined {
-                        // Request tracking permission - this shows the system prompt
-                        _ = await TrackingPermissionManager.shared.requestTrackingAuthorization()
-                    }
-                }
-                // Mark tracking as requested (whether newly requested, already determined, or not available)
-                hasRequestedTracking = true
-            } else {
-                // iOS < 14, tracking not available - proceed without requesting
-                hasRequestedTracking = true
-            }
             
             // Now request push notification permission AFTER tracking permission
             PushManager.shared.registerForPush()
