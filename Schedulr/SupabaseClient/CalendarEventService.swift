@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+import EventKit
 
 struct NewEventInput {
     let groupId: UUID
@@ -86,6 +87,18 @@ final class CalendarEventService {
             _ = try await client.from("event_attendees").insert(attendees).execute()
         }
 
+        // Sync group events to Apple Calendar for all invited users (including the creator)
+        if input.eventType == "group" {
+            // Sync immediately (not in background Task) so it happens after attendees are inserted
+            do {
+                try await syncGroupEventToAppleCalendar(eventId: eventId, input: input, creatorUserId: currentUserId)
+            } catch {
+                // Log error but don't throw - allow event creation to succeed even if sync fails
+                // The sync will be retried when the user refreshes their calendar
+                print("[CalendarEventService] Failed to sync group event \(eventId) to Apple Calendar: \(error.localizedDescription)")
+            }
+        }
+
         return eventId
     }
 
@@ -141,6 +154,12 @@ final class CalendarEventService {
         })
         if !attendees.isEmpty {
             _ = try await client.from("event_attendees").insert(attendees).execute()
+        }
+        
+        // Sync group events to Apple Calendar for all invited users (including the creator)
+        if input.eventType == "group" {
+            // Sync immediately (not in background Task) so it happens after attendees are inserted
+            try? await syncGroupEventToAppleCalendar(eventId: eventId, input: input, creatorUserId: currentUserId)
         }
     }
 
@@ -231,7 +250,26 @@ final class CalendarEventService {
     // Delete an event (allowed by RLS only for the event owner)
     // Also deletes from EventKit if original_event_id is provided
     func deleteEvent(eventId: UUID, currentUserId: UUID, originalEventId: String?) async throws {
-        // Delete from EventKit first if we have the identifier
+        // For group events, delete from Apple Calendar for all invited users
+        struct AttendeeRow: Decodable {
+            let user_id: UUID?
+            let apple_calendar_event_id: String?
+        }
+        let attendeeRows: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("user_id, apple_calendar_event_id")
+            .eq("event_id", value: eventId)
+            .execute()
+            .value
+        
+        // Delete Apple Calendar events for all attendees
+        for attendee in attendeeRows {
+            if let appleEventId = attendee.apple_calendar_event_id {
+                try? await EventKitEventManager.shared.deleteEvent(identifier: appleEventId)
+            }
+        }
+        
+        // Delete from EventKit if original_event_id is provided (for personal events)
         if let ekId = originalEventId {
             try? await EventKitEventManager.shared.deleteEvent(identifier: ekId)
         }
@@ -250,6 +288,145 @@ final class CalendarEventService {
         let payload = Payload(event_id: eventId)
         _ = try await client.functions
             .invoke("notify-event", options: FunctionInvokeOptions(body: payload))
+    }
+    
+    // MARK: - Group Event Apple Calendar Sync
+    
+    /// Syncs a group event to Apple Calendar for all invited users
+    /// Each user gets their own copy of the event in their Apple Calendar
+    private func syncGroupEventToAppleCalendar(eventId: UUID, input: NewEventInput, creatorUserId: UUID) async throws {
+        // Fetch event details including category
+        struct EventRow: Decodable {
+            let id: UUID
+            let title: String
+            let start_date: Date
+            let end_date: Date
+            let is_all_day: Bool
+            let location: String?
+            let notes: String?
+            let category_id: UUID?
+            let event_categories: CategoryInfo?
+            
+            struct CategoryInfo: Decodable {
+                let color: ColorComponents
+            }
+        }
+        
+        let event: EventRow = try await client
+            .from("calendar_events")
+            .select("id, title, start_date, end_date, is_all_day, location, notes, category_id, event_categories(color)")
+            .eq("id", value: eventId)
+            .single()
+            .execute()
+            .value
+        
+        // Get category color if available
+        let categoryColor = event.event_categories?.color
+        
+        // Get all user attendees (exclude guests)
+        struct AttendeeRow: Decodable {
+            let id: UUID
+            let user_id: UUID?
+            let apple_calendar_event_id: String?
+        }
+        
+        let allAttendeeRows: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("id, user_id, apple_calendar_event_id")
+            .eq("event_id", value: eventId)
+            .execute()
+            .value
+        
+        // Filter to only user attendees (exclude guests where user_id is nil)
+        let attendeeRows = allAttendeeRows.filter { $0.user_id != nil }
+        
+        // Get current user ID
+        let currentUserId = try await client.auth.session.user.id
+        
+        // Create a set of all user IDs that should have this event (attendees + creator)
+        var userIdsToSync = Set(attendeeRows.compactMap { $0.user_id })
+        userIdsToSync.insert(creatorUserId) // Always include the creator
+        
+        // Sync to Apple Calendar for the current user only (if they're an attendee or creator)
+        // Other users' devices will sync when they open the app
+        guard userIdsToSync.contains(currentUserId) else {
+            return
+        }
+        
+        // Check if current user already has an attendee record
+        let currentUserAttendee = attendeeRows.first { $0.user_id == currentUserId }
+        
+        // Check calendar permissions first
+        let authStatus = EKEventStore.authorizationStatus(for: .event)
+        guard authStatus == .authorized else {
+            throw NSError(domain: "CalendarEventService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Calendar access not authorized. Please grant calendar permissions in Settings."])
+        }
+        
+        do {
+            let appleEventId: String
+            
+            if let existingAppleEventId = currentUserAttendee?.apple_calendar_event_id {
+                // Update existing Apple Calendar event
+                appleEventId = existingAppleEventId
+                try await EventKitEventManager.shared.updateEvent(
+                    identifier: existingAppleEventId,
+                    title: event.title,
+                    start: event.start_date,
+                    end: event.end_date,
+                    isAllDay: event.is_all_day,
+                    location: event.location,
+                    notes: event.notes,
+                    categoryColor: categoryColor
+                )
+            } else {
+                // Create new Apple Calendar event
+                appleEventId = try await EventKitEventManager.shared.createEvent(
+                    title: event.title,
+                    start: event.start_date,
+                    end: event.end_date,
+                    isAllDay: event.is_all_day,
+                    location: event.location,
+                    notes: event.notes,
+                    categoryColor: categoryColor
+                )
+                
+                // Store the Apple Calendar event ID
+                // If user has an attendee record, update it; otherwise create one
+                if let attendeeId = currentUserAttendee?.id {
+                    struct UpdateAttendee: Encodable {
+                        let apple_calendar_event_id: String
+                    }
+                    let update = UpdateAttendee(apple_calendar_event_id: appleEventId)
+                    try await client
+                        .from("event_attendees")
+                        .update(update)
+                        .eq("id", value: attendeeId)
+                        .execute()
+                } else {
+                    // Create attendee record for creator if they don't have one
+                    struct AttRow: Encodable {
+                        let event_id: UUID
+                        let user_id: UUID
+                        let display_name: String
+                        let status: String
+                        let apple_calendar_event_id: String
+                    }
+                    let attendeeRow = AttRow(
+                        event_id: eventId,
+                        user_id: currentUserId,
+                        display_name: "",
+                        status: "going", // Creator is automatically going
+                        apple_calendar_event_id: appleEventId
+                    )
+                    try await client.from("event_attendees").insert(attendeeRow).execute()
+                }
+            }
+        } catch {
+            // Log error but re-throw so caller can handle it
+            print("[CalendarEventService] Failed to sync event to Apple Calendar: \(error.localizedDescription)")
+            throw error
+        }
+            
     }
     
     // MARK: - Category Management

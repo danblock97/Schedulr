@@ -182,8 +182,24 @@ final class SubscriptionManager: ObservableObject {
                 
                 // Only sync with RevenueCat if it's configured
                 if getRevenueCatAPIKey() != nil {
+                    #if DEBUG
+                    // In DEBUG mode, preserve pro tier if set via debug override
+                    let wasProBeforeSync = subscriptionInfo?.tier == .pro
+                    #endif
+                    
                     do {
                         try await syncWithRevenueCat(userId: userId)
+                        
+                        #if DEBUG
+                        // If user was pro before sync and RevenueCat would downgrade, restore pro status
+                        if wasProBeforeSync, let currentInfo = subscriptionInfo, currentInfo.tier == .free {
+                            // Check if this was a debug override (no RevenueCat customer ID)
+                            if currentInfo.revenuecatCustomerId == nil {
+                                print("[SubscriptionManager] DEBUG: Restoring pro tier after RevenueCat sync")
+                                try await setDebugProTier()
+                            }
+                        }
+                        #endif
                     } catch {
                         // If RevenueCat sync fails, continue with Supabase data
                         print("[SubscriptionManager] RevenueCat sync failed, using Supabase data only: \(error.localizedDescription)")
@@ -378,6 +394,20 @@ final class SubscriptionManager: ObservableObject {
     private func syncWithRevenueCat(userId: UUID) async throws {
         guard let client else { return }
         
+        #if DEBUG
+        // In DEBUG mode, check if user is already set to pro via debug override
+        // If so, skip RevenueCat sync to prevent reverting back to free
+        if let currentInfo = subscriptionInfo, currentInfo.tier == .pro {
+            // Check if this was set via debug (no RevenueCat customer ID or recent update)
+            if currentInfo.revenuecatCustomerId == nil || 
+               (currentInfo.subscriptionUpdatedAt != nil && 
+                Date().timeIntervalSince(currentInfo.subscriptionUpdatedAt!) < 60) {
+                print("[SubscriptionManager] DEBUG: Skipping RevenueCat sync to preserve debug pro tier")
+                return
+            }
+        }
+        #endif
+        
         do {
             // Identify user with RevenueCat first
             let (customerInfo, _) = try await Purchases.shared.logIn(userId.uuidString)
@@ -415,8 +445,21 @@ final class SubscriptionManager: ObservableObject {
         
         // Determine subscription state from RevenueCat
         let hasProEntitlement = hasActiveProEntitlement(customerInfo)
-        let tier = hasProEntitlement ? "pro" : "free"
-        let status = hasProEntitlement ? "active" : "expired"
+        var tier = hasProEntitlement ? "pro" : "free"
+        var status = hasProEntitlement ? "active" : "expired"
+        
+        #if DEBUG
+        // In DEBUG mode, check if user is already pro via debug override
+        // If so, preserve pro status even if RevenueCat says free
+        if let currentInfo = subscriptionInfo, currentInfo.tier == .pro {
+            // Check if this was set via debug (no RevenueCat customer ID or very recent update)
+            if currentInfo.revenuecatCustomerId == nil {
+                print("[SubscriptionManager] DEBUG: Preserving debug pro tier, skipping RevenueCat downgrade")
+                tier = "pro"
+                status = "active"
+            }
+        }
+        #endif
         
         print("[SubscriptionManager] Syncing subscription to Supabase - User: \(userId), Tier: \(tier), Status: \(status)")
         
@@ -483,6 +526,51 @@ final class SubscriptionManager: ObservableObject {
     var isInGracePeriod: Bool {
         subscriptionInfo?.isInGracePeriod ?? false
     }
+    
+    // MARK: - Debug Pro Tier Override (DEBUG ONLY)
+    
+    #if DEBUG
+    /// Sets the user to pro tier directly in Supabase without RevenueCat
+    /// This is for debugging/testing purposes only and will not work in production builds
+    func setDebugProTier() async throws {
+        guard let client else {
+            throw SubscriptionError.noClient
+        }
+        
+        let userId = try await getCurrentUserId()
+        
+        struct DebugSubscriptionUpdate: Encodable {
+            let subscription_tier: String
+            let subscription_status: String
+            let subscription_updated_at: String
+            let revenuecat_customer_id: String?  // Set to null to mark as debug override
+        }
+        
+        let update = DebugSubscriptionUpdate(
+            subscription_tier: "pro",
+            subscription_status: "active",
+            subscription_updated_at: ISO8601DateFormatter().string(from: Date()),
+            revenuecat_customer_id: nil  // Clear RevenueCat ID to mark as debug override
+        )
+        
+        try await client.database
+            .from("users")
+            .update(update)
+            .eq("id", value: userId)
+            .execute()
+        
+        // Update local state immediately
+        subscriptionInfo = UserSubscriptionInfo(
+            tier: .pro,
+            status: .active,
+            revenuecatCustomerId: nil,  // Clear RevenueCat ID to mark as debug override
+            subscriptionUpdatedAt: Date(),
+            downgradeGracePeriodEnds: nil
+        )
+        
+        print("[SubscriptionManager] DEBUG: Set user to pro tier (bypassing RevenueCat)")
+    }
+    #endif
 }
 
 // MARK: - Note on Subscription Updates

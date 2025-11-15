@@ -754,10 +754,13 @@ struct GroupDashboardView: View {
 
     private var filteredEvents: [CalendarEventWithUser] {
         let now = Date()
-        // Only show upcoming group events (personal events excluded from upcoming)
+        guard let currentGroupId = viewModel.selectedGroupID else { return [] }
+        // Only show upcoming group events from the current group (exclude cross-group events and personal events)
         var list = calendarSync.groupEvents.filter { event in
-            // Only show upcoming group events
-            event.end_date >= now && event.event_type == "group"
+            // Only show upcoming group events from the current group (not cross-group)
+            event.end_date >= now && 
+            event.event_type == "group" &&
+            event.group_id == currentGroupId  // Exclude cross-group events
         }
         
         if calendarPrefs.hideHolidays {

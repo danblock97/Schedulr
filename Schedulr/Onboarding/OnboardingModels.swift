@@ -143,4 +143,12 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable {
     var effectiveColor: ColorComponents? {
         category?.color ?? calendar_color
     }
+    
+    // Computed property to check if this is a cross-group event (from a different group than current)
+    // This will be set by CalendarSyncManager when fetching events
+    var isCrossGroupEvent: Bool {
+        // This will be set externally by CalendarSyncManager
+        // For now, return false as default - will be set when events are fetched
+        false
+    }
 }

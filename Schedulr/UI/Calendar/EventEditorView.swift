@@ -55,6 +55,9 @@ struct EventEditorView: View {
                             // Clear all invites when marked as personal
                             selectedMemberIds.removeAll()
                             guestNamesText = ""
+                        } else if newValue == "group" {
+                            // Group events sync automatically, so disable the toggle
+                            saveToAppleCalendar = false
                         }
                     }
                     
@@ -156,10 +159,22 @@ struct EventEditorView: View {
                     }
                 }
 
-                Section("Apple Calendar") {
-                    Toggle("Save to Apple Calendar", isOn: $saveToAppleCalendar)
-                        .disabled(eventType == "group")
-                        .accessibilityHint(eventType == "group" ? "Group events are not saved to Apple Calendar" : "Also creates/updates an Apple Calendar event")
+                if eventType == "personal" {
+                    Section("Apple Calendar") {
+                        Toggle("Save to Apple Calendar", isOn: $saveToAppleCalendar)
+                            .accessibilityHint("Also creates/updates an Apple Calendar event")
+                    }
+                } else {
+                    Section("Apple Calendar") {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text("Group events automatically sync to Apple Calendar")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
                 }
 
                 if let errorMessage {
@@ -319,15 +334,25 @@ struct EventEditorView: View {
             do {
                 let uid = try await SupabaseManager.shared.client.auth.session.user.id
                 var ekId: String? = existingEvent?.original_event_id
+                
+                // Get category color if category is selected
+                var categoryColor: ColorComponents? = nil
+                if let categoryId = selectedCategoryId {
+                    if let category = categories.first(where: { $0.id == categoryId }) {
+                        categoryColor = category.color
+                    }
+                }
+                
                 // Only save to Apple Calendar if it's a personal event AND the user enabled the toggle
                 if saveToAppleCalendar && eventType == "personal" {
                     if let existingId = ekId {
-                        try await EventKitEventManager.shared.updateEvent(identifier: existingId, title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes)
+                        try await EventKitEventManager.shared.updateEvent(identifier: existingId, title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes, categoryColor: categoryColor)
                     } else {
-                        ekId = try? await EventKitEventManager.shared.createEvent(title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes)
+                        ekId = try? await EventKitEventManager.shared.createEvent(title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes, categoryColor: categoryColor)
                     }
                 } else if eventType == "group" {
-                    // Don't save group events to Apple Calendar - delete if converting from personal to group
+                    // Don't save group events to Apple Calendar directly - they're synced via CalendarEventService
+                    // Delete if converting from personal to group
                     if let existingId = ekId {
                         try? await EventKitEventManager.shared.deleteEvent(identifier: existingId)
                     }

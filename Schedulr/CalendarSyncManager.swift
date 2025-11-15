@@ -306,6 +306,7 @@ final class CalendarSyncManager: ObservableObject {
     }
 
     /// Fetches all calendar events for a group from Supabase
+    /// Also fetches events from other groups the user is a member of (for cross-group visibility)
     func fetchGroupEvents(groupId: UUID) async throws {
         guard let client = client else {
             throw NSError(domain: "CalendarSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Supabase client not available"])
@@ -359,41 +360,117 @@ final class CalendarSyncManager: ObservableObject {
         // Get current user ID for filtering personal events
         let currentUserId = try await client.auth.session.user.id
         
-        // For personal events to span all groups: fetch group events + personal events from all members
-        // First, get all group members' user IDs
+        // Get all groups the user is a member of
+        struct UserGroupRow: Decodable {
+            let group_id: UUID
+        }
+        let userGroupRows: [UserGroupRow] = try await client
+            .from("group_members")
+            .select("group_id")
+            .eq("user_id", value: currentUserId)
+            .execute()
+            .value
+        let userGroupIds = userGroupRows.map { $0.group_id }
+        
+        // Get all members of the CURRENT group (for cross-group visibility)
         struct GroupMemberRow: Decodable {
             let user_id: UUID
         }
-        let groupMemberRows: [GroupMemberRow] = try await client
+        let currentGroupMemberRows: [GroupMemberRow] = try await client
             .from("group_members")
             .select("user_id")
             .eq("group_id", value: groupId)
             .execute()
             .value
-        let groupMemberIds = groupMemberRows.map { $0.user_id }
+        let currentGroupMemberIds = currentGroupMemberRows.map { $0.user_id }
         
-        // Query events that overlap with our date range
-        // An event overlaps if: (start_date <= end) AND (end_date >= start)
-        // This captures all events that have any part within our range
-        // For group events: must be in this group
-        // For personal events: must be from a member of this group (span across all groups)
-        let groupEventRows: [EventRow] = try await client
-            .from("calendar_events")
-            .select("*, users(id, display_name, avatar_url), event_categories(*)")
-            .eq("group_id", value: groupId)
-            .eq("event_type", value: "group")
-            .lte("start_date", value: end)
-            .gte("end_date", value: start)
-            .order("start_date", ascending: true)
+        // Get all groups that current group members are in (including groups the current user is NOT in)
+        // This allows us to see events from other groups where our group members are busy
+        struct MemberGroupRow: Decodable {
+            let group_id: UUID
+            let user_id: UUID
+        }
+        let memberGroupRows: [MemberGroupRow] = try await client
+            .from("group_members")
+            .select("group_id, user_id")
+            .in("user_id", values: currentGroupMemberIds)
             .execute()
             .value
+        
+        let allMemberGroupIds = Array(Set(memberGroupRows.map { $0.group_id })) // Deduplicate
+        
+        // Get all user IDs from all groups the current user is in (for personal events)
+        let allGroupMemberRows: [GroupMemberRow] = try await client
+            .from("group_members")
+            .select("user_id")
+            .in("group_id", values: userGroupIds)
+            .execute()
+            .value
+        let allGroupMemberIds = allGroupMemberRows.map { $0.user_id }
+        
+        // Query group events from ALL groups that current group members are in
+        // This includes events from other groups where our members are busy
+        var groupEventRows: [EventRow] = []
+        
+        if !allMemberGroupIds.isEmpty {
+            groupEventRows = try await client
+                .from("calendar_events")
+                .select("*, users(id, display_name, avatar_url), event_categories(*)")
+                .in("group_id", values: allMemberGroupIds)  // Fetch from all groups members are in
+                .eq("event_type", value: "group")
+                .lte("start_date", value: end)
+                .gte("end_date", value: start)
+                .order("start_date", ascending: true)
+                .execute()
+                .value
+        }
+        
+        // ALSO: Query events where current group members are attendees (regardless of group membership)
+        // This catches cases where RLS might prevent us from seeing group memberships
+        struct AttendeeEventRow: Decodable {
+            let event_id: UUID
+            let user_id: UUID?
+        }
+        let allAttendeeRows: [AttendeeEventRow] = try await client
+            .from("event_attendees")
+            .select("event_id, user_id")
+            .in("user_id", values: currentGroupMemberIds)
+            .execute()
+            .value
+        
+        // Filter to only user attendees (exclude guests where user_id is nil)
+        let attendeeEventRows = allAttendeeRows.filter { $0.user_id != nil }
+        let attendeeEventIds = Set(attendeeEventRows.map { $0.event_id })
+        
+        if !attendeeEventIds.isEmpty {
+            // Fetch those events
+            let attendeeEvents: [EventRow] = try await client
+                .from("calendar_events")
+                .select("*, users(id, display_name, avatar_url), event_categories(*)")
+                .in("id", values: Array(attendeeEventIds))
+                .eq("event_type", value: "group")
+                .lte("start_date", value: end)
+                .gte("end_date", value: start)
+                .order("start_date", ascending: true)
+                .execute()
+                .value
+            
+            // Merge with existing events, avoiding duplicates
+            let existingEventIds = Set(groupEventRows.map { $0.id })
+            for event in attendeeEvents {
+                if !existingEventIds.contains(event.id) {
+                    groupEventRows.append(event)
+                }
+            }
+        }
+        
         
         // Query personal events from group members (can be in any group)
         let personalEventRows: [EventRow] = try await client
             .from("calendar_events")
             .select("*, users(id, display_name, avatar_url), event_categories(*)")
             .eq("event_type", value: "personal")
-            .in("user_id", values: groupMemberIds)
+            .in("user_id", values: allGroupMemberIds)
             .lte("start_date", value: end)
             .gte("end_date", value: start)
             .order("start_date", ascending: true)
@@ -426,20 +503,55 @@ final class CalendarSyncManager: ObservableObject {
         let eventIds = allRows.map { $0.id }
         struct AttendeeRow: Decodable {
             let event_id: UUID
+            let user_id: UUID?
+            let users: UserInfo?
+            
+            struct UserInfo: Decodable {
+                let display_name: String?
+            }
         }
         
         let attendeeRows: [AttendeeRow] = try await client
             .from("event_attendees")
-            .select("event_id")
+            .select("event_id, user_id, users(display_name)")
             .in("event_id", values: eventIds)
             .execute()
             .value
         
         let eventsWithAttendees = Set(attendeeRows.map { $0.event_id })
         
-        // All events are shown (already filtered by queries above)
-        let filteredRows = allRows
-
+        // Build a map of event_id -> list of attending user IDs (for cross-group events)
+        var eventAttendeesMap: [UUID: [UUID]] = [:]
+        for attendee in attendeeRows {
+            if let userId = attendee.user_id {
+                eventAttendeesMap[attendee.event_id, default: []].append(userId)
+            }
+        }
+        
+        // Build a map of event_id -> list of attending member names (for display)
+        var eventAttendeeNamesMap: [UUID: [String]] = [:]
+        for attendee in attendeeRows {
+            if let userId = attendee.user_id, currentGroupMemberIds.contains(userId) {
+                let userName = attendee.users?.display_name ?? "Member"
+                eventAttendeeNamesMap[attendee.event_id, default: []].append(userName)
+            }
+        }
+        
+        // Filter events: show all events from current group, and cross-group events where members are attending
+        let filteredRows = allRows.filter { row in
+            // Always show events from the current group
+            if row.group_id == groupId {
+                return true
+            }
+            // For cross-group events, only show if a current group member is attending
+            if row.event_type == "group" {
+                let attendingMemberIds = eventAttendeesMap[row.id] ?? []
+                return attendingMemberIds.contains { currentGroupMemberIds.contains($0) }
+            }
+            // Show personal events (they're already filtered to group members)
+            return true
+        }
+        
         // Convert to CalendarEventWithUser, marking which events have attendees
         // Since class is @MainActor, this assignment will automatically update on main thread
         let mappedEvents = filteredRows.map { row in
@@ -467,15 +579,44 @@ final class CalendarSyncManager: ObservableObject {
             
             let hasAttendees = eventsWithAttendees.contains(row.id)
             
+            // Determine if this is a cross-group event (from a different group than the current one)
+            let isCrossGroup = row.group_id != groupId && row.event_type == "group"
+            
+            // For cross-group events, check if any current group members are attendees
+            // Only show cross-group events if a member of the current group is attending
+            let attendingMemberNames = eventAttendeeNamesMap[row.id] ?? []
+            let shouldShowCrossGroup = isCrossGroup && !attendingMemberNames.isEmpty
+            
+            // For cross-group events, show as "BUSY" with user name(s) (hide details)
+            let displayTitle: String
+            if shouldShowCrossGroup {
+                // Show "BUSY - [User Name]" for cross-group events
+                // If multiple members are attending, show first one (or combine them)
+                let userName = attendingMemberNames.first ?? "Member"
+                if attendingMemberNames.count > 1 {
+                    displayTitle = "BUSY - \(userName) +\(attendingMemberNames.count - 1)"
+                } else {
+                    displayTitle = "BUSY - \(userName)"
+                }
+            } else if isCrossGroup {
+                // Cross-group event but no current group members are attending - don't show
+                // This shouldn't happen due to our query, but handle it gracefully
+                displayTitle = row.title
+            } else {
+                displayTitle = row.title
+            }
+            let displayLocation = shouldShowCrossGroup ? nil : row.location
+            let displayNotes = shouldShowCrossGroup ? nil : row.notes
+            
             return CalendarEventWithUser(
                 id: row.id,
                 user_id: row.user_id,
                 group_id: row.group_id,
-                title: row.title,
+                title: displayTitle,
                 start_date: row.start_date,
                 end_date: row.end_date,
                 is_all_day: row.is_all_day,
-                location: row.location,
+                location: displayLocation,
                 is_public: row.is_public,
                 original_event_id: row.original_event_id,
                 calendar_name: row.calendar_name,
@@ -483,7 +624,7 @@ final class CalendarSyncManager: ObservableObject {
                 created_at: row.created_at,
                 updated_at: row.updated_at,
                 synced_at: row.synced_at,
-                notes: row.notes,
+                notes: displayNotes,
                 category_id: row.category_id,
                 event_type: row.event_type,
                 user: user,
@@ -513,9 +654,114 @@ final class CalendarSyncManager: ObservableObject {
 
             // Fetch all group events
             try await fetchGroupEvents(groupId: groupId)
+            
+            // Sync any group events the user is invited to but haven't been synced to Apple Calendar yet
+            try await syncPendingGroupEventsToAppleCalendar(userId: userId)
         } catch {
             lastSyncError = error.localizedDescription
             print("Error syncing calendar with group: \(error)")
+        }
+    }
+    
+    /// Syncs group events the user is invited to but haven't been synced to Apple Calendar yet
+    private func syncPendingGroupEventsToAppleCalendar(userId: UUID) async throws {
+        guard let client = client else { return }
+        
+        // Find group events the user is invited to that don't have apple_calendar_event_id set
+        struct PendingEventRow: Decodable {
+            let event_id: UUID
+            let attendee_id: UUID
+            let title: String
+            let start_date: Date
+            let end_date: Date
+            let is_all_day: Bool
+            let location: String?
+            let notes: String?
+            let category_id: UUID?
+            let event_categories: CategoryInfo?
+            
+            struct CategoryInfo: Decodable {
+                let color: ColorComponents
+            }
+        }
+        
+        struct AttendeeRow: Decodable {
+            let event_id: UUID
+            let id: UUID
+            let calendar_events: EventInfo?
+            
+            struct EventInfo: Decodable {
+                let title: String
+                let start_date: Date
+                let end_date: Date
+                let is_all_day: Bool
+                let location: String?
+                let notes: String?
+                let category_id: UUID?
+                let event_type: String
+                let event_categories: CategoryInfo?
+                
+                struct CategoryInfo: Decodable {
+                    let color: ColorComponents
+                }
+            }
+        }
+        
+        let attendeeRows: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("event_id, id, calendar_events(title, start_date, end_date, is_all_day, location, notes, category_id, event_type, event_categories(color))")
+            .eq("user_id", value: userId)
+            .is("apple_calendar_event_id", value: nil)
+            .execute()
+            .value
+        
+        // Filter to only group events and map to PendingEventRow
+        let groupPendingEvents = attendeeRows.compactMap { row -> PendingEventRow? in
+            guard let event = row.calendar_events, event.event_type == "group" else { return nil }
+            return PendingEventRow(
+                event_id: row.event_id,
+                attendee_id: row.id,
+                title: event.title,
+                start_date: event.start_date,
+                end_date: event.end_date,
+                is_all_day: event.is_all_day,
+                location: event.location,
+                notes: event.notes,
+                category_id: event.category_id,
+                event_categories: event.event_categories.map { cat in
+                    PendingEventRow.CategoryInfo(color: cat.color)
+                }
+            )
+        }
+        
+        // Sync each pending event to Apple Calendar
+        for pendingEvent in groupPendingEvents {
+            do {
+                let categoryColor = pendingEvent.event_categories?.color
+                let appleEventId = try await EventKitEventManager.shared.createEvent(
+                    title: pendingEvent.title,
+                    start: pendingEvent.start_date,
+                    end: pendingEvent.end_date,
+                    isAllDay: pendingEvent.is_all_day,
+                    location: pendingEvent.location,
+                    notes: pendingEvent.notes,
+                    categoryColor: categoryColor
+                )
+                
+                // Store the Apple Calendar event ID
+                struct UpdateAttendee: Encodable {
+                    let apple_calendar_event_id: String
+                }
+                let update = UpdateAttendee(apple_calendar_event_id: appleEventId)
+                try await client
+                    .from("event_attendees")
+                    .update(update)
+                    .eq("id", value: pendingEvent.attendee_id)
+                    .execute()
+            } catch {
+                // Log error but continue with other events
+                print("[CalendarSyncManager] Failed to sync pending event to Apple Calendar: \(error)")
+            }
         }
     }
 

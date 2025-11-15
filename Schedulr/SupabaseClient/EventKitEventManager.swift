@@ -28,11 +28,43 @@ final class EventKitEventManager {
         if let existing = store.calendars(for: .event).first(where: { $0.title == "Schedulr" }) {
             return existing
         }
-        // Fallback to default calendar if creating a new one is not desired here
-        return store.defaultCalendarForNewEvents ?? EKCalendar(for: .event, eventStore: store)
+        // Create a new Schedulr calendar if it doesn't exist
+        let newCalendar = EKCalendar(for: .event, eventStore: store)
+        newCalendar.title = "Schedulr"
+        newCalendar.source = store.defaultCalendarForNewEvents?.source ?? store.sources.first
+        do {
+            try store.saveCalendar(newCalendar, commit: true)
+            return newCalendar
+        } catch {
+            // If we can't create, fall back to default
+            return store.defaultCalendarForNewEvents ?? EKCalendar(for: .event, eventStore: store)
+        }
+    }
+    
+    func getOrCreateCalendarForCategory(color: ColorComponents?) -> EKCalendar {
+        // For now, use the default Schedulr calendar
+        // In the future, we could create separate calendars per category if needed
+        let calendar = defaultTargetCalendar()
+        
+        // Set the calendar color if provided
+        if let color = color {
+            let cgColor = CGColor(
+                red: CGFloat(color.red),
+                green: CGFloat(color.green),
+                blue: CGFloat(color.blue),
+                alpha: CGFloat(color.alpha)
+            )
+            // Note: cgColor is read-only for some calendar types, but we'll try to set it
+            // If it fails, the calendar will use its default color
+            calendar.cgColor = cgColor
+            // Save the calendar to persist changes
+            try? store.saveCalendar(calendar, commit: true)
+        }
+        
+        return calendar
     }
 
-    func createEvent(title: String, start: Date, end: Date, isAllDay: Bool, location: String?, notes: String?) async throws -> String {
+    func createEvent(title: String, start: Date, end: Date, isAllDay: Bool, location: String?, notes: String?, categoryColor: ColorComponents? = nil) async throws -> String {
         try await ensureAccess()
         let event = EKEvent(eventStore: store)
         event.title = title
@@ -41,12 +73,19 @@ final class EventKitEventManager {
         event.isAllDay = isAllDay
         event.location = location
         event.notes = notes
-        event.calendar = defaultTargetCalendar()
+        
+        // Get calendar with category color if provided
+        let calendar = getOrCreateCalendarForCategory(color: categoryColor)
+        event.calendar = calendar
+        
         try store.save(event, span: .thisEvent)
-        return event.eventIdentifier
+        guard let eventId = event.eventIdentifier, !eventId.isEmpty else {
+            throw NSError(domain: "EventKitEventManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get event identifier after saving"])
+        }
+        return eventId
     }
 
-    func updateEvent(identifier: String, title: String, start: Date, end: Date, isAllDay: Bool, location: String?, notes: String?) async throws {
+    func updateEvent(identifier: String, title: String, start: Date, end: Date, isAllDay: Bool, location: String?, notes: String?, categoryColor: ColorComponents? = nil) async throws {
         try await ensureAccess()
         guard let event = store.event(withIdentifier: identifier) else { return }
         event.title = title
@@ -55,6 +94,13 @@ final class EventKitEventManager {
         event.isAllDay = isAllDay
         event.location = location
         event.notes = notes
+        
+        // If category color is provided, update the calendar
+        if let color = categoryColor {
+            let calendar = getOrCreateCalendarForCategory(color: color)
+            event.calendar = calendar
+        }
+        
         try store.save(event, span: .thisEvent)
     }
 
