@@ -11,7 +11,6 @@
 		06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */; };
 		0EE8623E8ED0C13BEF843DF7 /* MonthViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */; };
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
-		1B42F5EA2EC471A800F83F04 /* TrackingPermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B42F5E92EC471A800F83F04 /* TrackingPermissionManager.swift */; };
 		1B94CCE82EB6A85D00921472 /* ReceiptParser in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCE72EB6A85D00921472 /* ReceiptParser */; };
 		1B94CCEA2EB6A85D00921472 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCE92EB6A85D00921472 /* RevenueCat */; };
 		1B94CCEC2EB6A85D00921472 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCEB2EB6A85D00921472 /* RevenueCatUI */; };
@@ -79,7 +78,6 @@
 		150AB9468B8BFC0794E91152 /* AgendaListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgendaListView.swift; sourceTree = "<group>"; };
 		1B0AC2222EB7885800E9E405 /* Config/Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = "<group>"; };
 		1B0AC2232EB7886300E9E405 /* Config/Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = "<group>"; };
-		1B42F5E92EC471A800F83F04 /* TrackingPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackingPermissionManager.swift; sourceTree = "<group>"; };
 		1B79C8872EC2647B00BECADF /* Schedulr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Schedulr.entitlements; sourceTree = "<group>"; };
 		28DFABD583D4A6638E1C7161 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		29BC076B4D7B7EEC355DD8C0 /* GroupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupService.swift; sourceTree = "<group>"; };
@@ -231,7 +229,6 @@
 		76A43814B669E8CCD6AF8C80 /* Config */ = {
 			isa = PBXGroup;
 			children = (
-				1B42F5E92EC471A800F83F04 /* TrackingPermissionManager.swift */,
 				F1A2B3C4D5E6F7A8B9C0D1E2 /* ConsentManager.swift */,
 				A3B4C5D6E7F8A9B0C1D2E3F4 /* RatingManager.swift */,
 				B2290B394B2D2DEADE88C9B5 /* ThemeManager.swift */,
@@ -428,7 +425,6 @@
 				208771430C71DBEE0AF55814 /* GroupManagementView.swift in Sources */,
 				93F0C606CCE9F4BD1DA4CC74 /* MonthlyCalendarView.swift in Sources */,
 				16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */,
-				1B42F5EA2EC471A800F83F04 /* TrackingPermissionManager.swift in Sources */,
 				9D938D4F2EB9BD8035AE2F19 /* ProfileViewModel.swift in Sources */,
 				93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */,
 			);

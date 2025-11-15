@@ -4,7 +4,6 @@ struct ConsentBannerView: View {
     @ObservedObject var consentManager: ConsentManager
     @EnvironmentObject var themeManager: ThemeManager
     @State private var showingCustomize = false
-    @State private var analyticsEnabled = true
     @State private var thirdPartyServicesEnabled = true
     
     var body: some View {
@@ -21,7 +20,6 @@ struct ConsentBannerView: View {
             // Initialize state variables from current preferences when showing customize view
             if isShowing {
                 let prefs = consentManager.preferences
-                analyticsEnabled = prefs.analytics
                 thirdPartyServicesEnabled = prefs.thirdPartyServices
             }
         }
@@ -45,11 +43,11 @@ struct ConsentBannerView: View {
                     .symbolRenderingMode(.hierarchical)
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Privacy & Cookies")
+                    Text("Your Privacy Matters")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     
-                    Text("We use cookies and similar technologies to provide, protect and improve our services. You can choose to accept all, reject all, or customize your preferences.")
+                    Text("We do not track you across apps or websites. Any cookies used on our website are strictly essential for website functionality (like keeping you logged in) and are never used for advertising, tracking, or data sharing with third parties. We use Supabase for authentication and data storage, and OpenAI for AI features. You can choose which services to allow.")
                         .font(.system(size: 14, weight: .regular))
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -146,23 +144,37 @@ struct ConsentBannerView: View {
             
             VStack(alignment: .leading, spacing: 16) {
                 ConsentOptionView(
-                    title: "Analytics & Tracking",
-                    description: "We use analytics to understand how you use our app and improve our services.",
-                    isEnabled: $analyticsEnabled,
-                    themeManager: themeManager
-                )
-                
-                ConsentOptionView(
-                    title: "Third-Party Services",
-                    description: "We use services like Supabase and OpenAI to provide core functionality. These services may process your data.",
+                    title: "Essential Services",
+                    description: "Supabase for authentication and data storage, and OpenAI for AI features. Any cookies are strictly functional (like session management) and never used for cross-app/website tracking or advertising.",
                     isEnabled: $thirdPartyServicesEnabled,
                     themeManager: themeManager
                 )
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(themeManager.primaryColor)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("What We Don't Do")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.primary)
+                            
+                            Text("• No cross-app or cross-website tracking\n• No advertising or marketing cookies\n• No third-party analytics or usage tracking\n• No selling or sharing of your data\n• Cookies are only for essential functionality")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground).opacity(0.3))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
             }
             
             Button {
                 consentManager.saveCustomized(
-                    analytics: analyticsEnabled,
                     thirdPartyServices: thirdPartyServicesEnabled
                 )
             } label: {

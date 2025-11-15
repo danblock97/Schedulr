@@ -332,7 +332,7 @@ struct AuthView: View {
                         .foregroundStyle(Color.primary.opacity(0.7))
                     Button("Terms") {
                         Task {
-                            await openURLWithTrackingPermission(urlString: "https://schedulr.co.uk/terms")
+                            await openURL(urlString: "https://schedulr.co.uk/terms")
                         }
                     }
                     .font(isPad ? .footnote : .caption2)
@@ -342,7 +342,7 @@ struct AuthView: View {
                         .foregroundStyle(Color.primary.opacity(0.7))
                     Button("Privacy Policy") {
                         Task {
-                            await openURLWithTrackingPermission(urlString: "https://schedulr.co.uk/privacy")
+                            await openURL(urlString: "https://schedulr.co.uk/privacy")
                         }
                     }
                     .font(isPad ? .footnote : .caption2)
@@ -363,23 +363,13 @@ struct AuthView: View {
         }
     }
     
-    private func openURLWithTrackingPermission(urlString: String) async {
+    /// Opens a URL in SFSafariViewController
+    /// No tracking is performed - cookies are only used for essential website functionality
+    private func openURL(urlString: String) async {
         guard let url = URL(string: urlString) else { return }
         
         #if os(iOS)
-        // Check tracking authorization before opening web content
-        // SFSafariViewController can access cookies and tracking data, so we must respect ATT status
-        if #available(iOS 14, *) {
-            if !TrackingPermissionManager.shared.isTrackingAuthorized {
-                // User denied tracking - open in external Safari instead
-                // External Safari doesn't share cookies/tracking data with the app, but still allows user access
-                // This complies with App Tracking Transparency guidelines while not blocking user functionality
-                await UIApplication.shared.open(url)
-                return
-            }
-        }
-        
-        // Use SFSafariViewController for better in-app experience when tracking is authorized
+        // Use SFSafariViewController for better in-app experience
         let config = SFSafariViewController.Configuration()
         config.entersReaderIfAvailable = false
         
@@ -399,6 +389,8 @@ struct AuthView: View {
             }
             presentingVC.present(safariVC, animated: true)
         }
+        #else
+        await UIApplication.shared.open(url)
         #endif
     }
 }

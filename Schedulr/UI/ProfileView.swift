@@ -790,14 +790,6 @@ private struct ConsentPreferencesView: View {
             return "All preferences accepted"
         case .rejected:
             return "All preferences rejected"
-        case .customized(let analytics, let thirdPartyServices):
-            var parts: [String] = []
-            if analytics { parts.append("Analytics") }
-            if thirdPartyServices { parts.append("Services") }
-            if parts.isEmpty {
-                return "No preferences enabled"
-            }
-            return parts.joined(separator: ", ")
         }
     }
 }
@@ -806,7 +798,6 @@ private struct ConsentManagementSheet: View {
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var themeManager: ThemeManager
     @StateObject private var consentManager = ConsentManager.shared
-    @State private var analyticsEnabled: Bool = true
     @State private var thirdPartyServicesEnabled: Bool = true
     
     var body: some View {
@@ -825,13 +816,6 @@ private struct ConsentManagementSheet: View {
                     
                     VStack(alignment: .leading, spacing: 16) {
                         ConsentOptionView(
-                            title: "Analytics & Tracking",
-                            description: "We use analytics to understand how you use our app and improve our services. This helps us identify bugs, optimize performance, and enhance user experience.",
-                            isEnabled: $analyticsEnabled,
-                            themeManager: themeManager
-                        )
-                        
-                        ConsentOptionView(
                             title: "Third-Party Services",
                             description: "We use services like Supabase (for data storage and authentication) and OpenAI (for AI features) to provide core functionality. These services may process your data according to their privacy policies.",
                             isEnabled: $thirdPartyServicesEnabled,
@@ -843,7 +827,6 @@ private struct ConsentManagementSheet: View {
                     VStack(spacing: 12) {
                         Button {
                             consentManager.saveCustomized(
-                                analytics: analyticsEnabled,
                                 thirdPartyServices: thirdPartyServicesEnabled
                             )
                             dismiss()
@@ -897,7 +880,6 @@ private struct ConsentManagementSheet: View {
             .onAppear {
                 // Load current preferences
                 let prefs = consentManager.preferences
-                analyticsEnabled = prefs.analytics
                 thirdPartyServicesEnabled = prefs.thirdPartyServices
             }
         }

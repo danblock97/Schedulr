@@ -12,7 +12,6 @@ final class ConsentManager: ObservableObject {
     
     private let defaults = UserDefaults.standard
     private let hasShownConsentKey = "ConsentManager.hasShownConsent"
-    private let analyticsConsentKey = "ConsentManager.analyticsConsent"
     private let thirdPartyServicesConsentKey = "ConsentManager.thirdPartyServicesConsent"
     
     private init() {
@@ -25,20 +24,10 @@ final class ConsentManager: ObservableObject {
         case notDetermined
         case accepted
         case rejected
-        case customized(analytics: Bool, thirdPartyServices: Bool)
     }
     
     struct ConsentPreferences {
-        var analytics: Bool
         var thirdPartyServices: Bool
-        
-        var allAccepted: Bool {
-            analytics && thirdPartyServices
-        }
-        
-        var allRejected: Bool {
-            !analytics && !thirdPartyServices
-        }
     }
     
     // MARK: - Public Methods
@@ -52,19 +41,12 @@ final class ConsentManager: ObservableObject {
     var preferences: ConsentPreferences {
         switch consentStatus {
         case .notDetermined:
-            return ConsentPreferences(analytics: false, thirdPartyServices: false)
+            return ConsentPreferences(thirdPartyServices: false)
         case .accepted:
-            return ConsentPreferences(analytics: true, thirdPartyServices: true)
+            return ConsentPreferences(thirdPartyServices: true)
         case .rejected:
-            return ConsentPreferences(analytics: false, thirdPartyServices: false)
-        case .customized(let analytics, let thirdPartyServices):
-            return ConsentPreferences(analytics: analytics, thirdPartyServices: thirdPartyServices)
+            return ConsentPreferences(thirdPartyServices: false)
         }
-    }
-    
-    /// Check if analytics are allowed
-    var isAnalyticsAllowed: Bool {
-        preferences.analytics
     }
     
     /// Check if third-party services are allowed
@@ -87,13 +69,11 @@ final class ConsentManager: ObservableObject {
     }
     
     /// Save customized consent preferences
-    func saveCustomized(analytics: Bool, thirdPartyServices: Bool) {
-        if analytics && thirdPartyServices {
+    func saveCustomized(thirdPartyServices: Bool) {
+        if thirdPartyServices {
             consentStatus = .accepted
-        } else if !analytics && !thirdPartyServices {
-            consentStatus = .rejected
         } else {
-            consentStatus = .customized(analytics: analytics, thirdPartyServices: thirdPartyServices)
+            consentStatus = .rejected
         }
         saveConsentState()
         hasShownConsent = true
@@ -104,7 +84,6 @@ final class ConsentManager: ObservableObject {
         hasShownConsent = false
         consentStatus = .notDetermined
         defaults.removeObject(forKey: hasShownConsentKey)
-        defaults.removeObject(forKey: analyticsConsentKey)
         defaults.removeObject(forKey: thirdPartyServicesConsentKey)
     }
     
@@ -114,15 +93,12 @@ final class ConsentManager: ObservableObject {
         hasShownConsent = defaults.bool(forKey: hasShownConsentKey)
         
         if hasShownConsent {
-            let analytics = defaults.bool(forKey: analyticsConsentKey)
             let thirdPartyServices = defaults.bool(forKey: thirdPartyServicesConsentKey)
             
-            if analytics && thirdPartyServices {
+            if thirdPartyServices {
                 consentStatus = .accepted
-            } else if !analytics && !thirdPartyServices {
-                consentStatus = .rejected
             } else {
-                consentStatus = .customized(analytics: analytics, thirdPartyServices: thirdPartyServices)
+                consentStatus = .rejected
             }
         } else {
             consentStatus = .notDetermined
@@ -133,7 +109,6 @@ final class ConsentManager: ObservableObject {
         defaults.set(true, forKey: hasShownConsentKey)
         
         let prefs = preferences
-        defaults.set(prefs.analytics, forKey: analyticsConsentKey)
         defaults.set(prefs.thirdPartyServices, forKey: thirdPartyServicesConsentKey)
     }
 }
