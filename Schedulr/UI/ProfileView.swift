@@ -512,30 +512,6 @@ struct ProfileView: View {
                                 )
                         }
                     }
-                    
-                    #if DEBUG
-                    Button(action: {
-                        Task {
-                            do {
-                                try await SubscriptionManager.shared.setDebugProTier()
-                                await SubscriptionManager.shared.fetchSubscriptionStatus()
-                                await loadSubscriptionInfo()
-                            } catch {
-                                print("[ProfileView] Failed to set debug pro tier: \(error)")
-                            }
-                        }
-                    }) {
-                        Text("DEBUG: Set Pro Tier")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(Color.orange.opacity(0.1))
-                            )
-                    }
-                    #endif
                 }
                 
                 // Grace period warning
