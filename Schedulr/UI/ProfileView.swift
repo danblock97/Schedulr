@@ -38,360 +38,8 @@ struct ProfileView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 24) {
-                        // Avatar Section
-                        VStack(spacing: 16) {
-                            ZStack {
-                                if let avatarURL = viewModel.avatarURL, let url = URL(string: avatarURL) {
-                                    AsyncImage(url: url) { image in
-                                        image
-                                            .resizable()
-                                            .scaledToFill()
-                                    } placeholder: {
-                                        ProgressView()
-                                    }
-                                    .frame(width: 120, height: 120)
-                                    .clipShape(Circle())
-                                    .overlay(
-                                        Circle()
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [
-                                                        themeManager.primaryColor,
-                                                        themeManager.secondaryColor
-                                                    ],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ),
-                                                lineWidth: 4
-                                            )
-                                    )
-                                    .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 8)
-                                } else {
-                                    Circle()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    themeManager.primaryColor,
-                                                    themeManager.secondaryColor
-                                                ],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                        .frame(width: 120, height: 120)
-                                        .overlay(
-                                            Text(viewModel.displayName.prefix(1).uppercased())
-                                                .font(.system(size: 48, weight: .bold, design: .rounded))
-                                                .foregroundColor(.white)
-                                        )
-                                        .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 8)
-                                }
-
-                                // Camera button overlay
-                                PhotosPicker(selection: $viewModel.selectedPhotoItem, matching: .images) {
-                                    Circle()
-                                        .fill(.white)
-                                        .frame(width: 36, height: 36)
-                                        .overlay(
-                                            Image(systemName: "camera.fill")
-                                                .font(.system(size: 16))
-                                                .foregroundStyle(
-                                                    LinearGradient(
-                                                        colors: [
-                                                            themeManager.primaryColor,
-                                                            themeManager.secondaryColor
-                                                        ],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    )
-                                                )
-                                        )
-                                        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
-                                }
-                                .offset(x: 40, y: 40)
-                            }
-
-                            Text("✨ Tap to change")
-                                .font(.system(size: 13, weight: .medium, design: .rounded))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 20)
-
-                        // Name Section
-                        VStack(spacing: 12) {
-                            if isEditingName {
-                                VStack(spacing: 12) {
-                                    TextField("Display Name", text: $tempDisplayName)
-                                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                                        .multilineTextAlignment(.center)
-                                        .padding()
-                                        .background(.ultraThinMaterial)
-                                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                                    HStack(spacing: 12) {
-                                        Button {
-                                            isEditingName = false
-                                            tempDisplayName = viewModel.displayName
-                                        } label: {
-                                            Text("Cancel")
-                                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                                .foregroundColor(.secondary)
-                                                .frame(maxWidth: .infinity)
-                                                .padding()
-                                                .background(.ultraThinMaterial)
-                                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                        }
-
-                                        Button {
-                                            viewModel.displayName = tempDisplayName
-                                            Task {
-                                                await viewModel.updateDisplayName()
-                                                isEditingName = false
-                                            }
-                                        } label: {
-                                            Text("Save")
-                                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                                .foregroundColor(.white)
-                                                .frame(maxWidth: .infinity)
-                                                .padding()
-                                                .background(
-                                                    LinearGradient(
-                                                        colors: [
-                                                            themeManager.primaryColor,
-                                                            themeManager.secondaryColor
-                                                        ],
-                                                        startPoint: .leading,
-                                                        endPoint: .trailing
-                                                    )
-                                                )
-                                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                                .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 12, x: 0, y: 6)
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal)
-                            } else {
-                                Button {
-                                    tempDisplayName = viewModel.displayName
-                                    isEditingName = true
-                                } label: {
-                                    HStack {
-                                        Text(viewModel.displayName.isEmpty ? "Set your name" : viewModel.displayName)
-                                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                                            .foregroundColor(.primary)
-
-                                        Image(systemName: "pencil.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundStyle(
-                                                LinearGradient(
-                                                    colors: [
-                                                        themeManager.primaryColor,
-                                                        themeManager.secondaryColor
-                                                    ],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Subscription Section
-                        subscriptionSection
-
-                        // Groups Section
-                        if !viewModel.userGroups.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("👥 Your Groups")
-                                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                                    .foregroundColor(.primary)
-                                    .padding(.horizontal)
-
-                                VStack(spacing: 12) {
-                                    ForEach(viewModel.userGroups) { group in
-                                        GroupCard(group: group) {
-                                            viewModel.groupToLeave = group
-                                            viewModel.showingLeaveGroupConfirmation = true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Calendar Preferences Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("📅 Calendar Preferences")
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                                .padding(.horizontal)
-
-                            VStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Toggle("Hide holidays & birthdays", isOn: Binding(
-                                    get: { calendarPrefs.hideHolidays },
-                                    set: { newVal in
-                                        calendarPrefs.hideHolidays = newVal
-                                        Task { await saveCalendarPrefs() }
-                                    }
-                                ))
-                                    .padding(.bottom, 2)
-                                    .accessibilityHint("Filters common holiday and birthday calendars from your views and dashboard")
-                                    
-                                    Text("Filters common holiday and birthday calendars from your Calendar and Upcoming.")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding()
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Toggle("Deduplicate identical all‑day events", isOn: Binding(
-                                    get: { calendarPrefs.dedupAllDay },
-                                    set: { newVal in
-                                        calendarPrefs.dedupAllDay = newVal
-                                        Task { await saveCalendarPrefs() }
-                                    }
-                                ))
-                                    .padding(.bottom, 2)
-                                    .accessibilityHint("Combines same-title all-day events on a day into one row with a shared count")
-
-                                    Text("Combines same‑title all‑day events on a day into one row with a shared count.")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding()
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-                            .padding(.horizontal)
-                        }
-
-                        // Color Theme Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("🎨 Color Theme")
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                                .padding(.horizontal)
-                            
-                            Button {
-                                showingThemePicker = true
-                            } label: {
-                                HStack {
-                                    // Theme preview
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    themeManager.primaryColor,
-                                                    themeManager.secondaryColor
-                                                ],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            )
-                                        )
-                                        .frame(width: 40, height: 40)
-                                    
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("App Theme")
-                                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                            .foregroundColor(.primary)
-                                        
-                                        Text(currentThemeName)
-                                            .font(.system(size: 14, weight: .regular, design: .rounded))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding()
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-                            .padding(.horizontal)
-                        }
-
-                        // Privacy & Consent Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("🔒 Privacy & Consent")
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                                .padding(.horizontal)
-                            
-                            VStack(spacing: 12) {
-                                ConsentPreferencesView()
-                                    .padding(.horizontal)
-                            }
-                        }
-                        .padding(.top, 8)
-
-                        // Action Buttons Section
-                        VStack(spacing: 12) {
-                            // Sign Out Button
-                            Button {
-                                Task {
-                                    await authViewModel.signOut()
-                                }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                                        .font(.system(size: 18, weight: .semibold))
-                                    Text("Sign Out")
-                                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                }
-                                .foregroundColor(.primary)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
-                            }
-
-                            // Delete Account Button
-                            Button {
-                                viewModel.showingDeleteAccountConfirmation = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "trash.fill")
-                                        .font(.system(size: 18, weight: .semibold))
-                                    Text("Delete Account")
-                                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                }
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(
-                                    LinearGradient(
-                                        colors: [Color.red, Color.red.opacity(0.8)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .shadow(color: Color.red.opacity(0.3), radius: 12, x: 0, y: 6)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 12)
-
-                        // Error Message
-                        if let errorMessage = viewModel.errorMessage {
-                            Text(errorMessage)
-                                .font(.system(size: 14, weight: .medium, design: .rounded))
-                                .foregroundColor(.red)
-                                .padding()
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .padding(.horizontal)
-                        }
-                    }
-                    .padding(.bottom, 100) // Space for floating tab bar
+                    profileContent
+                        .padding(.bottom, 100) // Space for floating tab bar
                 }
             }
             .navigationTitle("Profile")
@@ -548,7 +196,406 @@ struct ProfileView: View {
         }
     }
     
+    // MARK: - Content Views
+    
+    private var profileContent: some View {
+        VStack(spacing: 24) {
+            avatarSection
+            nameSection
+            subscriptionSection
+            groupsSection
+            calendarPreferencesSection
+            colorThemeSection
+            privacyConsentSection
+            actionButtonsSection
+            errorMessageView
+            versionInfoView
+        }
+    }
+    
+    private var avatarSection: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                if let avatarURL = viewModel.avatarURL, let url = URL(string: avatarURL) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        ProgressView()
+                    }
+                    .frame(width: 120, height: 120)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor,
+                                        themeManager.secondaryColor
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 4
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 8)
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 120, height: 120)
+                        .overlay(
+                            Text(viewModel.displayName.prefix(1).uppercased())
+                                .font(.system(size: 48, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                        )
+                        .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 8)
+                }
+
+                // Camera button overlay
+                PhotosPicker(selection: $viewModel.selectedPhotoItem, matching: .images) {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [
+                                            themeManager.primaryColor,
+                                            themeManager.secondaryColor
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
+                }
+                .offset(x: 40, y: 40)
+            }
+
+            Text("✨ Tap to change")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+        }
+        .padding(.top, 20)
+    }
+    
+    private var nameSection: some View {
+        VStack(spacing: 12) {
+            if isEditingName {
+                VStack(spacing: 12) {
+                    TextField("Display Name", text: $tempDisplayName)
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .padding()
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    HStack(spacing: 12) {
+                        Button {
+                            isEditingName = false
+                            tempDisplayName = viewModel.displayName
+                        } label: {
+                            Text("Cancel")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(.ultraThinMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+
+                        Button {
+                            viewModel.displayName = tempDisplayName
+                            Task {
+                                await viewModel.updateDisplayName()
+                                isEditingName = false
+                            }
+                        } label: {
+                            Text("Save")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(
+                                    LinearGradient(
+                                        colors: [
+                                            themeManager.primaryColor,
+                                            themeManager.secondaryColor
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 12, x: 0, y: 6)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            } else {
+                Button {
+                    tempDisplayName = viewModel.displayName
+                    isEditingName = true
+                } label: {
+                    HStack {
+                        Text(viewModel.displayName.isEmpty ? "Set your name" : viewModel.displayName)
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor,
+                                        themeManager.secondaryColor
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                }
+            }
+        }
+    }
+    
+    private var groupsSection: some View {
+        Group {
+            if !viewModel.userGroups.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("👥 Your Groups")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal)
+
+                    VStack(spacing: 12) {
+                        ForEach(viewModel.userGroups) { group in
+                            GroupCard(group: group) {
+                                viewModel.groupToLeave = group
+                                viewModel.showingLeaveGroupConfirmation = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var calendarPreferencesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("📅 Calendar Preferences")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.horizontal)
+
+            VStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Hide holidays & birthdays", isOn: Binding(
+                        get: { calendarPrefs.hideHolidays },
+                        set: { newVal in
+                            calendarPrefs.hideHolidays = newVal
+                            Task { await saveCalendarPrefs() }
+                        }
+                    ))
+                    .padding(.bottom, 2)
+                    .accessibilityHint("Filters common holiday and birthday calendars from your views and dashboard")
+                    
+                    Text("Filters common holiday and birthday calendars from your Calendar and Upcoming.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Deduplicate identical all‑day events", isOn: Binding(
+                        get: { calendarPrefs.dedupAllDay },
+                        set: { newVal in
+                            calendarPrefs.dedupAllDay = newVal
+                            Task { await saveCalendarPrefs() }
+                        }
+                    ))
+                    .padding(.bottom, 2)
+                    .accessibilityHint("Combines same-title all-day events on a day into one row with a shared count")
+
+                    Text("Combines same‑title all‑day events on a day into one row with a shared count.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    private var colorThemeSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("🎨 Color Theme")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.horizontal)
+            
+            Button {
+                showingThemePicker = true
+            } label: {
+                HStack {
+                    // Theme preview
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: 40, height: 40)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("App Theme")
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .foregroundColor(.primary)
+                        
+                        Text(currentThemeName)
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    private var privacyConsentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("🔒 Privacy & Consent")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .padding(.horizontal)
+            
+            VStack(spacing: 12) {
+                ConsentPreferencesView()
+                    .padding(.horizontal)
+            }
+        }
+        .padding(.top, 8)
+    }
+    
+    private var actionButtonsSection: some View {
+        VStack(spacing: 12) {
+            // Sign Out Button
+            Button {
+                Task {
+                    await authViewModel.signOut()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Sign Out")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+            }
+
+            // Delete Account Button
+            Button {
+                viewModel.showingDeleteAccountConfirmation = true
+            } label: {
+                HStack {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Delete Account")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    LinearGradient(
+                        colors: [Color.red, Color.red.opacity(0.8)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: Color.red.opacity(0.3), radius: 12, x: 0, y: 6)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 12)
+    }
+    
+    private var errorMessageView: some View {
+        Group {
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundColor(.red)
+                    .padding()
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal)
+            }
+        }
+    }
+    
+    private var versionInfoView: some View {
+        VStack(spacing: 4) {
+            Text(appVersion)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(.secondary)
+            Text("Build \(appBuildNumber)")
+                .font(.system(size: 11, weight: .regular))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+    
     // MARK: - Helper
+    
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+    }
+    
+    private var appBuildNumber: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+    }
     
     private func loadSubscriptionInfo() async {
         // Load usage info

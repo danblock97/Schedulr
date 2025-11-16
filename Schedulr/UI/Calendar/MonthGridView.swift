@@ -90,7 +90,25 @@ struct MonthGridView: View {
                     .padding(.bottom, 4)
                 }
             } else if viewMode == .stacked {
-                // Stacked: Event titles stacked
+                // Stacked: Single centered dot indicator
+                if !dayEvents.isEmpty {
+                    let eventColor = dayEvents.first?.base.effectiveColor != nil ? Color(
+                        red: dayEvents.first!.base.effectiveColor!.red,
+                        green: dayEvents.first!.base.effectiveColor!.green,
+                        blue: dayEvents.first!.base.effectiveColor!.blue,
+                        opacity: dayEvents.first!.base.effectiveColor!.alpha
+                    ) : Color(red: 0.58, green: 0.41, blue: 0.87)
+                    HStack {
+                        Spacer()
+                        Circle()
+                            .fill(eventColor)
+                            .frame(width: 7, height: 7)
+                        Spacer()
+                    }
+                    .padding(.bottom, 6)
+                }
+            } else {
+                // Details: Event titles stacked
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(dayEvents.prefix(2)) { event in
                         Text(event.base.title.isEmpty ? "Busy" : event.base.title)
@@ -124,24 +142,6 @@ struct MonthGridView: View {
                 }
                 .padding(.horizontal, 4)
                 .padding(.bottom, 4)
-            } else {
-                // Details: Single centered dot indicator
-                if !dayEvents.isEmpty {
-                    let eventColor = dayEvents.first?.base.effectiveColor != nil ? Color(
-                        red: dayEvents.first!.base.effectiveColor!.red,
-                        green: dayEvents.first!.base.effectiveColor!.green,
-                        blue: dayEvents.first!.base.effectiveColor!.blue,
-                        opacity: dayEvents.first!.base.effectiveColor!.alpha
-                    ) : Color(red: 0.58, green: 0.41, blue: 0.87)
-                    HStack {
-                        Spacer()
-                        Circle()
-                            .fill(eventColor)
-                            .frame(width: 7, height: 7)
-                        Spacer()
-                    }
-                    .padding(.bottom, 6)
-                }
             }
                 
                 Spacer(minLength: 0)

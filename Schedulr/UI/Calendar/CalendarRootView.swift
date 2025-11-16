@@ -328,15 +328,21 @@ struct CalendarRootView: View {
                     Text("\(Calendar.current.component(.year, from: displayedYear))")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.red)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 } else if mode == .month {
                     Text(monthTitleWithYear(displayedMonth))
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 } else {
                     // List view - show selected date title
                     Text(monthTitle(selectedDate))
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 
                 Spacer()
@@ -349,6 +355,8 @@ struct CalendarRootView: View {
                         HStack(spacing: 4) {
                             Text(monthViewMode.rawValue)
                                 .font(.system(size: 16, weight: .medium))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 12, weight: .medium))
                         }
