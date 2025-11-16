@@ -111,7 +111,7 @@ final class SubscriptionManager: ObservableObject {
             // Fetch current user info to check if they're a manual pro user
             let user: DBUser = try await client.database
                 .from("users")
-                .select("revenuecat_customer_id,subscription_tier")
+                .select("id,revenuecat_customer_id,subscription_tier")
                 .eq("id", value: userId)
                 .single()
                 .execute()
@@ -242,7 +242,31 @@ final class SubscriptionManager: ObservableObject {
         
         do {
             // Ensure user is identified with RevenueCat before purchase
-            await identifyUser()
+            // Force identification even for manual pro users to ensure purchases work correctly
+            guard let client else {
+                errorMessage = "Unable to connect to server. Please try again."
+                return false
+            }
+            
+            do {
+                let session = try await client.auth.session
+                let userId = session.user.id
+                
+                // Always identify with RevenueCat before purchase, even for manual pro users
+                // This ensures RevenueCat has the correct user ID for the purchase
+                do {
+                    let (customerInfo, _) = try await Purchases.shared.logIn(userId.uuidString)
+                    // Update local state but don't sync to Supabase yet - wait for purchase to complete
+                    await updateFromCustomerInfo(customerInfo)
+                } catch {
+                    print("[SubscriptionManager] RevenueCat identification failed, but continuing with purchase: \(error.localizedDescription)")
+                    // Continue anyway - RevenueCat will identify during purchase if needed
+                }
+            } catch {
+                print("[SubscriptionManager] Failed to get user session: \(error.localizedDescription)")
+                errorMessage = "Unable to verify your account. Please try again."
+                return false
+            }
             
             // Attempt purchase - RevenueCat will handle sandbox receipt validation automatically
             // If production app gets sandbox receipt, RevenueCat's server will validate against sandbox environment
@@ -259,10 +283,11 @@ final class SubscriptionManager: ObservableObject {
             await updateFromCustomerInfo(customerInfo)
             
             // Sync with Supabase - ensure this completes successfully
+            var syncSucceeded = false
             do {
                 let userId = try await getCurrentUserId()
                 try await syncSubscriptionToSupabase(userId: userId, customerInfo: customerInfo)
-                print("[SubscriptionManager] Successfully synced purchase to Supabase")
+                syncSucceeded = true
             } catch {
                 // Retry sync once after a short delay
                 print("[SubscriptionManager] Initial sync failed, retrying: \(error.localizedDescription)")
@@ -271,18 +296,33 @@ final class SubscriptionManager: ObservableObject {
                 do {
                     let userId = try await getCurrentUserId()
                     try await syncSubscriptionToSupabase(userId: userId, customerInfo: customerInfo)
-                    print("[SubscriptionManager] Retry sync successful")
+                    syncSucceeded = true
                 } catch {
                     print("[SubscriptionManager] Retry sync failed: \(error.localizedDescription)")
-                    // Even if sync fails, purchase was successful, so we continue
-                    // The sync will be retried on next app launch or when fetchSubscriptionStatus is called
+                    // Set error message so user knows sync failed
+                    errorMessage = "Purchase successful but failed to update subscription. Please try restoring purchases or contact support."
                 }
+            }
+            
+            // If sync failed, still return true (purchase was successful) but log the issue
+            if !syncSucceeded {
+                print("[SubscriptionManager] WARNING: Purchase completed but database sync failed. User may need to restore purchases.")
+            } else {
+                // Give database a moment to propagate the update before refreshing
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
             }
             
             // Refresh subscription status to ensure local state is up to date
             await fetchSubscriptionStatus()
             
-            print("[SubscriptionManager] Purchase flow completed successfully")
+            // Verify the subscription status was updated correctly
+            if syncSucceeded && subscriptionInfo?.tier != .pro {
+                print("[SubscriptionManager] WARNING: After purchase and sync, subscription tier is still \(subscriptionInfo?.tier.rawValue ?? "unknown"), expected 'pro'")
+                // Force another fetch after a delay
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                await fetchSubscriptionStatus()
+            }
+            
             return true
             
         } catch {
@@ -467,28 +507,34 @@ final class SubscriptionManager: ObservableObject {
             throw SubscriptionError.noClient 
         }
         
-        // Check database directly to see if user has manual pro override
-        // This ensures we check the current database state, not stale cached data
-        let currentUser: DBUser = try await client.database
-            .from("users")
-            .select("revenuecat_customer_id,subscription_tier")
-            .eq("id", value: userId)
-            .single()
-            .execute()
-            .value
-        
-        // If user is a manual pro user, preserve their current tier and skip RevenueCat sync
-        if isManualProUser(revenuecatCustomerId: currentUser.revenuecat_customer_id, subscriptionTier: currentUser.subscription_tier) {
-            print("[SubscriptionManager] Preserving manual pro tier (tier: \(currentUser.subscription_tier ?? "unknown")), skipping RevenueCat sync")
-            return
-        }
-        
         // Determine subscription state from RevenueCat
         let hasProEntitlement = hasActiveProEntitlement(customerInfo)
         let tier = hasProEntitlement ? "pro" : "free"
         let status = hasProEntitlement ? "active" : "expired"
         
-        print("[SubscriptionManager] Syncing subscription to Supabase - User: \(userId), Tier: \(tier), Status: \(status)")
+        // Check database directly to see if user has manual pro override
+        // This ensures we check the current database state, not stale cached data
+        let currentUser: DBUser = try await client.database
+            .from("users")
+            .select("id,revenuecat_customer_id,subscription_tier")
+            .eq("id", value: userId)
+            .single()
+            .execute()
+            .value
+        
+        // If user has an active RevenueCat entitlement, ALWAYS sync it (even if they were previously manual pro)
+        // This ensures purchases always update the database
+        let hasActiveRevenueCatEntitlement = hasProEntitlement
+        
+        // Only skip sync if user is explicitly marked as manual pro (revenuecat_customer_id == "manual")
+        // AND they don't have an active RevenueCat entitlement
+        // This preserves manual pro status for users who haven't purchased through RevenueCat
+        let isExplicitlyManual = currentUser.revenuecat_customer_id == "manual"
+        
+        if isExplicitlyManual && !hasActiveRevenueCatEntitlement {
+            print("[SubscriptionManager] Preserving manual pro tier, skipping RevenueCat sync")
+            return
+        }
         
         // Create an encodable struct for the update
         struct SubscriptionUpdate: Encodable {
@@ -512,7 +558,27 @@ final class SubscriptionManager: ObservableObject {
                 .eq("id", value: userId)
                 .execute()
             
-            print("[SubscriptionManager] Successfully synced subscription to Supabase - User: \(userId), Tier: \(tier), Status: \(status)")
+            // Verify the update actually happened by reading back the user
+            let verifyUser: DBUser = try await client.database
+                .from("users")
+                .select("id,subscription_tier,subscription_status,revenuecat_customer_id")
+                .eq("id", value: userId)
+                .single()
+                .execute()
+                .value
+            
+            // Check if update actually worked
+            if verifyUser.subscription_tier != tier {
+                let errorMsg = "Database update failed - expected tier '\(tier)' but got '\(verifyUser.subscription_tier ?? "NULL")'"
+                print("[SubscriptionManager] ERROR: \(errorMsg)")
+                throw SubscriptionError.purchaseFailed(errorMsg)
+            }
+            
+            if verifyUser.revenuecat_customer_id != customerInfo.originalAppUserId {
+                let errorMsg = "Database update failed - expected customer_id '\(customerInfo.originalAppUserId)' but got '\(verifyUser.revenuecat_customer_id ?? "NULL")'"
+                print("[SubscriptionManager] ERROR: \(errorMsg)")
+                throw SubscriptionError.purchaseFailed(errorMsg)
+            }
         } catch {
             print("[SubscriptionManager] Failed to sync subscription to Supabase: \(error.localizedDescription)")
             throw error
