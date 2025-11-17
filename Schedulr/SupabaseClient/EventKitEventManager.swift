@@ -109,6 +109,24 @@ final class EventKitEventManager {
         guard let event = store.event(withIdentifier: identifier) else { return }
         try store.remove(event, span: .thisEvent, commit: true)
     }
+
+    func findMatchingEvent(title: String, start: Date, end: Date, isAllDay: Bool, tolerance: TimeInterval = 60) async throws -> EKEvent? {
+        try await ensureAccess()
+        let predicate = store.predicateForEvents(
+            withStart: start.addingTimeInterval(-tolerance),
+            end: end.addingTimeInterval(tolerance),
+            calendars: nil
+        )
+        let events = store.events(matching: predicate)
+        return events.first(where: { event in
+            guard let eventTitle = event.title else { return false }
+            let titleMatch = eventTitle.trimmingCharacters(in: .whitespacesAndNewlines) == title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let startMatch = abs(event.startDate.timeIntervalSince(start)) <= tolerance
+            let endMatch = abs(event.endDate.timeIntervalSince(end)) <= tolerance
+            let isAllDayMatch = event.isAllDay == isAllDay
+            return titleMatch && startMatch && endMatch && isAllDayMatch
+        })
+    }
 }
 
 

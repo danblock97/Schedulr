@@ -379,6 +379,28 @@ final class CalendarEventService {
                     categoryColor: categoryColor
                 )
             } else {
+                // Check if event already exists in Apple Calendar before creating
+                let eventStore = EKEventStore()
+                let start = event.start_date
+                let end = event.end_date
+                let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
+                let existingEvents = eventStore.events(matching: predicate)
+                
+                // Look for matching event
+                let matchingEvent = existingEvents.first { ekEvent in
+                    guard let eventTitle = ekEvent.title else { return false }
+                    let titleMatch = eventTitle.trimmingCharacters(in: .whitespaces) == event.title.trimmingCharacters(in: .whitespaces)
+                    let startMatch = abs(ekEvent.startDate.timeIntervalSince(event.start_date)) < 1.0
+                    let endMatch = abs(ekEvent.endDate.timeIntervalSince(event.end_date)) < 1.0
+                    let isAllDayMatch = ekEvent.isAllDay == event.is_all_day
+                    return titleMatch && startMatch && endMatch && isAllDayMatch
+                }
+                
+                if let existingEvent = matchingEvent, let existingEventId = existingEvent.eventIdentifier {
+                    // Event already exists, use its ID
+                    appleEventId = existingEventId
+                    print("[CalendarEventService] Found existing Apple Calendar event for \(event.title), using ID: \(existingEventId)")
+                } else {
                 // Create new Apple Calendar event
                 appleEventId = try await EventKitEventManager.shared.createEvent(
                     title: event.title,
@@ -389,10 +411,25 @@ final class CalendarEventService {
                     notes: event.notes,
                     categoryColor: categoryColor
                 )
+                    print("[CalendarEventService] Created new Apple Calendar event for \(event.title), ID: \(appleEventId)")
+                }
                 
                 // Store the Apple Calendar event ID
                 // If user has an attendee record, update it; otherwise create one
                 if let attendeeId = currentUserAttendee?.id {
+                    // Check if attendee already has an apple_calendar_event_id
+                    struct AttendeeCheck: Decodable {
+                        let apple_calendar_event_id: String?
+                    }
+                    let attendeeCheck: [AttendeeCheck] = try await client
+                        .from("event_attendees")
+                        .select("apple_calendar_event_id")
+                        .eq("id", value: attendeeId)
+                        .execute()
+                        .value
+                    
+                    // Only update if apple_calendar_event_id is not already set
+                    if attendeeCheck.first?.apple_calendar_event_id == nil {
                     struct UpdateAttendee: Encodable {
                         let apple_calendar_event_id: String
                     }
@@ -402,6 +439,9 @@ final class CalendarEventService {
                         .update(update)
                         .eq("id", value: attendeeId)
                         .execute()
+                    } else {
+                        print("[CalendarEventService] Attendee already has apple_calendar_event_id, skipping update")
+                    }
                 } else {
                     // Create attendee record for creator if they don't have one
                     struct AttRow: Encodable {

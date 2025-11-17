@@ -32,6 +32,9 @@ final class CalendarSyncManager: ObservableObject {
     private let defaults = UserDefaults.standard
     private static let syncPreferenceKey = "CalendarSyncEnabled"
 
+    // Track if syncPendingGroupEventsToAppleCalendar is currently running to prevent concurrent execution
+    private var isSyncingPendingEvents: Bool = false
+
     // Computed property to lazily access Supabase client
     private var client: SupabaseClient? {
         SupabaseManager.shared.client
@@ -235,8 +238,33 @@ final class CalendarSyncManager: ObservableObject {
         let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
         let events = eventStore.events(matching: predicate)
 
+        // Fetch all apple_calendar_event_id values from event_attendees for this user
+        // These represent group events that were synced FROM Supabase TO Apple Calendar
+        // We should NOT upload them back to avoid duplicates
+        struct AttendeeAppleEventId: Decodable {
+            let apple_calendar_event_id: String?
+        }
+        let attendeeRows: [AttendeeAppleEventId] = try await client
+            .from("event_attendees")
+            .select("apple_calendar_event_id")
+            .eq("user_id", value: userId)
+            .execute()
+            .value
+        
+        // Create a Set of Apple Calendar event IDs that are already synced group events
+        // Filter out nil values since we only care about events that have been synced
+        let syncedGroupEventIds = Set(attendeeRows.compactMap { $0.apple_calendar_event_id })
+
+        // Filter out events that were synced FROM Supabase (group events)
+        // Only upload personal events that aren't already synced group events
+        let eventsToUpload = events.filter { event in
+            guard let eventId = event.eventIdentifier else { return false }
+            // Skip if this event is a group event that was synced FROM Supabase
+            return !syncedGroupEventIds.contains(eventId)
+        }
+
         // Convert to database format
-        let dbEvents: [DBCalendarEventInsert] = events.compactMap { event in
+        let dbEvents: [DBCalendarEventInsert] = eventsToUpload.compactMap { event in
             guard let eventId = event.eventIdentifier else { return nil }
 
             let colorComps = colorComponents(from: event.calendar.cgColor)
@@ -267,7 +295,38 @@ final class CalendarSyncManager: ObservableObject {
         if !dbEvents.isEmpty {
             // For personal events, check if they already exist in ANY group for this user
             // to prevent duplicates across different groups
+            // Also check if this event matches an existing group event (to prevent uploading group events as personal)
             var eventsToUpsert: [DBCalendarEventInsert] = []
+            
+            // Get all group event IDs that this user is an attendee of
+            struct GroupEventAttendee: Decodable {
+                let event_id: UUID
+            }
+            let groupEventAttendeeRows: [GroupEventAttendee] = try await client
+                .from("event_attendees")
+                .select("event_id")
+                .eq("user_id", value: userId)
+                .execute()
+                .value
+            let userGroupEventIds = Set(groupEventAttendeeRows.map { $0.event_id })
+            
+            // Fetch details of these group events to compare
+            struct GroupEventDetails: Decodable {
+                let id: UUID
+                let title: String
+                let start_date: Date
+                let end_date: Date
+            }
+            let groupEventDetails: [GroupEventDetails] = try await client
+                .from("calendar_events")
+                .select("id, title, start_date, end_date")
+                .in("id", values: Array(userGroupEventIds))
+                .eq("event_type", value: "group")
+                .execute()
+                .value
+            
+            // Create a map for quick lookup
+            let groupEventMap = Dictionary(uniqueKeysWithValues: groupEventDetails.map { ($0.id, $0) })
             
             for event in dbEvents {
                 if event.event_type == "personal", let originalId = event.original_event_id {
@@ -285,8 +344,17 @@ final class CalendarSyncManager: ObservableObject {
                         .execute()
                         .value
                     
-                    // Only include if it doesn't exist yet
-                    if existing.isEmpty {
+                    // Check if this event matches an existing group event the user is attending
+                    // Compare by title, start_date, and end_date (within 1 second tolerance for exact matches)
+                    let matchesGroupEvent = groupEventDetails.contains { groupEvent in
+                        let titleMatch = groupEvent.title.trimmingCharacters(in: .whitespaces) == event.title.trimmingCharacters(in: .whitespaces)
+                        let startMatch = abs(groupEvent.start_date.timeIntervalSince(event.start_date)) < 1.0
+                        let endMatch = abs(groupEvent.end_date.timeIntervalSince(event.end_date)) < 1.0
+                        return titleMatch && startMatch && endMatch
+                    }
+                    
+                    // Only include if it doesn't exist yet and doesn't match a group event
+                    if existing.isEmpty && !matchesGroupEvent {
                         eventsToUpsert.append(event)
                     }
                 } else {
@@ -477,12 +545,21 @@ final class CalendarSyncManager: ObservableObject {
             .execute()
             .value
         
-        // Combine both sets of events
-        var allRows = groupEventRows + personalEventRows
+        // Deduplicate group events by event id to ensure each group event appears only once
+        // regardless of how many attendees or groups it's associated with
+        var groupEventMap: [UUID: EventRow] = [:]
+        for row in groupEventRows {
+            // If event already exists, keep the existing one (they should be identical)
+            if groupEventMap[row.id] == nil {
+                groupEventMap[row.id] = row
+            }
+        }
+        let deduplicatedGroupEvents = Array(groupEventMap.values)
         
         // Deduplicate personal events by original_event_id if they exist
         // Group personal events by original_event_id and keep only the oldest one per user
         var personalEventMap: [String: EventRow] = [:]
+        var personalEventsWithoutOriginalId: [EventRow] = []
         for row in personalEventRows {
             if let originalId = row.original_event_id {
                 if let existing = personalEventMap[originalId] {
@@ -493,11 +570,59 @@ final class CalendarSyncManager: ObservableObject {
                 } else {
                     personalEventMap[originalId] = row
                 }
+            } else {
+                // Include personal events without original_event_id
+                personalEventsWithoutOriginalId.append(row)
             }
         }
         
-        // Rebuild allRows with deduplicated personal events
-        allRows = groupEventRows + Array(personalEventMap.values)
+        // Combine deduplicated events
+        var allRows = deduplicatedGroupEvents + Array(personalEventMap.values) + personalEventsWithoutOriginalId
+        
+        // Final deduplication: ensure each event appears only once by event id
+        // This handles cases where the same event might appear in multiple queries
+        var finalEventMap: [UUID: EventRow] = [:]
+        for row in allRows {
+            // If event already exists, keep the existing one (they should be identical)
+            // Prefer group events over personal events if there's a conflict
+            if let existing = finalEventMap[row.id] {
+                // If existing is personal and new is group, replace it
+                if existing.event_type == "personal" && row.event_type == "group" {
+                    finalEventMap[row.id] = row
+                }
+                // Otherwise keep the existing one
+            } else {
+                finalEventMap[row.id] = row
+            }
+        }
+        allRows = Array(finalEventMap.values)
+        
+        // Additional deduplication by title + start_date + end_date to catch cases where
+        // the same event appears with different IDs (e.g., group event synced to Apple Calendar
+        // and then uploaded back as a personal event)
+        // Prefer group events over personal events when there's a match
+        var deduplicatedByContent: [EventRow] = []
+        var seenContentSignatures: Set<String> = []
+        
+        // Sort so group events come first (they'll be preferred)
+        let sortedRows = allRows.sorted { $0.event_type == "group" && $1.event_type != "group" }
+        
+        for row in sortedRows {
+            // Create a signature: title|startTimestamp|endTimestamp|isAllDay
+            let signature = "\(row.title)|\(row.start_date.timeIntervalSince1970)|\(row.end_date.timeIntervalSince1970)|\(row.is_all_day)"
+            
+            if seenContentSignatures.contains(signature) {
+                // This event matches another by content - skip it
+                // Group events are already in the set (since we sorted them first)
+                // so personal events that match group events will be skipped
+                continue
+            }
+            
+            seenContentSignatures.insert(signature)
+            deduplicatedByContent.append(row)
+        }
+        
+        allRows = deduplicatedByContent
         
         // Fetch attendees for all events to mark which have attendees
         let eventIds = allRows.map { $0.id }
@@ -649,14 +774,19 @@ final class CalendarSyncManager: ObservableObject {
             // First refresh local events
             await refreshEvents()
 
-            // Upload to database
+            // IMPORTANT: Sync group events to Apple Calendar FIRST, before uploading personal events
+            // This ensures that group events synced to Apple Calendar are marked with apple_calendar_event_id
+            // so they won't be uploaded back as personal events
+            try await syncPendingGroupEventsToAppleCalendar(userId: userId)
+            
+            // Refresh Apple Calendar events after syncing group events to get the latest state
+            await refreshEvents()
+
+            // Upload to database (this will skip group events that were just synced)
             try await uploadEventsToDatabase(groupId: groupId, userId: userId)
 
             // Fetch all group events
             try await fetchGroupEvents(groupId: groupId)
-            
-            // Sync any group events the user is invited to but haven't been synced to Apple Calendar yet
-            try await syncPendingGroupEventsToAppleCalendar(userId: userId)
         } catch {
             lastSyncError = error.localizedDescription
             print("Error syncing calendar with group: \(error)")
@@ -665,6 +795,14 @@ final class CalendarSyncManager: ObservableObject {
     
     /// Syncs group events the user is invited to but haven't been synced to Apple Calendar yet
     private func syncPendingGroupEventsToAppleCalendar(userId: UUID) async throws {
+        // Prevent concurrent execution - if already syncing, skip this call
+        guard !isSyncingPendingEvents else {
+            return
+        }
+        
+        isSyncingPendingEvents = true
+        defer { isSyncingPendingEvents = false }
+        
         guard let client = client else { return }
         
         // Find group events the user is invited to that don't have apple_calendar_event_id set
@@ -734,30 +872,139 @@ final class CalendarSyncManager: ObservableObject {
             )
         }
         
-        // Sync each pending event to Apple Calendar
+        // CRITICAL: Deduplicate by event_id to ensure we only process each unique event once
+        // Multiple attendee rows can exist for the same event (e.g., across different groups)
+        var eventMap: [UUID: PendingEventRow] = [:]
         for pendingEvent in groupPendingEvents {
+            if eventMap[pendingEvent.event_id] == nil {
+                eventMap[pendingEvent.event_id] = pendingEvent
+            }
+        }
+        let uniquePendingEvents = Array(eventMap.values)
+        
+        // Sync each pending event to Apple Calendar
+        // First check if the event already exists in Apple Calendar to avoid duplicates
+        guard authorizationStatus == .authorized else { return }
+        
+        // Refresh Apple Calendar events to get the latest state
+        let start = Date()
+        let end = Calendar.current.date(byAdding: .day, value: 14, to: start) ?? start
+        let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
+        var existingAppleEvents = eventStore.events(matching: predicate)
+        
+        // Track which event_ids we've already processed AND which Apple Calendar event IDs we've created
+        // This prevents duplicates even if EventKit hasn't updated yet
+        var processedEventIds: Set<UUID> = []
+        var createdAppleEventIds: Set<String> = []
+        
+        // Track events we've created by title+time signature to prevent duplicates
+        // Format: "title|startTimestamp|endTimestamp|isAllDay"
+        var createdEventSignatures: Set<String> = []
+        
+        for pendingEvent in uniquePendingEvents {
+            // Skip if we've already processed this event_id in this sync session
+            if processedEventIds.contains(pendingEvent.event_id) {
+                continue
+            }
             do {
-                let categoryColor = pendingEvent.event_categories?.color
-                let appleEventId = try await EventKitEventManager.shared.createEvent(
-                    title: pendingEvent.title,
-                    start: pendingEvent.start_date,
-                    end: pendingEvent.end_date,
-                    isAllDay: pendingEvent.is_all_day,
-                    location: pendingEvent.location,
-                    notes: pendingEvent.notes,
-                    categoryColor: categoryColor
-                )
+                let appleEventId: String
                 
-                // Store the Apple Calendar event ID
+                // Create a signature for this event to check for duplicates
+                let eventSignature = "\(pendingEvent.title.trimmingCharacters(in: .whitespaces))|\(pendingEvent.start_date.timeIntervalSince1970)|\(pendingEvent.end_date.timeIntervalSince1970)|\(pendingEvent.is_all_day)"
+                
+                // First check: Have we already created an event with matching title/time in this session?
+                // This prevents duplicates even if EventKit hasn't updated yet
+                if createdEventSignatures.contains(eventSignature) {
+                    // Find the existing event ID from Apple Calendar
+                    let matchingEvent = existingAppleEvents.first { event in
+                        guard let eventTitle = event.title else { return false }
+                        guard let eventId = event.eventIdentifier else { return false }
+                        
+                        // Check if this is an event we've already created
+                        if createdAppleEventIds.contains(eventId) {
+                            let titleMatch = eventTitle.trimmingCharacters(in: .whitespaces) == pendingEvent.title.trimmingCharacters(in: .whitespaces)
+                            let startMatch = abs(event.startDate.timeIntervalSince(pendingEvent.start_date)) < 1.0
+                            let endMatch = abs(event.endDate.timeIntervalSince(pendingEvent.end_date)) < 1.0
+                            let isAllDayMatch = event.isAllDay == pendingEvent.is_all_day
+                            return titleMatch && startMatch && endMatch && isAllDayMatch
+                        }
+                        return false
+                    }
+                    if let existingEvent = matchingEvent, let existingEventId = existingEvent.eventIdentifier {
+                        appleEventId = existingEventId
+                        // Ensure signature is tracked (should already be, but just in case)
+                        createdEventSignatures.insert(eventSignature)
+                    } else {
+                        // This shouldn't happen, but if it does, skip this event
+                        processedEventIds.insert(pendingEvent.event_id)
+                        continue
+                    }
+                } else {
+                    // Check if an event with the same title, start, and end already exists in Apple Calendar
+                    // Use a more strict matching: exact title match and times within 1 second
+                    let matchingEvent = existingAppleEvents.first { event in
+                        guard let eventTitle = event.title else { return false }
+                        let titleMatch = eventTitle.trimmingCharacters(in: .whitespaces) == pendingEvent.title.trimmingCharacters(in: .whitespaces)
+                        let startMatch = abs(event.startDate.timeIntervalSince(pendingEvent.start_date)) < 1.0
+                        let endMatch = abs(event.endDate.timeIntervalSince(pendingEvent.end_date)) < 1.0
+                        let isAllDayMatch = event.isAllDay == pendingEvent.is_all_day
+                        return titleMatch && startMatch && endMatch && isAllDayMatch
+                    }
+                    
+                    if let existingEvent = matchingEvent, let existingEventId = existingEvent.eventIdentifier {
+                        // Event already exists in Apple Calendar, use its ID
+                        appleEventId = existingEventId
+                        // Track this ID and signature so we don't create another one
+                        createdAppleEventIds.insert(existingEventId)
+                        createdEventSignatures.insert(eventSignature)
+                    } else {
+                        // Create new Apple Calendar event only if it doesn't exist
+                        let categoryColor = pendingEvent.event_categories?.color
+                        appleEventId = try await EventKitEventManager.shared.createEvent(
+                            title: pendingEvent.title,
+                            start: pendingEvent.start_date,
+                            end: pendingEvent.end_date,
+                            isAllDay: pendingEvent.is_all_day,
+                            location: pendingEvent.location,
+                            notes: pendingEvent.notes,
+                            categoryColor: categoryColor
+                        )
+                        
+                        // Track this newly created ID and signature immediately to prevent duplicates
+                        createdAppleEventIds.insert(appleEventId)
+                        createdEventSignatures.insert(eventSignature)
+                        
+                        // Refresh the existing events list to include the newly created event
+                        // This prevents creating duplicates if the same event appears multiple times
+                        existingAppleEvents = eventStore.events(matching: predicate)
+                    }
+                }
+                
+                // Store the Apple Calendar event ID for ALL attendee records for this event and user
+                // Update all attendee records that don't have an apple_calendar_event_id yet
                 struct UpdateAttendee: Encodable {
                     let apple_calendar_event_id: String
                 }
                 let update = UpdateAttendee(apple_calendar_event_id: appleEventId)
-                try await client
+                
+                // Update all attendee records for this event_id and user_id that don't have an apple_calendar_event_id
+                // Use .select() to return the updated rows so we can count them
+                struct UpdatedAttendee: Decodable {
+                    let id: UUID
+                }
+                let updatedAttendees: [UpdatedAttendee] = try await client
                     .from("event_attendees")
                     .update(update)
-                    .eq("id", value: pendingEvent.attendee_id)
+                    .eq("event_id", value: pendingEvent.event_id)
+                    .eq("user_id", value: userId)
+                    .is("apple_calendar_event_id", value: nil)
+                    .select("id")
                     .execute()
+                    .value
+                
+                
+                // Mark this event as processed to prevent duplicates
+                processedEventIds.insert(pendingEvent.event_id)
             } catch {
                 // Log error but continue with other events
                 print("[CalendarSyncManager] Failed to sync pending event to Apple Calendar: \(error)")
