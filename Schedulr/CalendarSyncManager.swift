@@ -481,7 +481,7 @@ final class CalendarSyncManager: ObservableObject {
         var groupEventRows: [EventRow] = []
         
         if !allMemberGroupIds.isEmpty {
-            groupEventRows = try await client
+            let fetchedGroupEvents: [EventRow] = try await client
                 .from("calendar_events")
                 .select("*, users(id, display_name, avatar_url), event_categories(*)")
                 .in("group_id", values: allMemberGroupIds)  // Fetch from all groups members are in
@@ -491,6 +491,15 @@ final class CalendarSyncManager: ObservableObject {
                 .order("start_date", ascending: true)
                 .execute()
                 .value
+            
+            // Deduplicate immediately by event ID to prevent duplicates
+            var groupEventMap: [UUID: EventRow] = [:]
+            for event in fetchedGroupEvents {
+                if groupEventMap[event.id] == nil {
+                    groupEventMap[event.id] = event
+                }
+            }
+            groupEventRows = Array(groupEventMap.values)
         }
         
         // ALSO: Query events where current group members are attendees (regardless of group membership)
@@ -512,7 +521,7 @@ final class CalendarSyncManager: ObservableObject {
         
         if !attendeeEventIds.isEmpty {
             // Fetch those events
-            let attendeeEvents: [EventRow] = try await client
+            let fetchedAttendeeEvents: [EventRow] = try await client
                 .from("calendar_events")
                 .select("*, users(id, display_name, avatar_url), event_categories(*)")
                 .in("id", values: Array(attendeeEventIds))
@@ -523,7 +532,16 @@ final class CalendarSyncManager: ObservableObject {
                 .execute()
                 .value
             
-            // Merge with existing events, avoiding duplicates
+            // Deduplicate attendee events by ID first
+            var attendeeEventMap: [UUID: EventRow] = [:]
+            for event in fetchedAttendeeEvents {
+                if attendeeEventMap[event.id] == nil {
+                    attendeeEventMap[event.id] = event
+                }
+            }
+            let attendeeEvents = Array(attendeeEventMap.values)
+            
+            // Merge with existing events, avoiding duplicates by ID
             let existingEventIds = Set(groupEventRows.map { $0.id })
             for event in attendeeEvents {
                 if !existingEventIds.contains(event.id) {

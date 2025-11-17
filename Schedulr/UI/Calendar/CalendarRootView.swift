@@ -35,6 +35,7 @@ struct CalendarRootView: View {
     @State private var categories: [EventCategory] = []
     @State private var selectedCategoryIds: Set<UUID> = []
     @State private var isLoadingCategories = false
+    @State private var currentUserId: UUID?
 
     var body: some View {
         NavigationStack {
@@ -100,13 +101,15 @@ struct CalendarRootView: View {
                                             monthViewMode = .details
                                         }
                                     }
-                                }
+                                },
+                                currentUserId: currentUserId
                             )
                         case .list:
                             AgendaListView(
                                 events: displayEvents,
                                 members: memberColorMapping,
-                                selectedDate: $selectedDate
+                                selectedDate: $selectedDate,
+                                currentUserId: currentUserId
                             )
                         }
                     }
@@ -215,6 +218,8 @@ struct CalendarRootView: View {
                     .presentationDetents([.height(280)])
             }
             .task {
+                // Get current user ID
+                currentUserId = try? await SupabaseManager.shared.client.auth.session.user.id
                 await loadPreferences()
                 await loadCategories()
                 displayedMonth = startOfMonth(for: selectedDate)

@@ -4,6 +4,11 @@ struct DayTimelineView: View {
     let events: [CalendarEventWithUser]
     let members: [UUID: (name: String, color: Color)]
     @Binding var date: Date
+    let currentUserId: UUID?
+    
+    private func isPrivate(_ event: CalendarEventWithUser) -> Bool {
+        return event.event_type == "personal" && event.user_id != currentUserId
+    }
 
     private let hourHeight: CGFloat = 60
     private let timeColumnWidth: CGFloat = 56
@@ -30,9 +35,9 @@ struct DayTimelineView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(allDayEvents, id: \.id) { event in
-                                NavigationLink(destination: EventDetailView(event: event, member: members[event.user_id])) {
+                                NavigationLink(destination: EventDetailView(event: event, member: members[event.user_id], currentUserId: currentUserId)) {
                                     HStack(spacing: 4) {
-                                        Text(event.title.isEmpty ? "Busy" : event.title)
+                                        Text(isPrivate(event) ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
                                             .font(.system(size: 12, weight: .medium))
                                             .lineLimit(1)
                                         if let name = members[event.user_id]?.name {
@@ -102,9 +107,9 @@ struct DayTimelineView: View {
             ForEach(Array(dayEvents.enumerated()), id: \.element.id) { idx, e in
                 let y = CGFloat(minutes(fromStart: e.start_date)) / 60.0 * hourHeight
                 let h = CGFloat(max(30, minutesDuration(e))) / 60.0 * hourHeight
-                NavigationLink(destination: EventDetailView(event: e, member: members[e.user_id])) {
+                NavigationLink(destination: EventDetailView(event: e, member: members[e.user_id], currentUserId: currentUserId)) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(e.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text(isPrivate(e) ? "Busy" : e.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                         if let name = members[e.user_id]?.name { Text(name).font(.system(size: 10)) }
                     }
                     .foregroundStyle(.white)

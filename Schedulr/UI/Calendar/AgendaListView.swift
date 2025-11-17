@@ -4,6 +4,7 @@ struct AgendaListView: View {
     let events: [DisplayEvent]
     let members: [UUID: (name: String, color: Color)]
     @Binding var selectedDate: Date
+    let currentUserId: UUID?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -22,8 +23,8 @@ struct AgendaListView: View {
                             
                             // Events for this day
                             ForEach(grouped[day] ?? []) { devent in
-                                NavigationLink(destination: EventDetailView(event: devent.base, member: members[devent.base.user_id])) {
-                                    AgendaRow(event: devent.base, member: members[devent.base.user_id], sharedCount: devent.sharedCount)
+                                NavigationLink(destination: EventDetailView(event: devent.base, member: members[devent.base.user_id], currentUserId: currentUserId)) {
+                                    AgendaRow(event: devent.base, member: members[devent.base.user_id], sharedCount: devent.sharedCount, currentUserId: currentUserId)
                                 }
                                 .padding(.horizontal, 20)
                             }
@@ -69,6 +70,11 @@ private struct AgendaRow: View {
     let event: CalendarEventWithUser
     let member: (name: String, color: Color)?
     var sharedCount: Int = 1
+    let currentUserId: UUID?
+    
+    private var isPrivate: Bool {
+        return event.event_type == "personal" && event.user_id != currentUserId
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -80,7 +86,7 @@ private struct AgendaRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 // Event title
-                Text(event.title.isEmpty ? "Busy" : event.title)
+                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
                     .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.primary)
 

@@ -5,9 +5,10 @@ import PostgREST
 struct EventDetailView: View {
     let event: CalendarEventWithUser
     let member: (name: String, color: Color)?
+    let currentUserId: UUID?
     @State private var attendees: [Attendee] = []
     @State private var myStatus: String = "invited"
-    @State private var currentUserId: UUID?
+    @State private var resolvedCurrentUserId: UUID?
     @State private var isUpdatingResponse = false
     @State private var isProgrammaticStatusChange = false
     @State private var hasInitializedStatus = false
@@ -29,8 +30,14 @@ struct EventDetailView: View {
     private let attendeeStatusOrder: [String] = ["going", "maybe", "invited"]
     
     private var canEdit: Bool {
-        guard let userId = currentUserId else { return false }
+        guard let userId = resolvedCurrentUserId ?? currentUserId else { return false }
         return event.user_id == userId
+    }
+    
+    private var isPrivate: Bool {
+        // Event is private if it's a personal event and current user didn't create it
+        guard let userId = resolvedCurrentUserId ?? currentUserId else { return false }
+        return event.event_type == "personal" && event.user_id != userId
     }
 
     var body: some View {
@@ -39,12 +46,12 @@ struct EventDetailView: View {
                 HStack(alignment: .top, spacing: 12) {
                     Circle().fill(eventColor.opacity(0.9)).frame(width: 12, height: 12)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(event.title.isEmpty ? "Busy" : event.title)
+                        Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                         if let name = member?.name {
                             Text(name).font(.system(size: 14)).foregroundStyle(.secondary)
                         }
-                        if let catName = event.category?.name {
+                        if !isPrivate, let catName = event.category?.name {
                             HStack(spacing: 6) {
                                 Circle().fill(eventColor).frame(width: 8, height: 8)
                                 Text(catName)
@@ -63,7 +70,7 @@ struct EventDetailView: View {
                 Label(timeRange(event), systemImage: "clock")
             }
 
-            if let location = event.location, !location.isEmpty {
+            if !isPrivate, let location = event.location, !location.isEmpty {
                 Section("Location") {
                     Label(location, systemImage: "location")
                 }
@@ -178,8 +185,14 @@ struct EventDetailView: View {
             EventEditorView(groupId: event.group_id, members: [], existingEvent: event)
         }
         .task {
-            // Get current user ID first
-            currentUserId = try? await SupabaseManager.shared.client.auth.session.user.id
+            // Get current user ID first if not provided
+            if resolvedCurrentUserId == nil {
+                if let provided = currentUserId {
+                    resolvedCurrentUserId = provided
+                } else {
+                    resolvedCurrentUserId = try? await SupabaseManager.shared.client.auth.session.user.id
+                }
+            }
             await loadAttendees()
         }
     }
@@ -224,11 +237,11 @@ extension EventDetailView {
         Task {
             await MainActor.run { isUpdatingResponse = true }
             let uid: UUID
-            if let existing = currentUserId {
+            if let existing = resolvedCurrentUserId ?? currentUserId {
                 uid = existing
             } else if let fetched = try? await SupabaseManager.shared.client.auth.session.user.id {
                 uid = fetched
-                await MainActor.run { currentUserId = fetched }
+                await MainActor.run { resolvedCurrentUserId = fetched }
             } else {
                 // Revert if we can't get user ID
                 await MainActor.run {
@@ -293,12 +306,12 @@ extension EventDetailView {
             let rows = try await CalendarEventService.shared.loadAttendees(eventId: event.id)
 
             let currentUserIdValue: UUID?
-            if let existing = currentUserId {
+            if let existing = resolvedCurrentUserId ?? currentUserId {
                 currentUserIdValue = existing
             } else {
                 currentUserIdValue = try? await SupabaseManager.shared.client.auth.session.user.id
                 if let fetched = currentUserIdValue {
-                    await MainActor.run { currentUserId = fetched }
+                    await MainActor.run { resolvedCurrentUserId = fetched }
                 }
             }
 

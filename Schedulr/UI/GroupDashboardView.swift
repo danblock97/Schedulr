@@ -247,6 +247,7 @@ private struct GroupMemberRow: Decodable {
 struct GroupDashboardView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject private var calendarSync: CalendarSyncManager
+    @State private var currentUserId: UUID?
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
     var onSignOut: (() -> Void)?
@@ -655,12 +656,13 @@ struct GroupDashboardView: View {
                 // Upcoming list (next 10 events)
                 VStack(spacing: 14) {
                     ForEach(upcomingDisplayEvents.prefix(10)) { devent in
-                        NavigationLink(destination: EventDetailView(event: devent.base, member: memberColorMapping[devent.base.user_id])) {
+                        NavigationLink(destination: EventDetailView(event: devent.base, member: memberColorMapping[devent.base.user_id], currentUserId: currentUserId)) {
                             EnhancedUpcomingEventRow(
                                 event: devent.base,
                                 memberColor: memberColorMapping[devent.base.user_id]?.color,
                                 memberName: memberColorMapping[devent.base.user_id]?.name,
-                                sharedCount: devent.sharedCount
+                                sharedCount: devent.sharedCount,
+                                currentUserId: currentUserId
                             )
                         }
                         .buttonStyle(.plain)
@@ -697,6 +699,8 @@ struct GroupDashboardView: View {
             }
         }
         .task {
+            // Get current user ID
+            currentUserId = try? await viewModel.client?.auth.session.user.id
             await updateOwnerStatusAndMemberCount()
         }
         .alert("Transfer Ownership", isPresented: $showTransferOwnershipConfirmation) {
@@ -1513,9 +1517,14 @@ private struct EnhancedUpcomingEventRow: View {
     var memberColor: Color?
     var memberName: String?
     var sharedCount: Int = 1
+    let currentUserId: UUID?
     @State private var isPressed = false
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
+    
+    private var isPrivate: Bool {
+        return event.event_type == "personal" && event.user_id != currentUserId
+    }
     
     var body: some View {
         HStack(spacing: 14) {
@@ -1532,12 +1541,12 @@ private struct EnhancedUpcomingEventRow: View {
             }
             
             VStack(alignment: .leading, spacing: 8) {
-                Text(event.title.isEmpty ? "Busy" : event.title)
+                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
                     .font(.system(size: 17, weight: .medium, design: .default))
                     .foregroundColor(.primary)
                     .lineLimit(2)
                 
-                if sharedCount > 1 {
+                if sharedCount > 1 && !isPrivate {
                     Text("\(sharedCount) members")
                         .font(.system(size: 12, weight: .regular, design: .default))
                         .foregroundStyle(.secondary)

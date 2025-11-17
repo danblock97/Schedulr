@@ -7,6 +7,7 @@ struct MonthGridView: View {
     @Binding var displayedMonth: Date
     let viewMode: MonthViewMode
     var onDateSelected: ((Date) -> Void)?
+    let currentUserId: UUID?
 
     private let columns = Array(repeating: GridItem(.flexible(minimum: 36, maximum: .infinity)), count: 7)
 
@@ -37,8 +38,8 @@ struct MonthGridView: View {
                                 ScrollView {
                                     VStack(alignment: .leading, spacing: 12) {
                                         ForEach(dayEvents) { e in
-                                            NavigationLink(destination: EventDetailView(event: e.base, member: members[e.base.user_id])) {
-                                                MiniAgendaRow(event: e.base, member: members[e.base.user_id], sharedCount: e.sharedCount)
+                                            NavigationLink(destination: EventDetailView(event: e.base, member: members[e.base.user_id], currentUserId: currentUserId)) {
+                                                MiniAgendaRow(event: e.base, member: members[e.base.user_id], sharedCount: e.sharedCount, currentUserId: currentUserId)
                                             }
                                             .padding(.horizontal, 20)
                                         }
@@ -122,7 +123,7 @@ struct MonthGridView: View {
                 // Details: Event titles stacked
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(dayEvents.prefix(2)) { event in
-                        Text(event.base.title.isEmpty ? "Busy" : event.base.title)
+                        Text(shouldShowPrivate(event.base) ? "Busy" : (event.base.title.isEmpty ? "Busy" : event.base.title))
                             .font(.system(size: 10, weight: .medium))
                             .lineLimit(1)
                             .foregroundColor(event.base.effectiveColor != nil ? Color(
@@ -243,21 +244,32 @@ struct MonthGridView: View {
         f.dateFormat = "EEEE, d MMMM"
         return f.string(from: date)
     }
+    
+    private func shouldShowPrivate(_ event: CalendarEventWithUser) -> Bool {
+        // Show private view if it's a personal event and current user didn't create it
+        return event.event_type == "personal" && event.user_id != currentUserId
+    }
 }
 
 private struct MiniAgendaRow: View {
     let event: CalendarEventWithUser
     let member: (name: String, color: Color)?
     var sharedCount: Int = 1
+    let currentUserId: UUID?
+    
+    private var isPrivate: Bool {
+        // Event is private if it's a personal event and current user didn't create it
+        event.event_type == "personal" && event.user_id != currentUserId
+    }
 
     var body: some View {
         HStack(spacing: 12) {
             Circle().fill(eventColor.opacity(0.9))
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 4) {
-                Text(event.title.isEmpty ? "Busy" : event.title)
+                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                if sharedCount > 1 {
+                if sharedCount > 1 && !isPrivate {
                     Text("shared by \(sharedCount)")
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.horizontal, 6)
@@ -271,7 +283,7 @@ private struct MiniAgendaRow: View {
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
-                if let location = event.location, !location.isEmpty {
+                if !isPrivate, let location = event.location, !location.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "location.fill").font(.system(size: 11)).foregroundColor(.secondary)
                         Text(location).font(.system(size: 12)).foregroundStyle(.tertiary)
