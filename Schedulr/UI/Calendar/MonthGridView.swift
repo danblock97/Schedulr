@@ -12,36 +12,47 @@ struct MonthGridView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: viewMode == .compact ? 4 : 6) {
-                ForEach(daysInMonthGrid, id: \.self) { day in
-                    dayCell(day)
+            VStack(spacing: 0) {
+                LazyVGrid(columns: columns, spacing: viewMode == .compact ? 4 : 6) {
+                    ForEach(daysInMonthGrid, id: \.self) { day in
+                        dayCell(day)
+                    }
                 }
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 4)
-            
-            // Event details for selected day (only in Details mode)
-            if viewMode == .details {
-                if let selectedDay = Calendar.current.startOfDay(for: selectedDate) as Date? {
-                    let dayEvents = eventsForDay(selectedDay)
-                    if !dayEvents.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(inlineHeader(for: selectedDay))
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(.primary)
-                                .padding(.horizontal, 20)
-                                .padding(.top, 16)
-                            
-                            ForEach(dayEvents) { e in
-                                NavigationLink(destination: EventDetailView(event: e.base, member: members[e.base.user_id])) {
-                                    MiniAgendaRow(event: e.base, member: members[e.base.user_id], sharedCount: e.sharedCount)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                
+                // Event details for selected day (only in Details mode)
+                if viewMode == .details {
+                    if let selectedDay = Calendar.current.startOfDay(for: selectedDate) as Date? {
+                        let dayEvents = eventsForDay(selectedDay)
+                        if !dayEvents.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(inlineHeader(for: selectedDay))
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 12)
+                                
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        ForEach(dayEvents) { e in
+                                            NavigationLink(destination: EventDetailView(event: e.base, member: members[e.base.user_id])) {
+                                                MiniAgendaRow(event: e.base, member: members[e.base.user_id], sharedCount: e.sharedCount)
+                                            }
+                                            .padding(.horizontal, 20)
+                                        }
+                                    }
+                                    .padding(.bottom, 20)
                                 }
-                                .padding(.horizontal, 20)
+                                .frame(height: min(CGFloat(dayEvents.count) * 100 + 40, 450)) // Dynamic height: ~100pt per event + padding, max 450pt
                             }
+                            .padding(.top, 48) // Spacing between calendar grid and events section
                         }
                     }
                 }
             }
+            .padding(.bottom, 100) // Extra padding at bottom to ensure events are scrollable above tab bar
         }
     }
 
