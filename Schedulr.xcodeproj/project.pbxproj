@@ -24,7 +24,6 @@
 		1F4638209D5F89A4E6E5B239 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6EFB1D6E28C387238D3607 /* AIService.swift */; };
 		1F86A5264A96100FC2DC94A5 /* GracePeriodManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BACE572F7D2FDEE2AAFA15C /* GracePeriodManager.swift */; };
 		208771430C71DBEE0AF55814 /* GroupManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD18ECB89864D761A210A45E /* GroupManagementView.swift */; };
-		24E0A1BD9702143BB5E98EA6 /* ConsentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E2 /* ConsentManager.swift */; };
 		254D1014F99B952259022235 /* UpgradePromptModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC4D48B07588B98F126F385A /* UpgradePromptModal.swift */; };
 		25E726E769BCA83533174C26 /* SubscriptionBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A351A6DE9EFC3B170697D5E /* SubscriptionBadge.swift */; };
 		40BCB440A98314C162E01D1C /* CalendarModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B439C35CC43A6C48036F2F /* CalendarModels.swift */; };
@@ -56,7 +55,6 @@
 		A96DD1377C3ED34893EF8571 /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71916EFECBF323C00B0001CD /* OnboardingModels.swift */; };
 		B02EE5410F9A98D1C116FEC5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28DFABD583D4A6638E1C7161 /* ContentView.swift */; };
 		B17C9AF7DE1FB286F992A238 /* AIAssistantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9FAFBBC89B1B8F1648CA2D /* AIAssistantView.swift */; };
-		BA7E3E41307D967E32FF9AAB /* ConsentBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7467D5BDF9B12A121FC9BBD /* ConsentBannerView.swift */; };
 		BB8B60EAC31618D92E3EE37C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BC415939A0B2C853A1F22B05 /* LaunchScreen.storyboard */; };
 		C0FDBA57E9BB244D18BE6ED3 /* MonthGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1FD319B7697CD41C7E7063E /* MonthGridView.swift */; };
 		C6AA77868C9F461301CDC5F7 /* CalendarBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D2F87AFDD0AA081B70C2B1 /* CalendarBlockView.swift */; };
@@ -108,7 +106,6 @@
 		9B6EFB1D6E28C387238D3607 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
 		9BACE572F7D2FDEE2AAFA15C /* GracePeriodManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GracePeriodManager.swift; sourceTree = "<group>"; };
 		A3B4C5D6E7F8A9B0C1D2E3F4 /* RatingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingManager.swift; sourceTree = "<group>"; };
-		A7467D5BDF9B12A121FC9BBD /* ConsentBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentBannerView.swift; sourceTree = "<group>"; };
 		A7B439C35CC43A6C48036F2F /* CalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarModels.swift; sourceTree = "<group>"; };
 		A8D0FF9BB93970F36A562D18 /* AIAssistantViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAssistantViewModel.swift; sourceTree = "<group>"; };
 		A9EA8BB6DC91DA2B44D9C890 /* ProfileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViewModel.swift; sourceTree = "<group>"; };
@@ -127,7 +124,6 @@
 		DAC584E2B68BA6EC837BF0CB /* SubscriptionLimitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionLimitService.swift; sourceTree = "<group>"; };
 		DE01386B844EAE0D3442EA6E /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
 		F118A9DAF05612253B0DCD3C /* PushManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushManager.swift; sourceTree = "<group>"; };
-		F1A2B3C4D5E6F7A8B9C0D1E2 /* ConsentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentManager.swift; sourceTree = "<group>"; };
 		F794D71EA2406708D13961C6 /* AIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIModels.swift; sourceTree = "<group>"; };
 		FD233AE9EE268C5C01B464EE /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -157,7 +153,6 @@
 			children = (
 				E5118D921023605E2B3CEACE /* Calendar */,
 				92D2F87AFDD0AA081B70C2B1 /* CalendarBlockView.swift */,
-				A7467D5BDF9B12A121FC9BBD /* ConsentBannerView.swift */,
 				FD233AE9EE268C5C01B464EE /* FloatingTabBar.swift */,
 				B7A4B6AF378C254A0040E217 /* GroupDashboardView.swift */,
 				BD18ECB89864D761A210A45E /* GroupManagementView.swift */,
@@ -229,7 +224,6 @@
 		76A43814B669E8CCD6AF8C80 /* Config */ = {
 			isa = PBXGroup;
 			children = (
-				F1A2B3C4D5E6F7A8B9C0D1E2 /* ConsentManager.swift */,
 				A3B4C5D6E7F8A9B0C1D2E3F4 /* RatingManager.swift */,
 				B2290B394B2D2DEADE88C9B5 /* ThemeManager.swift */,
 			);
@@ -402,9 +396,7 @@
 				FDC5FDA134ED7FAEA94EA5E0 /* CalendarPreferencesManager.swift in Sources */,
 				0296202C2606B10F4765B6D5 /* ThemePreferencesManager.swift in Sources */,
 				CE5A1C16EC7D369E38DAC49B /* ThemeManager.swift in Sources */,
-				24E0A1BD9702143BB5E98EA6 /* ConsentManager.swift in Sources */,
 				63FB703050854B79FAF6A2BB /* RatingManager.swift in Sources */,
-				BA7E3E41307D967E32FF9AAB /* ConsentBannerView.swift in Sources */,
 				46086C1A64AC8FDE36AE6906 /* ThemePickerView.swift in Sources */,
 				EC1FBD89A974352E4D613B98 /* EventKitEventManager.swift in Sources */,
 				572B3772222A80E2969BB3B9 /* GroupService.swift in Sources */,
@@ -441,7 +433,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -470,7 +462,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

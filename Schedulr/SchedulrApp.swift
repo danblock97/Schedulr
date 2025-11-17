@@ -32,7 +32,6 @@ private struct RootContainer: View {
     @StateObject private var authVM = AuthViewModel()
     @StateObject private var calendarManager: CalendarSyncManager
     @StateObject private var onboardingVM: OnboardingViewModel
-    @StateObject private var consentManager = ConsentManager.shared
     @ObservedObject private var themeManager = ThemeManager.shared
     @State private var showOnboarding: Bool = false
     @State private var routingInProgress: Bool = false
@@ -70,16 +69,6 @@ private struct RootContainer: View {
                 SplashView(isVisible: $showSplash)
                     .transition(.opacity)
                     .zIndex(1)
-            }
-            
-            // Consent banner - show after splash, before auth/onboarding
-            if !showSplash && consentManager.shouldShowConsent {
-                VStack {
-                    Spacer()
-                    ConsentBannerView(consentManager: consentManager)
-                        .environmentObject(ThemeManager.shared)
-                        .zIndex(2)
-                }
             }
         }
         .ignoresSafeArea()

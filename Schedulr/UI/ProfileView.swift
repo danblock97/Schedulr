@@ -206,7 +206,6 @@ struct ProfileView: View {
             groupsSection
             calendarPreferencesSection
             colorThemeSection
-            privacyConsentSection
             actionButtonsSection
             errorMessageView
             versionInfoView
@@ -495,21 +494,6 @@ struct ProfileView: View {
         }
     }
     
-    private var privacyConsentSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("🔒 Privacy & Consent")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.horizontal)
-            
-            VStack(spacing: 12) {
-                ConsentPreferencesView()
-                    .padding(.horizontal)
-            }
-        }
-        .padding(.top, 8)
-    }
-    
     private var actionButtonsSection: some View {
         VStack(spacing: 12) {
             // Sign Out Button
@@ -772,163 +756,6 @@ struct BubblyProfileBackground: View {
                 .frame(width: 40, height: 40)
                 .offset(x: -130, y: 50)
                 .blur(radius: 8)
-        }
-    }
-}
-
-// MARK: - Consent Preferences View
-
-private struct ConsentPreferencesView: View {
-    @StateObject private var consentManager = ConsentManager.shared
-    @EnvironmentObject var themeManager: ThemeManager
-    @State private var showingConsentBanner = false
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Cookie & Data Preferences")
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundColor(.primary)
-                    
-                    Text(consentStatusDescription)
-                        .font(.system(size: 13, weight: .regular, design: .rounded))
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                Button {
-                    showingConsentBanner = true
-                } label: {
-                    Text("Manage")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .clipShape(Capsule())
-                }
-            }
-        }
-        .padding()
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .sheet(isPresented: $showingConsentBanner) {
-            ConsentManagementSheet()
-                .environmentObject(themeManager)
-        }
-    }
-    
-    private var consentStatusDescription: String {
-        switch consentManager.consentStatus {
-        case .notDetermined:
-            return "Not set"
-        case .accepted:
-            return "All preferences accepted"
-        case .rejected:
-            return "All preferences rejected"
-        }
-    }
-}
-
-private struct ConsentManagementSheet: View {
-    @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var themeManager: ThemeManager
-    @StateObject private var consentManager = ConsentManager.shared
-    @State private var thirdPartyServicesEnabled: Bool = true
-    
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    Text("Manage your privacy preferences")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    
-                    Text("Choose which data collection and services you're comfortable with. You can change these preferences at any time.")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
-                    
-                    VStack(alignment: .leading, spacing: 16) {
-                        ConsentOptionView(
-                            title: "Third-Party Services",
-                            description: "We use services like Supabase (for data storage and authentication) and OpenAI (for AI features) to provide core functionality. These services may process your data according to their privacy policies.",
-                            isEnabled: $thirdPartyServicesEnabled,
-                            themeManager: themeManager
-                        )
-                    }
-                    .padding(.horizontal)
-                    
-                    VStack(spacing: 12) {
-                        Button {
-                            consentManager.saveCustomized(
-                                thirdPartyServices: thirdPartyServicesEnabled
-                            )
-                            dismiss()
-                        } label: {
-                            Text("Save Preferences")
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(
-                                    LinearGradient(
-                                        colors: [
-                                            themeManager.primaryColor,
-                                            themeManager.secondaryColor
-                                        ],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 12, x: 0, y: 6)
-                        }
-                        
-                        Button {
-                            consentManager.reset()
-                            dismiss()
-                        } label: {
-                            Text("Reset & Show Banner Again")
-                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color(.secondarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                }
-                .padding(.vertical)
-            }
-            .navigationTitle("Privacy Preferences")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
-            .onAppear {
-                // Load current preferences
-                let prefs = consentManager.preferences
-                thirdPartyServicesEnabled = prefs.thirdPartyServices
-            }
         }
     }
 }
