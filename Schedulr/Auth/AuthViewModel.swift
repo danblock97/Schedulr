@@ -16,6 +16,8 @@ final class AuthViewModel: ObservableObject {
     // Input
     @Published var email: String = ""
     @Published var password: String = ""
+    @Published var newPassword: String = ""
+    @Published var confirmPassword: String = ""
 
     // UI State
     @Published var isLoadingApple: Bool = false
@@ -23,6 +25,8 @@ final class AuthViewModel: ObservableObject {
     @Published var authMode: AuthMode = .signIn
     @Published var errorMessage: String? = nil
     @Published var noticeMessage: String? = nil
+    @Published var isPasswordResetMode: Bool = false
+    @Published var passwordResetToken: String? = nil
 
     private func showNotice(_ text: String, duration: TimeInterval = 5.0) {
         noticeMessage = text
@@ -97,11 +101,83 @@ final class AuthViewModel: ObservableObject {
     func handleOpenURL(_ url: URL) async {
         guard let client else { return }
         do {
-            // If you use a specific callback path, ensure the URL matches what Supabase generated.
-            // Example expected: schedulr://auth-callback#access_token=...
             #if DEBUG
             print("[Auth] handleOpenURL incoming:", url.absoluteString)
             #endif
+            
+            // Check if this is a password reset URL
+            let isPasswordReset = isPasswordResetURL(url)
+            
+            if isPasswordReset {
+                #if DEBUG
+                print("[Auth] Detected password reset URL")
+                #endif
+                // Don't proceed if user is already authenticated (shouldn't happen, but safety check)
+                if let existingSession = try? await client.auth.session, existingSession != nil {
+                    #if DEBUG
+                    print("[Auth] User already authenticated, ignoring password reset URL")
+                    #endif
+                    return
+                }
+                
+                // Extract tokens but don't auto-sign in - show password reset UI instead
+                // The URL contains tokens that authenticate the user temporarily
+                // We need to handle the URL to get the session, then show password reset UI
+                try await client.auth.handle(url)
+                
+                // Check if we have a session (which means the reset link is valid)
+                if let session = try? await client.auth.session, session != nil {
+                    // Extract access token for later use in password update
+                    if let fragment = url.fragment, !fragment.isEmpty {
+                        let pairs = fragment.split(separator: "&").map { s -> (String, String) in
+                            let parts = s.split(separator: "=", maxSplits: 1).map(String.init)
+                            return (parts.first ?? "", parts.count > 1 ? parts[1] : "")
+                        }
+                        var dict: [String: String] = [:]
+                        for (k, v) in pairs { dict[k] = v }
+                        if let accessToken = dict["access_token"] {
+                            await MainActor.run {
+                                self.passwordResetToken = accessToken
+                                self.isPasswordResetMode = true
+                                self.email = session.user.email ?? ""
+                                self.phase = .unauthenticated // Keep in unauthenticated phase until password is updated
+                            }
+                            #if DEBUG
+                            print("[Auth] Password reset mode activated for:", self.email)
+                            #endif
+                            return // Don't auto-sign in, show password reset UI
+                        }
+                    }
+                } else {
+                    // Try to extract tokens from fragment if handle() didn't create session
+                    if let fragment = url.fragment, !fragment.isEmpty {
+                        let pairs = fragment.split(separator: "&").map { s -> (String, String) in
+                            let parts = s.split(separator: "=", maxSplits: 1).map(String.init)
+                            return (parts.first ?? "", parts.count > 1 ? parts[1] : "")
+                        }
+                        var dict: [String: String] = [:]
+                        for (k, v) in pairs { dict[k] = v }
+                        if let accessToken = dict["access_token"], let refreshToken = dict["refresh_token"] {
+                            try await client.auth.setSession(accessToken: accessToken, refreshToken: refreshToken)
+                            if let session = try? await client.auth.session {
+                                await MainActor.run {
+                                    self.passwordResetToken = accessToken
+                                    self.isPasswordResetMode = true
+                                    self.email = session.user.email ?? ""
+                                }
+                                #if DEBUG
+                                print("[Auth] Password reset mode activated (from fragment) for:", self.email)
+                                #endif
+                                return
+                            }
+                        }
+                    }
+                    errorMessage = "Invalid or expired password reset link. Please request a new one."
+                    return
+                }
+            }
+            
+            // Regular OAuth flow - proceed with normal handling
             // First let the SDK try to handle PKCE or token fragments.
             try await client.auth.handle(url)
             #if DEBUG
@@ -157,6 +233,48 @@ final class AuthViewModel: ObservableObject {
             print("[Auth] handleOpenURL error:", error.localizedDescription)
             #endif
         }
+    }
+    
+    private func isPasswordResetURL(_ url: URL) -> Bool {
+        let urlString = url.absoluteString.lowercased()
+        
+        // Check URL fragment for password reset indicators
+        if let fragment = url.fragment {
+            let fragmentLower = fragment.lowercased()
+            // Supabase password reset links typically contain "type=recovery" or similar
+            if fragmentLower.contains("type=recovery") || 
+               fragmentLower.contains("type=recovery_token") ||
+               fragmentLower.contains("type=password") {
+                return true
+            }
+        }
+        
+        // Check query parameters
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let queryItems = components.queryItems {
+            if queryItems.contains(where: { 
+                $0.name.lowercased() == "type" && 
+                ($0.value?.lowercased() == "recovery" || 
+                 $0.value?.lowercased() == "recovery_token" ||
+                 $0.value?.lowercased() == "password")
+            }) {
+                return true
+            }
+        }
+        
+        // Check if URL path contains recovery/reset indicators
+        if urlString.contains("recovery") || 
+           urlString.contains("reset") ||
+           urlString.contains("password-reset") ||
+           urlString.contains("forgot-password") {
+            return true
+        }
+        
+        // Additional check: if this is coming from a password reset flow,
+        // Supabase might include a hash parameter. We can also check if we
+        // just processed a resetPasswordForEmail call recently (though this is harder to track)
+        
+        return false
     }
 
     #if os(iOS)
@@ -422,6 +540,8 @@ If it's already on, try signing out of iCloud and back in, then retry or contact
             }
             
             _ = try await client.auth.signUp(email: trimmedEmail, password: trimmedPassword)
+            // Show success message for email confirmation
+            showNotice("Confirmation email sent! Please check your inbox to confirm your account.", duration: 5.0)
             refreshAuthState()
             // Identify user with RevenueCat and fetch subscription status
             await SubscriptionManager.shared.identifyUser()
@@ -450,6 +570,68 @@ If it's already on, try signing out of iCloud and back in, then retry or contact
             showNotice("Password reset email sent! Check your inbox.", duration: 5.0)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+    
+    func updatePasswordAfterReset() async {
+        guard !isLoadingEmail else { return }
+        isLoadingEmail = true
+        errorMessage = nil
+        defer { isLoadingEmail = false }
+
+        guard let client else { return }
+        do {
+            let trimmedNewPassword = newPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedConfirmPassword = confirmPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            guard !trimmedNewPassword.isEmpty else {
+                errorMessage = "Please enter a new password."
+                return
+            }
+            guard trimmedNewPassword.count >= 6 else {
+                errorMessage = "Password must be at least 6 characters."
+                return
+            }
+            guard trimmedNewPassword == trimmedConfirmPassword else {
+                errorMessage = "Passwords do not match."
+                return
+            }
+            
+            // Update the password using the current session (which was set by the reset link)
+            try await client.auth.update(user: UserAttributes(password: trimmedNewPassword))
+            
+            // Clear password reset state
+            await MainActor.run {
+                self.isPasswordResetMode = false
+                self.passwordResetToken = nil
+                self.newPassword = ""
+                self.confirmPassword = ""
+            }
+            
+            showNotice("Password updated successfully! Signing you in...", duration: 3.0)
+            
+            // Refresh auth state to ensure we're properly signed in
+            refreshAuthState()
+            // Identify user with RevenueCat and fetch subscription status
+            await SubscriptionManager.shared.identifyUser()
+            await SubscriptionManager.shared.fetchSubscriptionStatus()
+        } catch {
+            errorMessage = error.localizedDescription
+            #if DEBUG
+            print("[Auth] updatePasswordAfterReset error:", error.localizedDescription)
+            #endif
+        }
+    }
+    
+    func cancelPasswordReset() {
+        isPasswordResetMode = false
+        passwordResetToken = nil
+        newPassword = ""
+        confirmPassword = ""
+        errorMessage = nil
+        // Sign out since we may have a temporary session from the reset link
+        Task {
+            await signOut()
         }
     }
 
