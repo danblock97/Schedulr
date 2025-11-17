@@ -14,32 +14,20 @@ struct ThemePickerView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    Text("Choose a color theme")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                        .padding(.top)
-                    
-                    // Preset themes grid
-                    LazyVGrid(columns: [
-                        GridItem(.flexible(), spacing: 16),
-                        GridItem(.flexible(), spacing: 16)
-                    ], spacing: 16) {
-                        ForEach(PresetTheme.allCases, id: \.rawValue) { preset in
-                            ThemeOptionCard(
-                                preset: preset,
-                                isSelected: isPresetSelected(preset),
-                                onTap: {
-                                    selectedTheme = preset.colorTheme
-                                }
-                            )
+            List {
+                // Preset themes list
+                ForEach(PresetTheme.allCases, id: \.rawValue) { preset in
+                    ThemeOptionCard(
+                        preset: preset,
+                        isSelected: isPresetSelected(preset),
+                        onTap: {
+                            selectedTheme = preset.colorTheme
                         }
-                    }
-                    .padding(.horizontal)
+                    )
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 }
-                .padding(.bottom, 100)
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Color Theme")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -78,9 +66,9 @@ struct ThemeOptionCard: View {
     
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 12) {
-                // Color preview gradient
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+            HStack(spacing: 16) {
+                // Compact color preview indicator
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [preset.colors.0, preset.colors.1],
@@ -88,38 +76,34 @@ struct ThemeOptionCard: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(height: 80)
+                    .frame(width: 44, height: 44)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .stroke(
-                                isSelected ? Color.primary : Color.clear,
-                                lineWidth: isSelected ? 3 : 0
+                                isSelected ? preset.colors.0 : Color.clear,
+                                lineWidth: isSelected ? 2.5 : 0
                             )
-                    )
-                    .shadow(
-                        color: isSelected ? preset.colors.0.opacity(0.3) : Color.black.opacity(0.1),
-                        radius: isSelected ? 12 : 4,
-                        x: 0,
-                        y: isSelected ? 6 : 2
                     )
                 
                 // Theme name
                 Text(preset.displayName)
-                    .font(.system(size: 14, weight: isSelected ? .semibold : .regular, design: .rounded))
+                    .font(.system(size: 17, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(.primary)
+                
+                Spacer()
                 
                 // Selection indicator
                 if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 20))
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(preset.colors.0)
                 }
             }
-            .padding()
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(ScaleButtonStyle())
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
