@@ -2,6 +2,10 @@ import SwiftUI
 import PhotosUI
 import Supabase
 import Auth
+#if os(iOS)
+import UIKit
+import SafariServices
+#endif
 
 struct ProfileView: View {
     @ObservedObject var viewModel: ProfileViewModel
@@ -496,6 +500,26 @@ struct ProfileView: View {
     
     private var actionButtonsSection: some View {
         VStack(spacing: 12) {
+            // Support Button
+            Button {
+                Task {
+                    await openURL(urlString: "https://www.schedulr.co.uk/support")
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "questionmark.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Support")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
+            }
+
             // Sign Out Button
             Button {
                 Task {
@@ -777,5 +801,36 @@ extension ProfileView {
         if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
             try? await CalendarPreferencesManager.shared.save(calendarPrefs, for: uid)
         }
+    }
+    
+    /// Opens a URL in SFSafariViewController
+    /// No tracking is performed - cookies are only used for essential website functionality
+    private func openURL(urlString: String) async {
+        guard let url = URL(string: urlString) else { return }
+        
+        #if os(iOS)
+        // Use SFSafariViewController for better in-app experience
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        
+        let safariVC = SFSafariViewController(url: url, configuration: config)
+        safariVC.preferredControlTintColor = UIColor(red: 0.98, green: 0.29, blue: 0.55, alpha: 1.0)
+        safariVC.preferredBarTintColor = .systemBackground
+        if #available(iOS 11.0, *) {
+            safariVC.dismissButtonStyle = .close
+        }
+        
+        // Present the Safari view controller
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController {
+            var presentingVC = rootViewController
+            while let presented = presentingVC.presentedViewController {
+                presentingVC = presented
+            }
+            presentingVC.present(safariVC, animated: true)
+        }
+        #else
+        await UIApplication.shared.open(url)
+        #endif
     }
 }
