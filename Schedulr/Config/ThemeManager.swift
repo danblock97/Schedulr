@@ -111,10 +111,10 @@ enum PresetTheme: String, CaseIterable {
                 Color(red: 0.50, green: 0.70, blue: 0.60)
             )
         case .dark:
-            // Dark theme accent colors: dark gray to black gradient
+            // Dark theme accent colors: very dark gray to black for true dark mode
             return (
-                Color(red: 0.25, green: 0.25, blue: 0.25),
-                Color(red: 0.15, green: 0.15, blue: 0.15)
+                Color(red: 0.15, green: 0.15, blue: 0.15),
+                Color(red: 0.10, green: 0.10, blue: 0.10)
             )
         }
     }

@@ -45,13 +45,15 @@ struct ContentView: View {
             // Floating tab bar
             VStack {
                 Spacer()
-                FloatingTabBar(selectedTab: $selectedTab)
+                FloatingTabBar(selectedTab: $selectedTab, avatarURL: profileViewModel.avatarURL)
                     .environmentObject(themeManager)
             }
             .ignoresSafeArea(.keyboard)
         }
         .task {
             await loadTheme()
+            // Load user profile to get avatar
+            await profileViewModel.loadUserProfile()
         }
     }
     

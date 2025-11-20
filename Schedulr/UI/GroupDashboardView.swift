@@ -1092,6 +1092,7 @@ private struct UpcomingEventRow: View {
     var memberColor: Color?
     var memberName: String?
     var sharedCount: Int = 1
+    @EnvironmentObject var themeManager: ThemeManager
 
     var body: some View {
         HStack(spacing: 14) {
@@ -1160,17 +1161,32 @@ private struct UpcomingEventRow: View {
         )
     }
 
-    private var defaultColor: Color { Color(red: 0.27, green: 0.63, blue: 0.98) }
+    private var defaultColor: Color {
+        // Use theme primary color as default instead of hardcoded blue
+        themeManager.primaryColor
+    }
 
     private var dotColor: Color {
-        if let c = event.effectiveColor {
-            return Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
-        }
-        return memberColor ?? defaultColor
+        // Use theme color instead of calendar/member colors for upcoming events
+        return defaultColor
     }
 
     private func timeSummary(_ e: CalendarEventWithUser) -> String {
-        if e.is_all_day { return "All day" }
+        if e.is_all_day {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = .none
+
+            // For all-day events, show date range
+            if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
+                return dateFormatter.string(from: e.start_date)
+            } else {
+                // Subtract one day from end_date since all-day events end at midnight of the next day
+                let endDate = Calendar.current.date(byAdding: .day, value: -1, to: e.end_date) ?? e.end_date
+                return "\(dateFormatter.string(from: e.start_date)) - \(dateFormatter.string(from: endDate))"
+            }
+        }
+
         let dayFormatter = DateFormatter()
         dayFormatter.dateStyle = .medium
         dayFormatter.timeStyle = .none
@@ -1597,11 +1613,16 @@ private struct EnhancedUpcomingEventRow: View {
     @State private var isPressed = false
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
-    
+
     private var isPrivate: Bool {
         return event.event_type == "personal" && event.user_id != currentUserId
     }
-    
+
+    private var dotColor: Color {
+        // Use theme color instead of calendar/member colors for upcoming events
+        return themeManager.primaryColor
+    }
+
     var body: some View {
         HStack(spacing: 16) {
             // Enhanced color indicator with vibrant glow
@@ -1799,25 +1820,35 @@ private struct EnhancedUpcomingEventRow: View {
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
     }
     
-    private var defaultColor: Color { Color(red: 0.58, green: 0.41, blue: 0.87) }
-    
-    private var dotColor: Color {
-        if let c = event.effectiveColor {
-            return Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
-        }
-        return memberColor ?? defaultColor
+    private var defaultColor: Color {
+        // Use theme primary color as default instead of hardcoded purple
+        themeManager.primaryColor
     }
     
     private func timeSummary(_ e: CalendarEventWithUser) -> String {
-        if e.is_all_day { return "All day" }
+        if e.is_all_day {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = .none
+
+            // For all-day events, show date range
+            if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
+                return dateFormatter.string(from: e.start_date)
+            } else {
+                // Subtract one day from end_date since all-day events end at midnight of the next day
+                let endDate = Calendar.current.date(byAdding: .day, value: -1, to: e.end_date) ?? e.end_date
+                return "\(dateFormatter.string(from: e.start_date)) - \(dateFormatter.string(from: endDate))"
+            }
+        }
+
         let dayFormatter = DateFormatter()
         dayFormatter.dateStyle = .medium
         dayFormatter.timeStyle = .none
-        
+
         let timeFormatter = DateFormatter()
         timeFormatter.dateStyle = .none
         timeFormatter.timeStyle = .short
-        
+
         if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
             return "\(dayFormatter.string(from: e.start_date)) • \(timeFormatter.string(from: e.start_date)) – \(timeFormatter.string(from: e.end_date))"
         } else {
