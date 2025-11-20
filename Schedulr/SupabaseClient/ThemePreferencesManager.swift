@@ -1,5 +1,8 @@
 import Foundation
 import Supabase
+#if canImport(UIKit)
+import UIKit
+#endif
 
 final class ThemePreferencesManager {
     static let shared = ThemePreferencesManager()
@@ -33,8 +36,21 @@ final class ThemePreferencesManager {
             return row.color_theme
         }
         
-        // Insert defaults if not found
-        let defaultTheme = ColorTheme(type: .preset, name: "pink_purple", colors: nil)
+        // Insert defaults if not found - check system dark mode preference
+        let defaultThemeName: String
+        #if canImport(UIKit)
+        if UITraitCollection.current.userInterfaceStyle == .dark {
+            // Use dark theme if system is in dark mode
+            defaultThemeName = "dark"
+        } else {
+            // Use pink_purple as default for light mode
+            defaultThemeName = "pink_purple"
+        }
+        #else
+        // Fallback for non-UIKit platforms
+        defaultThemeName = "pink_purple"
+        #endif
+        let defaultTheme = ColorTheme(type: .preset, name: defaultThemeName, colors: nil)
         try await save(defaultTheme, for: userId)
         return defaultTheme
     }

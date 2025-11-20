@@ -75,34 +75,40 @@ enum PresetTheme: String, CaseIterable {
     var colors: (Color, Color) {
         switch self {
         case .pinkPurple:
+            // Softer rose to lavender
             return (
-                Color(red: 0.98, green: 0.29, blue: 0.55),
-                Color(red: 0.58, green: 0.41, blue: 0.87)
+                Color(red: 0.85, green: 0.45, blue: 0.65),
+                Color(red: 0.65, green: 0.55, blue: 0.80)
             )
         case .blueTeal:
+            // Softer sky blue to teal
             return (
-                Color(red: 0.27, green: 0.63, blue: 0.98),
-                Color(red: 0.18, green: 0.80, blue: 0.74)
+                Color(red: 0.40, green: 0.65, blue: 0.85),
+                Color(red: 0.35, green: 0.70, blue: 0.75)
             )
         case .greenMint:
+            // Softer sage green to mint
             return (
-                Color(red: 0.20, green: 0.78, blue: 0.35),
-                Color(red: 0.00, green: 0.98, blue: 0.60)
+                Color(red: 0.45, green: 0.70, blue: 0.50),
+                Color(red: 0.50, green: 0.80, blue: 0.70)
             )
         case .orangeRed:
+            // Softer peach to coral
             return (
-                Color(red: 1.00, green: 0.58, blue: 0.00),
-                Color(red: 0.96, green: 0.26, blue: 0.21)
+                Color(red: 0.90, green: 0.65, blue: 0.45),
+                Color(red: 0.85, green: 0.50, blue: 0.50)
             )
         case .purpleBlue:
+            // Softer periwinkle to sky
             return (
-                Color(red: 0.58, green: 0.41, blue: 0.87),
-                Color(red: 0.27, green: 0.63, blue: 0.98)
+                Color(red: 0.65, green: 0.55, blue: 0.80),
+                Color(red: 0.50, green: 0.65, blue: 0.85)
             )
         case .tealGreen:
+            // Softer teal to sage
             return (
-                Color(red: 0.18, green: 0.80, blue: 0.74),
-                Color(red: 0.20, green: 0.78, blue: 0.35)
+                Color(red: 0.40, green: 0.70, blue: 0.75),
+                Color(red: 0.50, green: 0.70, blue: 0.60)
             )
         case .dark:
             // Dark theme accent colors: dark gray to black gradient
@@ -203,12 +209,25 @@ class ThemeManager: ObservableObject {
     }
     
     var preferredColorScheme: ColorScheme? {
+        // Respect system dark mode preference - return nil to use system default
+        // Only override if explicitly set to dark theme
         if case .preset = currentTheme.type,
            let name = currentTheme.name,
            name == PresetTheme.dark.rawValue {
             return .dark
         }
+        // Return nil to respect system color scheme preference
         return nil
+    }
+    
+    // Helper to detect system color scheme
+    var systemColorScheme: ColorScheme {
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let traitCollection = windowScene.windows.first?.traitCollection {
+            return traitCollection.userInterfaceStyle == .dark ? .dark : .light
+        }
+        // Fallback: check UITraitCollection directly
+        return UITraitCollection.current.userInterfaceStyle == .dark ? .dark : .light
     }
     
     // MARK: - Theme Management

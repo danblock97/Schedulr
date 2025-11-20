@@ -438,18 +438,74 @@ struct GroupDashboardView: View {
     }
     
     private var welcomeHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(greeting)
-                .font(.system(size: 36, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-                .tracking(-0.5)
-            
-            Text("Here's what's happening with your groups")
-                .font(.system(size: 16, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
-                .tracking(0.2)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                // Decorative icon with gradient background
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor.opacity(0.2),
+                                    themeManager.secondaryColor.opacity(0.15)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 56, height: 56)
+                        .blur(radius: 8)
+                    
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor.opacity(0.3),
+                                    themeManager.secondaryColor.opacity(0.2)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                    
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(greeting)
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .tracking(-0.5)
+                    
+                    Text("Here's what's happening with your groups")
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .tracking(0.2)
+                }
+            }
         }
-        .padding(.bottom, 4)
+        .padding(.bottom, 8)
     }
     
     private var greeting: String {
@@ -465,7 +521,7 @@ struct GroupDashboardView: View {
 
     private var groupSelectorSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(icon: "person.3.fill", title: "Your Groups", color: themeManager.primaryColor.opacity(0.8))
+            SectionHeader(icon: "person.3.fill", title: "Your Groups", color: themeManager.primaryColor.opacity(0.6))
 
             if viewModel.isLoadingMemberships {
                 BubblyCard {
@@ -558,7 +614,7 @@ struct GroupDashboardView: View {
     private var availabilitySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                SectionHeader(icon: "calendar.badge.clock", title: "Upcoming", color: themeManager.secondaryColor.opacity(0.8))
+                SectionHeader(icon: "calendar.badge.clock", title: "Upcoming", color: themeManager.secondaryColor.opacity(0.6))
                 Spacer()
                 if calendarSync.syncEnabled && viewModel.selectedGroupID != nil {
                     Button {
@@ -583,10 +639,10 @@ struct GroupDashboardView: View {
             if calendarPrefs.hideHolidays || calendarPrefs.dedupAllDay {
                 HStack(spacing: 10) {
                     if calendarPrefs.hideHolidays {
-                        FilterBadge(text: "Holidays hidden", color: themeManager.secondaryColor.opacity(0.6))
+                        FilterBadge(text: "Holidays hidden", color: themeManager.secondaryColor.opacity(0.4))
                     }
                     if calendarPrefs.dedupAllDay {
-                        FilterBadge(text: "Deduped all‑day", color: themeManager.primaryColor.opacity(0.6))
+                        FilterBadge(text: "Deduped all‑day", color: themeManager.primaryColor.opacity(0.4))
                     }
                 }
             }
@@ -653,9 +709,9 @@ struct GroupDashboardView: View {
                     .padding(.vertical, 12)
                 }
             } else {
-                // Upcoming list (next 10 events)
+                // Upcoming list (events from upcoming month, limited to 10)
                 VStack(spacing: 14) {
-                    ForEach(upcomingDisplayEvents.prefix(10)) { devent in
+                    ForEach(upcomingMonthEvents) { devent in
                         NavigationLink(destination: EventDetailView(event: devent.base, member: memberColorMapping[devent.base.user_id], currentUserId: currentUserId)) {
                             EnhancedUpcomingEventRow(
                                 event: devent.base,
@@ -839,6 +895,26 @@ struct GroupDashboardView: View {
             return a.base.start_date < b.base.start_date
         }
     }
+    
+    private var upcomingMonthEvents: [DisplayEvent] {
+        guard let firstEvent = upcomingDisplayEvents.first else {
+            return []
+        }
+        
+        let calendar = Calendar.current
+        let firstEventMonth = calendar.component(.month, from: firstEvent.base.start_date)
+        let firstEventYear = calendar.component(.year, from: firstEvent.base.start_date)
+        
+        // Filter events to only those in the same month and year as the first event
+        let filtered = upcomingDisplayEvents.filter { event in
+            let eventMonth = calendar.component(.month, from: event.base.start_date)
+            let eventYear = calendar.component(.year, from: event.base.start_date)
+            return eventMonth == firstEventMonth && eventYear == firstEventYear
+        }
+        
+        // Apply 10-event limit within that month
+        return Array(filtered.prefix(10))
+    }
 
     private var memberColorMapping: [UUID: (name: String, color: Color)] {
         var mapping: [UUID: (name: String, color: Color)] = [:]
@@ -908,7 +984,7 @@ struct GroupDashboardView: View {
     private var inviteSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let selected = currentGroup {
-                SectionHeader(icon: "link.circle.fill", title: "Invite Friends", color: Color(red: 0.59, green: 0.85, blue: 0.34).opacity(0.8))
+                SectionHeader(icon: "link.circle.fill", title: "Invite Friends", color: themeManager.primaryColor.opacity(0.6))
                 EnhancedGroupInviteView(inviteSlug: selected.inviteSlug, groupName: selected.name)
             }
         }
@@ -1020,7 +1096,7 @@ private struct UpcomingEventRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Circle()
-                .fill(dotColor.opacity(0.9))
+                .fill(dotColor.opacity(0.75))
                 .frame(width: 12, height: 12)
                 .overlay(
                     Circle()
@@ -1527,67 +1603,133 @@ private struct EnhancedUpcomingEventRow: View {
     }
     
     var body: some View {
-        HStack(spacing: 14) {
-            // Color indicator with subtle glow
+        HStack(spacing: 16) {
+            // Enhanced color indicator with vibrant glow
             ZStack {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                // Outer glow
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                dotColor.opacity(0.4),
+                                dotColor.opacity(0.2)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 8, height: 50)
+                    .blur(radius: 4)
+                
+                // Middle glow
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(dotColor.opacity(0.3))
-                    .frame(width: 6, height: 44)
+                    .frame(width: 6, height: 48)
                     .blur(radius: 2)
                 
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(dotColor)
-                    .frame(width: 4, height: 44)
+                // Main indicator with gradient
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                dotColor,
+                                dotColor.opacity(0.7)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 5, height: 46)
             }
             
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
-                    .font(.system(size: 17, weight: .medium, design: .default))
-                    .foregroundColor(.primary)
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                .primary,
+                                .primary.opacity(0.8)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                     .lineLimit(2)
                 
                 if sharedCount > 1 && !isPrivate {
-                    Text("\(sharedCount) members")
-                        .font(.system(size: 12, weight: .regular, design: .default))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule()
-                                .fill(Color(.secondarySystemBackground))
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 11, weight: .medium))
+                        Text("\(sharedCount) members")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                    }
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor,
+                                themeManager.secondaryColor
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
                         )
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor.opacity(0.15),
+                                        themeManager.secondaryColor.opacity(0.1)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                    )
                 }
                 
                 HStack(spacing: 8) {
                     Label {
                         Text(timeSummary(event))
-                            .font(.system(size: 13, weight: .regular, design: .default))
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                     } icon: {
-                        Image(systemName: "clock")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        dotColor.opacity(0.65),
+                                        dotColor.opacity(0.5)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                     }
                 }
                 
                 if let memberName {
                     HStack(spacing: 6) {
-                        Image(systemName: "person")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(dotColor)
                         Text(memberName)
-                            .font(.system(size: 12, weight: .regular, design: .default))
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
                 }
                 
                 if let location = event.location, !location.isEmpty {
                     HStack(spacing: 6) {
-                        Image(systemName: "location")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(dotColor.opacity(0.7))
                         Text(location)
-                            .font(.system(size: 12, weight: .regular, design: .default))
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -1595,19 +1737,20 @@ private struct EnhancedUpcomingEventRow: View {
             }
             Spacer()
         }
-        .padding(18)
+        .padding(20)
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color(.systemBackground))
                 
-                // Subtle theme color tint with more presence
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                // Vibrant theme color tint with gradient
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
-                                dotColor.opacity(0.08),
-                                dotColor.opacity(0.04),
+                                dotColor.opacity(0.12),
+                                dotColor.opacity(0.06),
+                                themeManager.primaryColor.opacity(0.04),
                                 Color.clear
                             ],
                             startPoint: .leading,
@@ -1615,14 +1758,29 @@ private struct EnhancedUpcomingEventRow: View {
                         )
                     )
                 
+                // Border accent with gradient
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                dotColor.opacity(0.4),
+                                dotColor.opacity(0.2),
+                                Color.clear
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        lineWidth: 1.5
+                    )
+                
                 // Enhanced embossed highlight (reduced in dark mode)
                 if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.7),
-                                    Color.white.opacity(0.4),
+                                    Color.white.opacity(0.8),
+                                    Color.white.opacity(0.5),
                                     Color.clear
                                 ],
                                 startPoint: .topLeading,
@@ -1632,12 +1790,12 @@ private struct EnhancedUpcomingEventRow: View {
                 }
             }
         )
-        // Enhanced emboss shadows - more subtle in dark mode
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.8) : Color.clear, radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 4, x: 2, y: 2)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.06), radius: 8, x: 0, y: 4)
-        .shadow(color: dotColor.opacity(colorScheme == .dark ? 0.05 : 0.1), radius: 12, x: 0, y: 6)
-        .scaleEffect(isPressed ? 0.99 : 1.0)
+        // Enhanced emboss shadows with color tint
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
+        .shadow(color: dotColor.opacity(colorScheme == .dark ? 0.08 : 0.15), radius: 14, x: 0, y: 7)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
+        .scaleEffect(isPressed ? 0.98 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
     }
     
@@ -1679,9 +1837,24 @@ private struct EnhancedMemberRow: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        HStack(spacing: 14) {
-            // Avatar
+        HStack(spacing: 16) {
+            // Enhanced Avatar with gradient border
             ZStack {
+                // Outer glow
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.2),
+                                themeManager.secondaryColor.opacity(0.15)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 60, height: 60)
+                    .blur(radius: 4)
+                
                 if let url = member.avatarURL {
                     AsyncImage(url: url) { phase in
                         switch phase {
@@ -1697,38 +1870,81 @@ private struct EnhancedMemberRow: View {
                             EnhancedAvatarView(initials: initials(for: member.displayName))
                         }
                     }
-                    .frame(width: 52, height: 52)
+                    .frame(width: 56, height: 56)
                     .clipShape(Circle())
                 } else {
                     EnhancedAvatarView(initials: initials(for: member.displayName))
-                        .frame(width: 52, height: 52)
+                        .frame(width: 56, height: 56)
                 }
             }
             .overlay(
                 Circle()
-                    .stroke(Color(.separator), lineWidth: 0.5)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.6),
+                                themeManager.secondaryColor.opacity(0.4)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2.5
+                    )
             )
+            .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 8, x: 0, y: 4)
             
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
                     Text(member.displayName)
-                        .font(.system(size: 17, weight: .medium, design: .default))
-                        .foregroundColor(.primary)
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    .primary,
+                                    .primary.opacity(0.8)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                     
                     if member.role == "owner" {
                         Image(systemName: "crown.fill")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.84, blue: 0.0),
+                                        Color(red: 1.0, green: 0.65, blue: 0.0)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                     }
                 }
                 
-                Text(member.role.capitalized)
-                    .font(.system(size: 13, weight: .regular, design: .default))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Image(systemName: member.role == "owner" ? "star.fill" : "person.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                    Text(member.role.capitalized)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
             
-            // Show transfer ownership button for owners (not on themselves)
+            // Enhanced transfer ownership button for owners (not on themselves)
             if isOwner && member.role != "owner" {
                 Menu {
                     Button(role: .destructive) {
@@ -1737,25 +1953,49 @@ private struct EnhancedMemberRow: View {
                         Label("Transfer Ownership", systemImage: "person.crop.circle.badge.checkmark")
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .padding(8)
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor.opacity(0.1),
+                                        themeManager.secondaryColor.opacity(0.08)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 36, height: 36)
+                        
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor,
+                                        themeManager.secondaryColor
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
                 }
             }
         }
-        .padding(18)
+        .padding(20)
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(Color(.systemBackground))
                 
-                // Subtle neutral tint (no theme color for backgrounds)
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                // Vibrant theme color tint with gradient
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(.secondarySystemBackground).opacity(0.4),
+                                themeManager.primaryColor.opacity(0.1),
+                                themeManager.secondaryColor.opacity(0.06),
                                 Color.clear
                             ],
                             startPoint: .leading,
@@ -1763,14 +2003,29 @@ private struct EnhancedMemberRow: View {
                         )
                     )
                 
+                // Softer border accent with gradient
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.2),
+                                themeManager.secondaryColor.opacity(0.15),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+                
                 // Enhanced embossed highlight (reduced in dark mode)
                 if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.7),
-                                    Color.white.opacity(0.4),
+                                    Color.white.opacity(0.8),
+                                    Color.white.opacity(0.5),
                                     Color.clear
                                 ],
                                 startPoint: .topLeading,
@@ -1780,11 +2035,12 @@ private struct EnhancedMemberRow: View {
                 }
             }
         )
-        // Enhanced emboss shadows - more subtle in dark mode
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.8) : Color.clear, radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 4, x: 2, y: 2)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.06), radius: 8, x: 0, y: 4)
-        .scaleEffect(isPressed ? 0.99 : 1.0)
+        // Enhanced emboss shadows with color tint
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
+        .shadow(color: themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.12), radius: 12, x: 0, y: 6)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
+        .scaleEffect(isPressed ? 0.98 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
     }
     
@@ -1805,20 +2061,58 @@ private struct EnhancedGroupSelectorCard: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             ZStack {
+                // Softer glow effect
                 Circle()
-                    .fill(themeManager.primaryColor.opacity(0.15))
-                    .frame(width: 48, height: 48)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.18),
+                                themeManager.secondaryColor.opacity(0.15)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 56, height: 56)
+                    .blur(radius: 8)
+                
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.15),
+                                themeManager.secondaryColor.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 52, height: 52)
                     .blur(radius: 4)
                 
+                // Icon with vibrant gradient
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.15),
+                                themeManager.secondaryColor.opacity(0.1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 50, height: 50)
+                
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [
                                 themeManager.primaryColor,
-                                themeManager.primaryColor.opacity(0.7)
+                                themeManager.secondaryColor
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -1827,47 +2121,92 @@ private struct EnhancedGroupSelectorCard: View {
             }
             
             Text(groupName)
-                .font(.system(size: 19, weight: .semibold, design: .default))
-                .foregroundStyle(.primary)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            .primary,
+                            .primary.opacity(0.8)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
             
             Spacer()
             
-            Image(systemName: "chevron.down")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .padding(8)
-                .background(
-                    Circle()
-                        .fill(Color(.secondarySystemBackground))
-                )
-        }
-        .padding(18)
-        .background(
+            // Enhanced chevron button
             ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.systemBackground))
-                
-                // Subtle neutral tint
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                Circle()
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(.secondarySystemBackground).opacity(0.3),
+                                themeManager.primaryColor.opacity(0.1),
+                                themeManager.secondaryColor.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor,
+                                themeManager.secondaryColor
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        }
+        .padding(20)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(.systemBackground))
+                
+                // Softer theme color tint with gradient
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.08),
+                                themeManager.secondaryColor.opacity(0.05),
                                 Color.clear
                             ],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
                     )
                 
-                // Embossed highlight with more depth (reduced in dark mode)
+                // Border accent
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.3),
+                                themeManager.secondaryColor.opacity(0.2),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+                
+                // Enhanced embossed highlight (reduced in dark mode)
                 if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.7),
-                                    Color.white.opacity(0.3),
+                                    Color.white.opacity(0.8),
+                                    Color.white.opacity(0.4),
                                     Color.clear
                                 ],
                                 startPoint: .topLeading,
@@ -1877,9 +2216,10 @@ private struct EnhancedGroupSelectorCard: View {
                 }
             }
         )
-        // Enhanced emboss shadows - more subtle in dark mode
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 5, x: 3, y: 3)
+        // Enhanced emboss shadows with color tint
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
+        .shadow(color: themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.12), radius: 12, x: 0, y: 6)
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
     }
 }
@@ -1912,21 +2252,46 @@ private struct EnhancedGroupInviteView: View {
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 16) {
+                // Enhanced icon with vibrant gradient and glow
                 ZStack {
+                    // Outer glow
                     Circle()
-                        .fill(Color(red: 0.59, green: 0.85, blue: 0.34).opacity(0.15))
-                        .frame(width: 48, height: 48)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor.opacity(0.18),
+                                    themeManager.secondaryColor.opacity(0.15)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 60, height: 60)
+                        .blur(radius: 8)
+                    
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor.opacity(0.15),
+                                    themeManager.secondaryColor.opacity(0.12)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 56, height: 56)
                         .blur(radius: 4)
                     
                     Image(systemName: "link.circle.fill")
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(
                             LinearGradient(
                                 colors: [
-                                    Color(red: 0.59, green: 0.85, blue: 0.34),
-                                    Color(red: 0.20, green: 0.78, blue: 0.35)
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -1934,34 +2299,58 @@ private struct EnhancedGroupInviteView: View {
                         )
                 }
                 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Invite Friends")
-                        .font(.system(size: 18, weight: .semibold, design: .default))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    .primary,
+                                    .primary.opacity(0.8)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                     
                     Text("Share \(groupName)")
-                        .font(.system(size: 13, weight: .regular, design: .default))
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
                 
                 Spacer()
                 
                 if showCopied {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 18, weight: .semibold))
                         Text("Copied!")
-                            .font(.system(size: 14, weight: .semibold, design: .default))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
                     }
                     .foregroundStyle(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.59, green: 0.85, blue: 0.34),
-                                Color(red: 0.20, green: 0.78, blue: 0.35)
+                                themeManager.primaryColor,
+                                themeManager.secondaryColor
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor.opacity(0.15),
+                                        themeManager.secondaryColor.opacity(0.1)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                     )
                     .transition(.scale.combined(with: .opacity))
                 }
@@ -1979,28 +2368,87 @@ private struct EnhancedGroupInviteView: View {
                     }
                 }
             } label: {
-                HStack {
+                HStack(spacing: 12) {
+                    Image(systemName: "link")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                    
                     Text(inviteSlug)
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .font(.system(size: 15, weight: .medium, design: .monospaced))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     
                     Spacer()
                     
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
                 .background(
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color(.secondarySystemBackground))
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(.secondarySystemBackground),
+                                        Color(.secondarySystemBackground).opacity(0.8)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        
+                        // Softer theme color tint
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor.opacity(0.08),
+                                        themeManager.secondaryColor.opacity(0.05),
+                                        Color.clear
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                        
+                        // Border accent
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        themeManager.primaryColor.opacity(0.2),
+                                        themeManager.secondaryColor.opacity(0.15)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                lineWidth: 1.5
+                            )
                         
                         // Inverted emboss (more subtle in dark mode)
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
@@ -2013,22 +2461,24 @@ private struct EnhancedGroupInviteView: View {
                             )
                     }
                 )
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 2, x: 1, y: 1)
-                .shadow(color: colorScheme == .light ? Color.white.opacity(0.6) : Color.clear, radius: 1, x: -1, y: -1)
+                .shadow(color: themeManager.primaryColor.opacity(0.15), radius: 4, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 3, x: 2, y: 2)
+                .shadow(color: colorScheme == .light ? Color.white.opacity(0.7) : Color.clear, radius: 2, x: -2, y: -2)
             }
         }
-        .padding(20)
+        .padding(22)
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(Color(.systemBackground))
                 
-                // Subtle neutral tint (green is part of invite action, but background stays neutral)
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                // Softer theme color tint with gradient
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(.secondarySystemBackground).opacity(0.4),
+                                themeManager.primaryColor.opacity(0.08),
+                                themeManager.secondaryColor.opacity(0.05),
                                 Color.clear
                             ],
                             startPoint: .topLeading,
@@ -2036,14 +2486,29 @@ private struct EnhancedGroupInviteView: View {
                         )
                     )
                 
+                // Border accent with gradient
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                themeManager.primaryColor.opacity(0.2),
+                                themeManager.secondaryColor.opacity(0.15),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+                
                 // Enhanced embossed highlight (reduced in dark mode)
                 if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.7),
-                                    Color.white.opacity(0.4),
+                                    Color.white.opacity(0.8),
+                                    Color.white.opacity(0.5),
                                     Color.clear
                                 ],
                                 startPoint: .topLeading,
@@ -2053,9 +2518,11 @@ private struct EnhancedGroupInviteView: View {
                 }
             }
         )
-        // Enhanced emboss shadows - more subtle in dark mode
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 2, x: -2, y: -2)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 5, x: 3, y: 3)
+        // Enhanced emboss shadows with color tint
+        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
+        .shadow(color: themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.12), radius: 14, x: 0, y: 7)
         .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
     }
 }
+
