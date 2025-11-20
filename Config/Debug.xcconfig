@@ -1,2 +1,5 @@
 // Debug.xcconfig - Local development configuration
 #include "Schedulr-Debug-Secrets.xcconfig"
+
+// Use development entitlements for Debug builds
+CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr-Debug.entitlements

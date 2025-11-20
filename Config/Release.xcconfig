@@ -1,2 +1,5 @@
 // Release.xcconfig - TestFlight & App Store configuration
 #include "Schedulr-Release-Secrets.xcconfig"
+
+// Use production entitlements for Release builds
+CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr-Release.entitlements

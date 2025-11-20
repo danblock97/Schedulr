@@ -22,6 +22,11 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
         Task { await upload(token: token) }
     }
 
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // Clear the app icon badge when the app becomes active
+        UIApplication.shared.applicationIconBadgeNumber = 0
+    }
+
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         // Suppress APNs errors in simulator/development (expected when entitlements aren't configured)
         #if DEBUG
@@ -40,11 +45,16 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
     // Handle notifications when app is in foreground
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         // Show notification banner even when app is in foreground
+        // Note: We still show .badge here so the server can update the badge count,
+        // but we'll clear it when the user becomes active or interacts with notifications
         completionHandler([.banner, .sound, .badge])
     }
 
     // Handle notification taps
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Clear the app icon badge when user interacts with notification
+        UIApplication.shared.applicationIconBadgeNumber = 0
+
         // Handle notification tap here if needed
         // For example, navigate to the relevant event
 
