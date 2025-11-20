@@ -35,20 +35,34 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
         print("APNs registration failed: \(error)")
     }
 
+    // MARK: - UNUserNotificationCenterDelegate
+
+    // Handle notifications when app is in foreground
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // Show notification banner even when app is in foreground
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    // Handle notification taps
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        // Handle notification tap here if needed
+        // For example, navigate to the relevant event
+
+        completionHandler()
+    }
+
     private func upload(token: String) async {
         do {
             guard let client = SupabaseManager.shared.client else {
-                print("❌ PushManager: Supabase client not available")
                 return
             }
             let uid = try await client.auth.session.user.id
             struct Row: Encodable { let user_id: UUID; let apns_token: String }
             let row = Row(user_id: uid, apns_token: token)
-            print("📱 PushManager: Uploading APNs token for user \(uid.uuidString.prefix(8))...")
             _ = try await client.from("user_devices").upsert(row, onConflict: "user_id").execute()
-            print("✅ PushManager: APNs token uploaded successfully")
         } catch {
-            print("❌ PushManager: Failed to upload APNs token: \(error)")
+            // Token upload failed - silently fail for now
+            // In production, you might want to retry or log to analytics
         }
     }
 }

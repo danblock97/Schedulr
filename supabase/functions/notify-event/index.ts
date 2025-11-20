@@ -105,13 +105,15 @@ serve(async (req) => {
     const results = []
     for (const token of tokens) {
       try {
+        const jwtToken = await getApnsToken()
+
         const response = await fetch(`${apnsUrl}/3/device/${token}`, {
           method: 'POST',
           headers: {
             'apns-topic': Deno.env.get('APNS_BUNDLE_ID') || 'uk.co.schedulr.Schedulr',
             'apns-push-type': 'alert',
             'apns-priority': '10',
-            'authorization': `bearer ${await getApnsToken()}`,
+            'authorization': `bearer ${jwtToken}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(notification),
@@ -140,11 +142,85 @@ serve(async (req) => {
   }
 })
 
-// Generate APNs JWT token (you'll need to implement this with your .p8 key)
+// Generate APNs JWT token using your .p8 key
 async function getApnsToken(): Promise<string> {
-  // TODO: Implement JWT signing with your APNs .p8 key
-  // See: https://developer.apple.com/documentation/usernotifications/setting_up_a_remote_notification_server/establishing_a_token-based_connection_to_apns
-  // You'll need: APNS_KEY_ID, APNS_TEAM_ID, and the .p8 key file
-  
-  throw new Error('APNs token generation not implemented - see README')
+  const apnsKeyId = Deno.env.get('APNS_KEY_ID')
+  const apnsTeamId = Deno.env.get('APNS_TEAM_ID')
+  const apnsKey = Deno.env.get('APNS_PRIVATE_KEY')
+
+  if (!apnsKeyId || !apnsTeamId || !apnsKey) {
+    throw new Error('Missing APNs credentials. Set APNS_KEY_ID, APNS_TEAM_ID, and APNS_PRIVATE_KEY environment variables.')
+  }
+
+  // Create JWT header
+  const header = {
+    alg: 'ES256',
+    kid: apnsKeyId
+  }
+
+  // Create JWT payload
+  const now = Math.floor(Date.now() / 1000)
+  const payload = {
+    iss: apnsTeamId,
+    iat: now,
+    exp: now + (60 * 60) // 1 hour expiration
+  }
+
+  // Base64URL encode header and payload
+  const encodeBase64URL = (obj: any) => {
+    const json = JSON.stringify(obj)
+    const base64 = btoa(json)
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  }
+
+  const headerEncoded = encodeBase64URL(header)
+  const payloadEncoded = encodeBase64URL(payload)
+  const message = `${headerEncoded}.${payloadEncoded}`
+
+  // Import the private key
+  const privateKeyPem = apnsKey.replace(/\\n/g, '\n')
+  const privateKeyDer = pemToDer(privateKeyPem)
+
+  // Import key for signing
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    privateKeyDer,
+    {
+      name: 'ECDSA',
+      namedCurve: 'P-256'
+    },
+    false,
+    ['sign']
+  )
+
+  // Sign the message
+  const messageBytes = new TextEncoder().encode(message)
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    cryptoKey,
+    messageBytes
+  )
+
+  // Base64URL encode signature
+  const signatureEncoded = btoa(String.fromCharCode(...new Uint8Array(signature)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '')
+
+  return `${message}.${signatureEncoded}`
+}
+
+// Helper function to convert PEM to DER
+function pemToDer(pem: string): Uint8Array {
+  const base64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\s/g, '')
+
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
 }
