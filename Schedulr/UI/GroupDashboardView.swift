@@ -263,6 +263,7 @@ struct GroupDashboardView: View {
     @State private var memberToTransfer: DashboardViewModel.MemberSummary?
     @State private var memberCount: Int = 0
     @State private var isOwner: Bool = false
+    @StateObject private var notificationViewModel = NotificationViewModel()
 
     var body: some View {
         NavigationStack {
@@ -270,7 +271,12 @@ struct GroupDashboardView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        // Notification bell
+                        NotificationBellButton(viewModel: notificationViewModel)
+                            .environmentObject(themeManager)
+                        
+                        // Settings menu
                         Menu {
                             Button {
                                 showGroupManagement = true
@@ -302,6 +308,8 @@ struct GroupDashboardView: View {
                             Image(systemName: "gearshape.fill")
                                 .font(.system(size: 22, weight: .medium))
                                 .foregroundColor(Color(red: 0.98, green: 0.29, blue: 0.55))
+                                .padding(.top, 4) // Match padding with bell button
+                                .padding(.bottom, 2)
                         }
                     }
                 }
@@ -1588,6 +1596,7 @@ private struct BubblyCard<Content: View>: View {
 private struct FilterBadge: View {
     let text: String
     let color: Color
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         Text(text)
@@ -1598,7 +1607,7 @@ private struct FilterBadge: View {
                 Capsule()
                     .fill(color.opacity(0.15))
             )
-            .foregroundStyle(color)
+            .foregroundStyle(colorScheme == .dark ? .primary : color)
     }
 }
 

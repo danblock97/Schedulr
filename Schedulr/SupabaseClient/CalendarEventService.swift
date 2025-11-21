@@ -25,6 +25,11 @@ final class CalendarEventService {
 
     // Create event owned by current user, then add attendees
     func createEvent(input: NewEventInput, currentUserId: UUID) async throws -> UUID {
+        // Validate that end date is not before start date
+        if input.end < input.start {
+            throw NSError(domain: "CalendarEventService", code: -2, userInfo: [NSLocalizedDescriptionKey: "End date cannot be before start date"])
+        }
+        
         struct InsertRow: Encodable {
             let user_id: UUID
             let group_id: UUID
@@ -71,20 +76,23 @@ final class CalendarEventService {
             throw NSError(domain: "CalendarEventService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create event"])
         }
 
-        // Notify attendees via push (async, don't fail if it errors)
-        Task {
-            try? await notifyAttendees(eventId: eventId)
-        }
-
-        // Build attendee rows
+        // Build attendee rows - exclude creator from attendees list
         struct AttRow: Encodable { let event_id: UUID; let user_id: UUID?; let display_name: String; let status: String }
         var attendees: [AttRow] = []
-        attendees.append(contentsOf: input.attendeeUserIds.map { AttRow(event_id: eventId, user_id: $0, display_name: "", status: "invited") })
+        // Filter out creator from attendeeUserIds
+        let attendeeIdsWithoutCreator = input.attendeeUserIds.filter { $0 != currentUserId }
+        attendees.append(contentsOf: attendeeIdsWithoutCreator.map { AttRow(event_id: eventId, user_id: $0, display_name: "", status: "invited") })
         attendees.append(contentsOf: input.guestNames.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { name in
             AttRow(event_id: eventId, user_id: nil, display_name: name.trimmingCharacters(in: .whitespacesAndNewlines), status: "invited")
         })
         if !attendees.isEmpty {
             _ = try await client.from("event_attendees").insert(attendees).execute()
+        }
+
+        // Notify attendees via push (async, don't fail if it errors)
+        // Pass creator ID to exclude them from notifications
+        Task {
+            try? await notifyAttendees(eventId: eventId, creatorUserId: currentUserId)
         }
 
         // Sync group events to Apple Calendar for all invited users (including the creator)
@@ -102,6 +110,101 @@ final class CalendarEventService {
         return eventId
     }
 
+    // Fetch a single event by ID
+    func fetchEventById(eventId: UUID) async throws -> CalendarEventWithUser? {
+        struct EventRow: Decodable {
+            let id: UUID
+            let user_id: UUID
+            let group_id: UUID
+            let title: String
+            let start_date: Date
+            let end_date: Date
+            let is_all_day: Bool
+            let location: String?
+            let is_public: Bool
+            let original_event_id: String?
+            let calendar_name: String?
+            let calendar_color: ColorComponents?
+            let created_at: Date?
+            let updated_at: Date?
+            let synced_at: Date?
+            let notes: String?
+            let category_id: UUID?
+            let event_type: String
+            let users: UserInfo?
+            let event_categories: CategoryInfo?
+            
+            struct UserInfo: Decodable {
+                let id: UUID
+                let display_name: String?
+                let avatar_url: String?
+            }
+            
+            struct CategoryInfo: Decodable {
+                let id: UUID
+                let user_id: UUID
+                let group_id: UUID?
+                let name: String
+                let color: ColorComponents
+                let created_at: Date?
+                let updated_at: Date?
+            }
+        }
+        
+        let eventRow: EventRow? = try? await client
+            .from("calendar_events")
+            .select("*, users(id, display_name, avatar_url), event_categories(*)")
+            .eq("id", value: eventId)
+            .single()
+            .execute()
+            .value
+        
+        guard let row = eventRow else { return nil }
+        
+        return CalendarEventWithUser(
+            id: row.id,
+            user_id: row.user_id,
+            group_id: row.group_id,
+            title: row.title,
+            start_date: row.start_date,
+            end_date: row.end_date,
+            is_all_day: row.is_all_day,
+            location: row.location,
+            is_public: row.is_public,
+            original_event_id: row.original_event_id,
+            calendar_name: row.calendar_name,
+            calendar_color: row.calendar_color,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            synced_at: row.synced_at,
+            notes: row.notes,
+            category_id: row.category_id,
+            event_type: row.event_type,
+            user: row.users.map { DBUser(
+                id: $0.id,
+                display_name: $0.display_name,
+                avatar_url: $0.avatar_url,
+                created_at: nil,
+                updated_at: nil,
+                subscription_tier: nil,
+                subscription_status: nil,
+                revenuecat_customer_id: nil,
+                subscription_updated_at: nil,
+                downgrade_grace_period_ends: nil
+            )},
+            category: row.event_categories.map { EventCategory(
+                id: $0.id,
+                user_id: $0.user_id,
+                group_id: $0.group_id,
+                name: $0.name,
+                color: $0.color,
+                created_at: $0.created_at,
+                updated_at: $0.updated_at
+            )},
+            hasAttendees: nil
+        )
+    }
+    
     // Load attendees (include user profile name if available)
     func loadAttendees(eventId: UUID) async throws -> [(userId: UUID?, displayName: String, status: String)] {
         struct Row: Decodable {
@@ -130,6 +233,11 @@ final class CalendarEventService {
 
     // Update event and replace attendees set
     func updateEvent(eventId: UUID, input: NewEventInput, currentUserId: UUID) async throws {
+        // Validate that end date is not before start date
+        if input.end < input.start {
+            throw NSError(domain: "CalendarEventService", code: -2, userInfo: [NSLocalizedDescriptionKey: "End date cannot be before start date"])
+        }
+        
         struct UpdateRow: Encodable {
             let title: String
             let start_date: Date
@@ -283,9 +391,12 @@ final class CalendarEventService {
     }
 
     // Invoke Edge Function to send push notifications to attendees
-    private func notifyAttendees(eventId: UUID) async throws {
-        struct Payload: Encodable { let event_id: UUID }
-        let payload = Payload(event_id: eventId)
+    private func notifyAttendees(eventId: UUID, creatorUserId: UUID) async throws {
+        struct Payload: Encodable { 
+            let event_id: UUID
+            let creator_user_id: UUID
+        }
+        let payload = Payload(event_id: eventId, creator_user_id: creatorUserId)
         _ = try await client.functions
             .invoke("notify-event", options: FunctionInvokeOptions(body: payload))
     }

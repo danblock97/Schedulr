@@ -8,7 +8,7 @@ const apnsUrl = Deno.env.get('APNS_URL') || 'https://api.sandbox.push.apple.com'
 
 serve(async (req) => {
   try {
-    const { event_id } = await req.json()
+    const { event_id, creator_user_id } = await req.json()
     
     if (!event_id) {
       return new Response(JSON.stringify({ error: 'event_id required' }), { 
@@ -36,12 +36,19 @@ serve(async (req) => {
       })
     }
 
-    // Fetch attendees
-    const { data: attendees, error: attendeesError } = await supabase
+    // Fetch attendees - exclude creator if creator_user_id is provided
+    let attendeesQuery = supabase
       .from('event_attendees')
       .select('user_id')
       .eq('event_id', event_id)
       .not('user_id', 'is', null)
+    
+    // Exclude creator from notifications
+    if (creator_user_id) {
+      attendeesQuery = attendeesQuery.neq('user_id', creator_user_id)
+    }
+    
+    const { data: attendees, error: attendeesError } = await attendeesQuery
 
     if (attendeesError) {
       console.error('Error fetching attendees:', attendeesError)
@@ -61,9 +68,10 @@ serve(async (req) => {
     // Extract user IDs and fetch their device tokens
     const userIds = attendees.map((a: any) => a.user_id).filter(Boolean)
     
+    // Fetch devices and track badge counts per user
     const { data: devices, error: devicesError } = await supabase
       .from('user_devices')
-      .select('apns_token')
+      .select('user_id, apns_token')
       .in('user_id', userIds)
 
     if (devicesError) {
@@ -74,54 +82,76 @@ serve(async (req) => {
       })
     }
 
-    // Extract tokens
-    const tokens: string[] = devices?.map((d: any) => d.apns_token).filter(Boolean) || []
-
-    if (tokens.length === 0) {
+    if (!devices || devices.length === 0) {
       return new Response(JSON.stringify({ message: 'No device tokens found', tokens: 0 }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       })
     }
 
+    // Track badge counts per user (not per device)
+    // Group devices by user_id to ensure same badge count for all devices of same user
+    const devicesByUser = new Map<string, any[]>()
+    for (const device of devices) {
+      if (!device.apns_token) continue
+      const userId = device.user_id
+      if (!devicesByUser.has(userId)) {
+        devicesByUser.set(userId, [])
+      }
+      devicesByUser.get(userId)!.push(device)
+    }
+    
     // Send APNs notifications
     const creatorName = event.users?.display_name || 'Someone'
     const eventTitle = event.title || 'New Event'
     const startDate = new Date(event.start_date)
     const dateStr = startDate.toLocaleDateString()
 
-    const notification = {
-      aps: {
-        alert: {
-          title: `Invitation: ${eventTitle}`,
-          body: `${creatorName} invited you to an event on ${dateStr}`,
-        },
-        sound: 'default',
-        badge: 1,
-      },
-      event_id: event_id,
-    }
-
     const results = []
-    for (const token of tokens) {
-      try {
-        const jwtToken = await getApnsToken()
+    
+    // Process each user's devices
+    for (const [userId, userDevices] of devicesByUser) {
+      // Don't send badge count from server - let client calculate it from delivered notifications
+      // This ensures badge count is always accurate based on actual notification state
+      // The client will sync badge count when app becomes active or receives notification
+      
+      for (const device of userDevices) {
 
-        const response = await fetch(`${apnsUrl}/3/device/${token}`, {
-          method: 'POST',
-          headers: {
-            'apns-topic': Deno.env.get('APNS_BUNDLE_ID') || 'uk.co.schedulr.Schedulr',
-            'apns-push-type': 'alert',
-            'apns-priority': '10',
-            'authorization': `bearer ${jwtToken}`,
-            'Content-Type': 'application/json',
+        // Send badge: 1 to ensure badge appears when app is closed
+        // Client will sync actual badge count when app opens or receives notifications
+        // The client sync will override this badge: 1 with the actual count of delivered notifications
+        const notification = {
+          aps: {
+            alert: {
+              title: `Invitation: ${eventTitle}`,
+              body: `${creatorName} invited you to an event on ${dateStr}`,
+            },
+            sound: 'default',
+            'content-available': 1, // Ensures didReceiveRemoteNotification is called even when app is backgrounded
+            badge: 1, // Placeholder - client will sync actual count when app opens
           },
-          body: JSON.stringify(notification),
-        })
+          event_id: event_id,
+        }
 
-        results.push({ token: token.substring(0, 8) + '...', status: response.status })
-      } catch (err) {
-        results.push({ token: token.substring(0, 8) + '...', error: err.message })
+        try {
+          const jwtToken = await getApnsToken()
+
+          const response = await fetch(`${apnsUrl}/3/device/${device.apns_token}`, {
+            method: 'POST',
+            headers: {
+              'apns-topic': Deno.env.get('APNS_BUNDLE_ID') || 'uk.co.schedulr.Schedulr',
+              'apns-push-type': 'alert',
+              'apns-priority': '10',
+              'authorization': `bearer ${jwtToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(notification),
+          })
+
+          results.push({ token: device.apns_token.substring(0, 8) + '...', status: response.status })
+        } catch (err) {
+          results.push({ token: device.apns_token.substring(0, 8) + '...', error: err.message })
+        }
       }
     }
 

@@ -11,6 +11,9 @@
 		06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */; };
 		0EE8623E8ED0C13BEF843DF7 /* MonthViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */; };
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
+		1B929AD62ED05562001176EF /* NotificationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD32ED05562001176EF /* NotificationListView.swift */; };
+		1B929AD72ED05562001176EF /* NotificationBellButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD22ED05562001176EF /* NotificationBellButton.swift */; };
+		1B929AD82ED05562001176EF /* NotificationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD42ED05562001176EF /* NotificationViewModel.swift */; };
 		1B94CCE82EB6A85D00921472 /* ReceiptParser in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCE72EB6A85D00921472 /* ReceiptParser */; };
 		1B94CCEA2EB6A85D00921472 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCE92EB6A85D00921472 /* RevenueCat */; };
 		1B94CCEC2EB6A85D00921472 /* RevenueCatUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCEB2EB6A85D00921472 /* RevenueCatUI */; };
@@ -77,6 +80,9 @@
 		1B0AC2222EB7885800E9E405 /* Config/Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = "<group>"; };
 		1B0AC2232EB7886300E9E405 /* Config/Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = "<group>"; };
 		1B79C8872EC2647B00BECADF /* Schedulr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Schedulr.entitlements; sourceTree = "<group>"; };
+		1B929AD22ED05562001176EF /* NotificationBellButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationBellButton.swift; sourceTree = "<group>"; };
+		1B929AD32ED05562001176EF /* NotificationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationListView.swift; sourceTree = "<group>"; };
+		1B929AD42ED05562001176EF /* NotificationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationViewModel.swift; sourceTree = "<group>"; };
 		28DFABD583D4A6638E1C7161 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		29BC076B4D7B7EEC355DD8C0 /* GroupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupService.swift; sourceTree = "<group>"; };
 		2D9FAFBBC89B1B8F1648CA2D /* AIAssistantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAssistantView.swift; sourceTree = "<group>"; };
@@ -151,6 +157,7 @@
 		0EAB7458B5E343B5ED95EE6F /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				1B929AD52ED05562001176EF /* Notifications */,
 				E5118D921023605E2B3CEACE /* Calendar */,
 				92D2F87AFDD0AA081B70C2B1 /* CalendarBlockView.swift */,
 				FD233AE9EE268C5C01B464EE /* FloatingTabBar.swift */,
@@ -163,6 +170,16 @@
 				76A9BD74CB648FB968299644 /* ThemePickerView.swift */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		1B929AD52ED05562001176EF /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				1B929AD22ED05562001176EF /* NotificationBellButton.swift */,
+				1B929AD32ED05562001176EF /* NotificationListView.swift */,
+				1B929AD42ED05562001176EF /* NotificationViewModel.swift */,
+			);
+			path = Notifications;
 			sourceTree = "<group>";
 		};
 		26720D0D101E79FCD6DA8F9D /* Subscription */ = {
@@ -405,6 +422,9 @@
 				5ADE03480160AA0E5143624B /* AgendaListView.swift in Sources */,
 				40BCB440A98314C162E01D1C /* CalendarModels.swift in Sources */,
 				A4852B01699B4DFC86E00381 /* CalendarRootView.swift in Sources */,
+				1B929AD62ED05562001176EF /* NotificationListView.swift in Sources */,
+				1B929AD72ED05562001176EF /* NotificationBellButton.swift in Sources */,
+				1B929AD82ED05562001176EF /* NotificationViewModel.swift in Sources */,
 				74135066AC09E62CAD39E3FE /* DayTimelineView.swift in Sources */,
 				410EBD1B93EC8191304975E9 /* EventDetailView.swift in Sources */,
 				E75F80EC2007ABE13CB7CE5A /* EventEditorView.swift in Sources */,
@@ -433,7 +453,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -445,7 +465,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -462,7 +482,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 23;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -474,7 +494,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

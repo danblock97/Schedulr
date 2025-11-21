@@ -110,7 +110,7 @@ struct DBCalendarEventInsert: Encodable {
     var event_type: String
 }
 
-struct CalendarEventWithUser: Codable, Identifiable, Equatable {
+struct CalendarEventWithUser: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     let user_id: UUID
     let group_id: UUID
@@ -137,6 +137,11 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable {
         let id: UUID
         let display_name: String?
         let avatar_url: String?
+    }
+    
+    // Hashable conformance - use id since it's unique
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
     
     // Computed property to get the effective color (category color takes precedence)

@@ -331,6 +331,13 @@ struct EventEditorView: View {
             guard !isSaving else { return }
             isSaving = true
             defer { isSaving = false }
+            
+            // Validate that end date is not before start date
+            if endDate < date {
+                errorMessage = "End date cannot be before start date"
+                return
+            }
+            
             do {
                 let uid = try await SupabaseManager.shared.client.auth.session.user.id
                 var ekId: String? = existingEvent?.original_event_id

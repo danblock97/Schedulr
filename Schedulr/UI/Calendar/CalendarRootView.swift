@@ -36,7 +36,13 @@ struct CalendarRootView: View {
     @State private var selectedCategoryIds: Set<UUID> = []
     @State private var isLoadingCategories = false
     @State private var currentUserId: UUID?
+    @State private var eventToNavigate: CalendarEventWithUser?
+    @State private var showingEventDetail = false
+    @StateObject private var notificationViewModel = NotificationViewModel()
+    @State private var pendingEventId: UUID?
 
+    @State private var isViewReady = false
+    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -217,6 +223,56 @@ struct CalendarRootView: View {
                 MonthViewModePicker(selectedMode: $monthViewMode)
                     .presentationDetents([.height(280)])
             }
+            .sheet(item: $eventToNavigate) { event in
+                NavigationStack {
+                    EventDetailView(
+                        event: event,
+                        member: memberColorMapping[event.user_id],
+                        currentUserId: currentUserId
+                    )
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToEvent"))) { notification in
+                if let eventId = notification.userInfo?["eventId"] as? UUID {
+                    // Always store pending event ID as fallback
+                    pendingEventId = eventId
+                    
+                    // If view is already ready, navigate immediately
+                    if isViewReady {
+                        Task {
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                            await navigateToEvent(eventId: eventId)
+                            await MainActor.run {
+                                pendingEventId = nil
+                            }
+                        }
+                    }
+                    // If view not ready, it will handle navigation in onAppear
+                }
+            }
+            .onAppear {
+                // Mark view as ready
+                isViewReady = true
+                
+                // Check for pending event ID from UserDefaults (set by PushManager when notification tapped)
+                if let eventIdString = UserDefaults.standard.string(forKey: "PendingNavigationEventId"),
+                   let eventId = UUID(uuidString: eventIdString) {
+                    UserDefaults.standard.removeObject(forKey: "PendingNavigationEventId")
+                    pendingEventId = eventId
+                }
+                
+                // Check for pending event ID when view appears (handles background launch)
+                if let pendingId = pendingEventId {
+                    Task {
+                        // Wait a bit for view to be fully ready
+                        try? await Task.sleep(nanoseconds: 600_000_000) // 0.6 seconds
+                        await navigateToEvent(eventId: pendingId)
+                        await MainActor.run {
+                            pendingEventId = nil
+                        }
+                    }
+                }
+            }
             .task {
                 // Get current user ID
                 currentUserId = try? await SupabaseManager.shared.client.auth.session.user.id
@@ -224,6 +280,24 @@ struct CalendarRootView: View {
                 await loadCategories()
                 displayedMonth = startOfMonth(for: selectedDate)
                 displayedYear = startOfYear(for: selectedDate)
+                
+                // Check for pending event ID from UserDefaults (set by PushManager when notification tapped)
+                if let eventIdString = UserDefaults.standard.string(forKey: "PendingNavigationEventId"),
+                   let eventId = UUID(uuidString: eventIdString) {
+                    UserDefaults.standard.removeObject(forKey: "PendingNavigationEventId")
+                    pendingEventId = eventId
+                }
+                
+                // Wait a bit for view to be ready
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                
+                // If there's a pending event ID from notification launch, navigate to it
+                if let pendingId = pendingEventId {
+                    await navigateToEvent(eventId: pendingId)
+                    await MainActor.run {
+                        pendingEventId = nil
+                    }
+                }
             }
             .onChange(of: selectedDate) { _, newDate in
                 // Only update displayedMonth/Year if they're not already in sync
@@ -352,6 +426,10 @@ struct CalendarRootView: View {
                 
                 Spacer()
                 
+                // Notification bell
+                NotificationBellButton(viewModel: notificationViewModel)
+                    .environmentObject(themeManager)
+                
                 // Month view mode picker (only for month view)
                 if mode == .month {
                     Button {
@@ -374,7 +452,7 @@ struct CalendarRootView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 8)
+            .padding(.top, 12) // Increased from 8 to give more space for badge
             .padding(.bottom, 12)
             
             // Days of week header (for month view)
@@ -585,6 +663,42 @@ struct CalendarRootView: View {
         let f = DateFormatter()
         f.dateFormat = "EEEE, MMM d, yyyy"
         return f.string(from: date)
+    }
+    
+    private func navigateToEvent(eventId: UUID) async {
+        // Wait for view to be ready if it's not yet
+        var attempts = 0
+        while !isViewReady && attempts < 15 {
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            attempts += 1
+        }
+        
+        // Fetch the event by ID
+        do {
+            guard let event = try await CalendarEventService.shared.fetchEventById(eventId: eventId) else {
+                return
+            }
+            
+            await MainActor.run {
+                // Switch to month view and select the event's date first
+                selectedDate = event.start_date
+                displayedMonth = startOfMonth(for: event.start_date)
+                mode = .month // Ensure we're in month view
+                
+                // Clear any existing event first, then set the new one
+                // This ensures the sheet presentation is triggered
+                eventToNavigate = nil
+                
+                // Use a longer delay to ensure the view is fully rendered and ready
+                // Especially important when app launches from background
+                let delay = isViewReady ? 0.5 : 1.0
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    self.eventToNavigate = event
+                }
+            }
+        } catch {
+            // Silently handle error - navigation will simply not occur
+        }
     }
     
 }
