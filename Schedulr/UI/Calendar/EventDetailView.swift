@@ -75,6 +75,13 @@ struct EventDetailView: View {
                     Label(location, systemImage: "location")
                 }
             }
+            
+            if !isPrivate, let notes = event.notes, !notes.isEmpty {
+                Section("Notes") {
+                    Text(notes)
+                        .font(.body)
+                }
+            }
 
             if let calendar = event.calendar_name {
                 Section("Calendar") {

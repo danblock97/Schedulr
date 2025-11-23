@@ -252,14 +252,65 @@ final class CalendarEventService {
         let row = UpdateRow(title: input.title, start_date: input.start, end_date: input.end, is_all_day: input.isAllDay, location: input.location, notes: input.notes, original_event_id: input.originalEventId, category_id: input.categoryId, event_type: input.eventType)
         _ = try await client.from("calendar_events").update(row).eq("id", value: eventId).execute()
 
+        // Fetch existing attendees to preserve apple_calendar_event_id
+        struct ExistingAttendee: Decodable {
+            let user_id: UUID?
+            let display_name: String?
+            let apple_calendar_event_id: String?
+        }
+        let existingAttendees: [ExistingAttendee] = try await client
+            .from("event_attendees")
+            .select("user_id, display_name, apple_calendar_event_id")
+            .eq("event_id", value: eventId)
+            .execute()
+            .value
+            
+        // Create a map for quick lookup: UserId -> AppleCalendarEventId
+        var userIdToAppleId: [UUID: String] = [:]
+        // And for guests: DisplayName -> AppleCalendarEventId
+        var guestNameToAppleId: [String: String] = [:]
+        
+        for attendee in existingAttendees {
+            if let uid = attendee.user_id, let appleId = attendee.apple_calendar_event_id {
+                userIdToAppleId[uid] = appleId
+            } else if let name = attendee.display_name, let appleId = attendee.apple_calendar_event_id {
+                guestNameToAppleId[name] = appleId
+            }
+        }
+
         // Replace attendees: delete then insert
         _ = try await client.from("event_attendees").delete().eq("event_id", value: eventId).execute()
-        struct AttRow: Encodable { let event_id: UUID; let user_id: UUID?; let display_name: String; let status: String }
+        
+        struct AttRow: Encodable { 
+            let event_id: UUID
+            let user_id: UUID?
+            let display_name: String
+            let status: String
+            let apple_calendar_event_id: String?
+        }
         var attendees: [AttRow] = []
-        attendees.append(contentsOf: input.attendeeUserIds.map { AttRow(event_id: eventId, user_id: $0, display_name: "", status: "invited") })
-        attendees.append(contentsOf: input.guestNames.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { name in
-            AttRow(event_id: eventId, user_id: nil, display_name: name.trimmingCharacters(in: .whitespacesAndNewlines), status: "invited")
+        
+        attendees.append(contentsOf: input.attendeeUserIds.map { userId in
+            AttRow(
+                event_id: eventId, 
+                user_id: userId, 
+                display_name: "", 
+                status: "invited",
+                apple_calendar_event_id: userIdToAppleId[userId]
+            )
         })
+        
+        attendees.append(contentsOf: input.guestNames.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { name in
+            let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return AttRow(
+                event_id: eventId, 
+                user_id: nil, 
+                display_name: cleanName, 
+                status: "invited",
+                apple_calendar_event_id: guestNameToAppleId[cleanName]
+            )
+        })
+        
         if !attendees.isEmpty {
             _ = try await client.from("event_attendees").insert(attendees).execute()
         }
