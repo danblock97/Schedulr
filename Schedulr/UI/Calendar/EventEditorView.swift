@@ -7,6 +7,7 @@ struct EventEditorView: View {
     let groupId: UUID
     @State private var members: [DashboardViewModel.MemberSummary]
     var existingEvent: CalendarEventWithUser? = nil
+    var initialDate: Date? = nil
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
 
@@ -32,11 +33,18 @@ struct EventEditorView: View {
     @State private var availableGroups: [DashboardViewModel.GroupSummary] = []
     @State private var isLoadingGroups = false
     
-    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil) {
+    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil) {
         self.groupId = groupId
         self.members = members
         self.existingEvent = existingEvent
+        self.initialDate = initialDate
         _selectedGroupId = State(initialValue: groupId)
+        
+        // If creating a new event with an initial date, set the start and end dates
+        if existingEvent == nil, let initialDate = initialDate {
+            _date = State(initialValue: initialDate)
+            _endDate = State(initialValue: Calendar.current.date(byAdding: .hour, value: 1, to: initialDate) ?? initialDate)
+        }
     }
 
     var body: some View {

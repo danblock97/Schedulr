@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -23,6 +23,13 @@
 		1B94CCF72EB6A87900921472 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCF62EB6A87900921472 /* Realtime */; };
 		1B94CCF92EB6A87900921472 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCF82EB6A87900921472 /* Storage */; };
 		1B94CCFB2EB6A87900921472 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 1B94CCFA2EB6A87900921472 /* Supabase */; };
+		1BB3B7572ED4D31B0042CB9C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1BB3B7562ED4D31B0042CB9C /* WidgetKit.framework */; };
+		1BB3B7592ED4D31B0042CB9C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1BB3B7582ED4D31B0042CB9C /* SwiftUI.framework */; };
+		1BB3B7662ED4D31C0042CB9C /* WidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1BB3B7542ED4D31B0042CB9C /* WidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		1BB3B7732ED4D4DB0042CB9C /* UpNextWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B76D2ED4D4C40042CB9C /* UpNextWidget.swift */; };
+		1BB3B7742ED4D4DB0042CB9C /* SchedulrWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B76C2ED4D4C40042CB9C /* SchedulrWidgetBundle.swift */; };
+		1BB3B7752ED4D4DB0042CB9C /* UpNextWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B76E2ED4D4C40042CB9C /* UpNextWidgetView.swift */; };
+		1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B7762ED4E4D40042CB9C /* WidgetDataEncoder.swift */; };
 		1F05ED41108465A30B588180 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 708BA2FEE9C2C74409D909FF /* Assets.xcassets */; };
 		1F4638209D5F89A4E6E5B239 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6EFB1D6E28C387238D3607 /* AIService.swift */; };
 		1F86A5264A96100FC2DC94A5 /* GracePeriodManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BACE572F7D2FDEE2AAFA15C /* GracePeriodManager.swift */; };
@@ -72,6 +79,30 @@
 		FDC5FDA134ED7FAEA94EA5E0 /* CalendarPreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DDFC75DC791E0281E3FC26C /* CalendarPreferencesManager.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		1BB3B7642ED4D31C0042CB9C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1BB3B7532ED4D31B0042CB9C;
+			remoteInfo = WidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		1BB3B7672ED4D31C0042CB9C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				1BB3B7662ED4D31C0042CB9C /* WidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		03C40567E67F9FE8DC746B06 /* CalendarEventService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarEventService.swift; sourceTree = "<group>"; };
 		08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSyncManager.swift; sourceTree = "<group>"; };
@@ -83,6 +114,13 @@
 		1B929AD22ED05562001176EF /* NotificationBellButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationBellButton.swift; sourceTree = "<group>"; };
 		1B929AD32ED05562001176EF /* NotificationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationListView.swift; sourceTree = "<group>"; };
 		1B929AD42ED05562001176EF /* NotificationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationViewModel.swift; sourceTree = "<group>"; };
+		1BB3B7542ED4D31B0042CB9C /* WidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		1BB3B7562ED4D31B0042CB9C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		1BB3B7582ED4D31B0042CB9C /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		1BB3B76C2ED4D4C40042CB9C /* SchedulrWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulrWidgetBundle.swift; sourceTree = "<group>"; };
+		1BB3B76D2ED4D4C40042CB9C /* UpNextWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpNextWidget.swift; sourceTree = "<group>"; };
+		1BB3B76E2ED4D4C40042CB9C /* UpNextWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpNextWidgetView.swift; sourceTree = "<group>"; };
+		1BB3B7762ED4E4D40042CB9C /* WidgetDataEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataEncoder.swift; sourceTree = "<group>"; };
 		28DFABD583D4A6638E1C7161 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		29BC076B4D7B7EEC355DD8C0 /* GroupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupService.swift; sourceTree = "<group>"; };
 		2D9FAFBBC89B1B8F1648CA2D /* AIAssistantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAssistantView.swift; sourceTree = "<group>"; };
@@ -134,7 +172,30 @@
 		FD233AE9EE268C5C01B464EE /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		1BB3B76A2ED4D31C0042CB9C /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 1BB3B7532ED4D31B0042CB9C /* WidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		1BB3B75A2ED4D31B0042CB9C /* Widgets */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1BB3B76A2ED4D31C0042CB9C /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Widgets; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		1BB3B7512ED4D31B0042CB9C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1BB3B7592ED4D31B0042CB9C /* SwiftUI.framework in Frameworks */,
+				1BB3B7572ED4D31B0042CB9C /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		29B2D46AA747A59804D46E1F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -182,6 +243,25 @@
 			path = Notifications;
 			sourceTree = "<group>";
 		};
+		1BB3B7552ED4D31B0042CB9C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1BB3B7562ED4D31B0042CB9C /* WidgetKit.framework */,
+				1BB3B7582ED4D31B0042CB9C /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		1BB3B76F2ED4D4C40042CB9C /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				1BB3B76C2ED4D4C40042CB9C /* SchedulrWidgetBundle.swift */,
+				1BB3B76D2ED4D4C40042CB9C /* UpNextWidget.swift */,
+				1BB3B76E2ED4D4C40042CB9C /* UpNextWidgetView.swift */,
+			);
+			path = Widgets;
+			sourceTree = "<group>";
+		};
 		26720D0D101E79FCD6DA8F9D /* Subscription */ = {
 			isa = PBXGroup;
 			children = (
@@ -201,6 +281,8 @@
 		2FA93907C861F7381C425378 /* Schedulr */ = {
 			isa = PBXGroup;
 			children = (
+				1BB3B7762ED4E4D40042CB9C /* WidgetDataEncoder.swift */,
+				1BB3B76F2ED4D4C40042CB9C /* Widgets */,
 				1B79C8872EC2647B00BECADF /* Schedulr.entitlements */,
 				28DFABD583D4A6638E1C7161 /* ContentView.swift */,
 				08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */,
@@ -223,6 +305,8 @@
 			isa = PBXGroup;
 			children = (
 				2FA93907C861F7381C425378 /* Schedulr */,
+				1BB3B75A2ED4D31B0042CB9C /* Widgets */,
+				1BB3B7552ED4D31B0042CB9C /* Frameworks */,
 				BF7A2D27A78D590BDEF15AF2 /* Products */,
 				1B0AC2222EB7885800E9E405 /* Config/Debug.xcconfig */,
 				1B0AC2232EB7886300E9E405 /* Config/Release.xcconfig */,
@@ -277,6 +361,7 @@
 			isa = PBXGroup;
 			children = (
 				B36013169FC738C01E334138 /* Schedulr.app */,
+				1BB3B7542ED4D31B0042CB9C /* WidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -310,6 +395,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		1BB3B7532ED4D31B0042CB9C /* WidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1BB3B76B2ED4D31C0042CB9C /* Build configuration list for PBXNativeTarget "WidgetsExtension" */;
+			buildPhases = (
+				1BB3B7502ED4D31B0042CB9C /* Sources */,
+				1BB3B7512ED4D31B0042CB9C /* Frameworks */,
+				1BB3B7522ED4D31B0042CB9C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1BB3B75A2ED4D31B0042CB9C /* Widgets */,
+			);
+			name = WidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = WidgetsExtension;
+			productReference = 1BB3B7542ED4D31B0042CB9C /* WidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		42AEFBAE01D2DFD981F7DA7D /* Schedulr */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FF99BDF07C6F7E5F9BE27099 /* Build configuration list for PBXNativeTarget "Schedulr" */;
@@ -317,10 +424,12 @@
 				E7209FB05162B7572F88D05E /* Sources */,
 				29B2D46AA747A59804D46E1F /* Frameworks */,
 				66F8606E9F0A136E2228EBCB /* Resources */,
+				1BB3B7672ED4D31C0042CB9C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				1BB3B7652ED4D31C0042CB9C /* PBXTargetDependency */,
 			);
 			name = Schedulr;
 			packageProductDependencies = (
@@ -345,8 +454,13 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1500;
+				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					1BB3B7532ED4D31B0042CB9C = {
+						CreatedOnToolsVersion = 26.1.1;
+					};
+				};
 			};
 			buildConfigurationList = C364CFC4EF10A6491B53A4BE /* Build configuration list for PBXProject "Schedulr" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -366,11 +480,19 @@
 			projectRoot = "";
 			targets = (
 				42AEFBAE01D2DFD981F7DA7D /* Schedulr */,
+				1BB3B7532ED4D31B0042CB9C /* WidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		1BB3B7522ED4D31B0042CB9C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		66F8606E9F0A136E2228EBCB /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -383,6 +505,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		1BB3B7502ED4D31B0042CB9C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1BB3B7732ED4D4DB0042CB9C /* UpNextWidget.swift in Sources */,
+				1BB3B7742ED4D4DB0042CB9C /* SchedulrWidgetBundle.swift in Sources */,
+				1BB3B7752ED4D4DB0042CB9C /* UpNextWidgetView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E7209FB05162B7572F88D05E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -438,13 +570,123 @@
 				93F0C606CCE9F4BD1DA4CC74 /* MonthlyCalendarView.swift in Sources */,
 				16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */,
 				9D938D4F2EB9BD8035AE2F19 /* ProfileViewModel.swift in Sources */,
+				1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */,
 				93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		1BB3B7652ED4D31C0042CB9C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1BB3B7532ED4D31B0042CB9C /* WidgetsExtension */;
+			targetProxy = 1BB3B7642ED4D31C0042CB9C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		1BB3B7682ED4D31C0042CB9C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Widgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1BB3B7692ED4D31C0042CB9C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Widgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Widgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		4DC7B479A29173674AFD7BAC /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 1B0AC2232EB7886300E9E405 /* Config/Release.xcconfig */;
@@ -587,6 +829,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		1BB3B76B2ED4D31C0042CB9C /* Build configuration list for PBXNativeTarget "WidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1BB3B7682ED4D31C0042CB9C /* Debug */,
+				1BB3B7692ED4D31C0042CB9C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		C364CFC4EF10A6491B53A4BE /* Build configuration list for PBXProject "Schedulr" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

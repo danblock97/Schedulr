@@ -234,15 +234,49 @@ class ThemeManager: ObservableObject {
     
     func setTheme(_ theme: ColorTheme) {
         currentTheme = theme
+        saveThemeToWidget()
     }
     
     func setPresetTheme(_ preset: PresetTheme) {
         currentTheme = preset.colorTheme
+        saveThemeToWidget()
     }
     
     func setCustomTheme(colors: [ColorTheme.ColorComponents]) {
         guard colors.count >= 2 else { return }
         currentTheme = ColorTheme(type: .custom, name: nil, colors: colors)
+        saveThemeToWidget()
+    }
+    
+    // MARK: - Widget Integration
+    private func saveThemeToWidget() {
+        let appGroupId = "group.uk.co.schedulr.Schedulr"
+        let themeKey = "widget_theme_colors"
+        
+        struct WidgetThemeColors: Codable {
+            let primaryData: Data
+            let secondaryData: Data
+        }
+        
+        let (primary, secondary) = colors
+        let primaryUiColor = UIColor(primary)
+        let secondaryUiColor = UIColor(secondary)
+        
+        guard let primaryData = try? NSKeyedArchiver.archivedData(withRootObject: primaryUiColor, requiringSecureCoding: false),
+              let secondaryData = try? NSKeyedArchiver.archivedData(withRootObject: secondaryUiColor, requiringSecureCoding: false) else {
+            return
+        }
+        
+        let themeColors = WidgetThemeColors(primaryData: primaryData, secondaryData: secondaryData)
+        
+        if let userDefaults = UserDefaults(suiteName: appGroupId) {
+            if let encoded = try? JSONEncoder().encode(themeColors) {
+                userDefaults.set(encoded, forKey: themeKey)
+                // We don't need to reload timeline immediately as it's a subtle change, 
+                // but we can if we want instant feedback.
+                // WidgetCenter.shared.reloadAllTimelines() // Requires WidgetKit import
+            }
+        }
     }
 }
 

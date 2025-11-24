@@ -216,7 +216,7 @@ struct CalendarRootView: View {
             }
             .sheet(isPresented: $showingEditor) {
                 if let gid = viewModel.selectedGroupID {
-                    EventEditorView(groupId: gid, members: viewModel.members)
+                    EventEditorView(groupId: gid, members: viewModel.members, initialDate: selectedDate)
                 }
             }
             .sheet(isPresented: $showingMonthModePicker) {

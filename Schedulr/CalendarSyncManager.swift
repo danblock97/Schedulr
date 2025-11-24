@@ -3,6 +3,7 @@ import SwiftUI
 import EventKit
 import Combine
 import Supabase
+import WidgetKit
 
 @MainActor
 final class CalendarSyncManager: ObservableObject {
@@ -778,7 +779,86 @@ final class CalendarSyncManager: ObservableObject {
         
         // Update on main thread to trigger UI refresh
         await MainActor.run {
-            groupEvents = mappedEvents
+            // Sort events by start date to ensure chronological order
+            let sortedEvents = mappedEvents.sorted { lhs, rhs in
+                if lhs.start_date == rhs.start_date {
+                    return lhs.end_date < rhs.end_date
+                }
+                return lhs.start_date < rhs.start_date
+            }
+            
+            groupEvents = sortedEvents
+            
+            // Save to shared container for Widget (Embedded logic to avoid file issues)
+            saveEventsToWidget(sortedEvents)
+        }
+    }
+    
+    // MARK: - Widget Data Sharing (Embedded)
+    private func saveEventsToWidget(_ events: [CalendarEventWithUser]) {
+        let appGroupId = "group.uk.co.schedulr.Schedulr"
+        let dataKey = "upcoming_widget_events"
+        
+        // Fetch current user ID to load preferences
+        // Since we are in an async context (Task in refreshEvents), we can try to get it
+        // However, this function is synchronous. We'll launch a Task.
+        Task {
+            guard let userId = try? await client?.auth.session.user.id else { return }
+            
+            // Load preferences
+            let prefs = try? await CalendarPreferencesManager.shared.load(for: userId)
+            let hideHolidays = prefs?.hideHolidays ?? true
+            
+            // Filter events
+            var filteredEvents = events
+            
+            if hideHolidays {
+                filteredEvents = filteredEvents.filter { ev in
+                    let title = ev.title.lowercased()
+                    let calendarName = (ev.calendar_name ?? "").lowercased()
+                    let isHoliday = title.contains("holiday") || calendarName.contains("holiday")
+                    let isBirthday = title.contains("birthday") || calendarName.contains("birthday")
+                    return !(isHoliday || isBirthday)
+                }
+            }
+            
+            struct SharedEvent: Codable {
+                let id: String
+                let title: String
+                let startDate: Date
+                let endDate: Date
+                let location: String?
+                let colorData: Data
+                let calendarTitle: String
+            }
+            
+            let sharedEvents = filteredEvents.prefix(10).map { event in
+                let uiColor: UIColor
+                if let cc = event.calendar_color {
+                    uiColor = UIColor(red: cc.red, green: cc.green, blue: cc.blue, alpha: cc.alpha)
+                } else {
+                    uiColor = .systemBlue
+                }
+                let colorData = (try? NSKeyedArchiver.archivedData(withRootObject: uiColor, requiringSecureCoding: false)) ?? Data()
+                
+                return SharedEvent(
+                    id: event.id.uuidString,
+                    title: event.title,
+                    startDate: event.start_date,
+                    endDate: event.end_date,
+                    location: event.location,
+                    colorData: colorData,
+                    calendarTitle: event.calendar_name ?? "Schedulr"
+                )
+            }
+            
+            if let userDefaults = UserDefaults(suiteName: appGroupId) {
+                if let encoded = try? JSONEncoder().encode(sharedEvents) {
+                    userDefaults.set(encoded, forKey: dataKey)
+                    // Reload timeline after saving
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
+            }
         }
     }
 
