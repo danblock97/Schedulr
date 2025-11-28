@@ -12,5 +12,6 @@ import SwiftUI
 struct SchedulrWidgetBundle: WidgetBundle {
     var body: some Widget {
         UpNextWidget()
+        AIQuickAccessWidget()
     }
 }

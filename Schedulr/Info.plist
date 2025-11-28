@@ -42,8 +42,12 @@
 	<string>$(GOOGLE_CLIENT_ID)</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>Schedulr needs calendar access so you can share availability with your groups.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Schedulr uses your microphone so you can talk to Scheduly, your AI scheduling assistant.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We use your photo to set a profile avatar.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Schedulr uses speech recognition to convert your voice into text when chatting with Scheduly.</string>
 	<key>OPENAI_API_KEY</key>
 	<string>$(OPENAI_API_KEY)</string>
 	<key>REVENUECAT_API_KEY</key>

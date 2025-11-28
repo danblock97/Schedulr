@@ -108,8 +108,23 @@ private struct RootContainer: View {
         }
         .onOpenURL { url in
             #if DEBUG
-            print("[Auth] onOpenURL ->", url.absoluteString)
+            print("[App] onOpenURL ->", url.absoluteString)
             #endif
+            
+            // Handle AI chat deep link (schedulr://ai-chat or schedulr://ai-chat?voice=true)
+            if url.host == "ai-chat" {
+                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                let withVoice = components?.queryItems?.first(where: { $0.name == "voice" })?.value == "true"
+                
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("NavigateToAIChat"),
+                    object: nil,
+                    userInfo: ["voice": withVoice]
+                )
+                return
+            }
+            
+            // Handle auth callbacks
             Task { await authVM.handleOpenURL(url) }
         }
         .onChange(of: authVM.phase) { _, phase in

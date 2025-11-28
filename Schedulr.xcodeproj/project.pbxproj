@@ -29,6 +29,7 @@
 		1BB3B7732ED4D4DB0042CB9C /* UpNextWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B76D2ED4D4C40042CB9C /* UpNextWidget.swift */; };
 		1BB3B7742ED4D4DB0042CB9C /* SchedulrWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B76C2ED4D4C40042CB9C /* SchedulrWidgetBundle.swift */; };
 		1BB3B7752ED4D4DB0042CB9C /* UpNextWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B76E2ED4D4C40042CB9C /* UpNextWidgetView.swift */; };
+		1BB3B7782ED5A1230042CB9C /* AIQuickAccessWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B7792ED5A1230042CB9C /* AIQuickAccessWidget.swift */; };
 		1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB3B7762ED4E4D40042CB9C /* WidgetDataEncoder.swift */; };
 		1F05ED41108465A30B588180 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 708BA2FEE9C2C74409D909FF /* Assets.xcassets */; };
 		1F4638209D5F89A4E6E5B239 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B6EFB1D6E28C387238D3607 /* AIService.swift */; };
@@ -65,6 +66,7 @@
 		A96DD1377C3ED34893EF8571 /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71916EFECBF323C00B0001CD /* OnboardingModels.swift */; };
 		B02EE5410F9A98D1C116FEC5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28DFABD583D4A6638E1C7161 /* ContentView.swift */; };
 		B17C9AF7DE1FB286F992A238 /* AIAssistantView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9FAFBBC89B1B8F1648CA2D /* AIAssistantView.swift */; };
+		B17C9AF8DE1FB286F992A239 /* SpeechRecognitionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D9FAFBCC89B1B8F1648CA2E /* SpeechRecognitionManager.swift */; };
 		BB8B60EAC31618D92E3EE37C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BC415939A0B2C853A1F22B05 /* LaunchScreen.storyboard */; };
 		C0FDBA57E9BB244D18BE6ED3 /* MonthGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1FD319B7697CD41C7E7063E /* MonthGridView.swift */; };
 		C6AA77868C9F461301CDC5F7 /* CalendarBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92D2F87AFDD0AA081B70C2B1 /* CalendarBlockView.swift */; };
@@ -120,10 +122,12 @@
 		1BB3B76C2ED4D4C40042CB9C /* SchedulrWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulrWidgetBundle.swift; sourceTree = "<group>"; };
 		1BB3B76D2ED4D4C40042CB9C /* UpNextWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpNextWidget.swift; sourceTree = "<group>"; };
 		1BB3B76E2ED4D4C40042CB9C /* UpNextWidgetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpNextWidgetView.swift; sourceTree = "<group>"; };
+		1BB3B7792ED5A1230042CB9C /* AIQuickAccessWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIQuickAccessWidget.swift; sourceTree = "<group>"; };
 		1BB3B7762ED4E4D40042CB9C /* WidgetDataEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataEncoder.swift; sourceTree = "<group>"; };
 		28DFABD583D4A6638E1C7161 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		29BC076B4D7B7EEC355DD8C0 /* GroupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupService.swift; sourceTree = "<group>"; };
 		2D9FAFBBC89B1B8F1648CA2D /* AIAssistantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAssistantView.swift; sourceTree = "<group>"; };
+		2D9FAFBCC89B1B8F1648CA2E /* SpeechRecognitionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognitionManager.swift; sourceTree = "<group>"; };
 		36BBCD2275995CFAC6D78CB4 /* UpgradeInlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeInlineView.swift; sourceTree = "<group>"; };
 		3A351A6DE9EFC3B170697D5E /* SubscriptionBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionBadge.swift; sourceTree = "<group>"; };
 		3C862A5672149E6D8166E2DB /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
@@ -255,6 +259,7 @@
 		1BB3B76F2ED4D4C40042CB9C /* Widgets */ = {
 			isa = PBXGroup;
 			children = (
+				1BB3B7792ED5A1230042CB9C /* AIQuickAccessWidget.swift */,
 				1BB3B76C2ED4D4C40042CB9C /* SchedulrWidgetBundle.swift */,
 				1BB3B76D2ED4D4C40042CB9C /* UpNextWidget.swift */,
 				1BB3B76E2ED4D4C40042CB9C /* UpNextWidgetView.swift */,
@@ -353,6 +358,7 @@
 				F794D71EA2406708D13961C6 /* AIModels.swift */,
 				9B6EFB1D6E28C387238D3607 /* AIService.swift */,
 				C4C25608C8AA62BA9A1F1EEA /* CalendarAnalysisService.swift */,
+				2D9FAFBCC89B1B8F1648CA2E /* SpeechRecognitionManager.swift */,
 			);
 			path = AI;
 			sourceTree = "<group>";
@@ -509,6 +515,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1BB3B7782ED5A1230042CB9C /* AIQuickAccessWidget.swift in Sources */,
 				1BB3B7732ED4D4DB0042CB9C /* UpNextWidget.swift in Sources */,
 				1BB3B7742ED4D4DB0042CB9C /* SchedulrWidgetBundle.swift in Sources */,
 				1BB3B7752ED4D4DB0042CB9C /* UpNextWidgetView.swift in Sources */,
@@ -523,6 +530,7 @@
 				B02EE5410F9A98D1C116FEC5 /* ContentView.swift in Sources */,
 				06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */,
 				B17C9AF7DE1FB286F992A238 /* AIAssistantView.swift in Sources */,
+				B17C9AF8DE1FB286F992A239 /* SpeechRecognitionManager.swift in Sources */,
 				9A5D42AA79EA2AFF86769F8D /* AIAssistantViewModel.swift in Sources */,
 				64EE44051CBD9051402B759C /* AIModels.swift in Sources */,
 				1F4638209D5F89A4E6E5B239 /* AIService.swift in Sources */,
@@ -608,7 +616,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -621,7 +629,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -656,7 +664,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -673,7 +681,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -695,7 +703,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -707,7 +715,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -724,7 +732,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -736,7 +744,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

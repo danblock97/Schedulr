@@ -14,6 +14,7 @@ struct ContentView: View {
     @StateObject private var profileViewModel = ProfileViewModel()
     @StateObject private var themeManager = ThemeManager.shared
     @State private var selectedTab: Int = 0
+    @State private var startAIWithVoice: Bool = false
 
     init(calendarManager: CalendarSyncManager) {
         _calendarManager = ObservedObject(initialValue: calendarManager)
@@ -30,7 +31,13 @@ struct ContentView: View {
                 case 1:
                     CalendarRootView(viewModel: viewModel)
                 case 2:
-                    AIAssistantView(dashboardViewModel: viewModel, calendarManager: calendarManager)
+                    AIAssistantView(dashboardViewModel: viewModel, calendarManager: calendarManager, startWithVoice: startAIWithVoice)
+                        .onAppear {
+                            // Reset voice flag after use
+                            if startAIWithVoice {
+                                startAIWithVoice = false
+                            }
+                        }
                 case 3:
                     ProfileView(viewModel: profileViewModel)
                         .environmentObject(authVM)
@@ -63,6 +70,13 @@ struct ContentView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self.selectedTab = 1
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToAIChat"))) { notification in
+            let withVoice = notification.userInfo?["voice"] as? Bool ?? false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.startAIWithVoice = withVoice
+                self.selectedTab = 2
             }
         }
     }

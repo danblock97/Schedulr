@@ -9,11 +9,13 @@ import SwiftUI
 
 struct AIAssistantView: View {
     @StateObject private var viewModel: AIAssistantViewModel
+    @StateObject private var speechManager = SpeechRecognitionManager()
     @EnvironmentObject var themeManager: ThemeManager
     @FocusState private var isInputFocused: Bool
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
     @State private var hasShownProPrompt = false
+    @State private var startWithVoice: Bool = false
     
     #if os(iOS)
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
@@ -21,11 +23,12 @@ struct AIAssistantView: View {
     private var isPad: Bool { false }
     #endif
     
-    init(dashboardViewModel: DashboardViewModel, calendarManager: CalendarSyncManager) {
+    init(dashboardViewModel: DashboardViewModel, calendarManager: CalendarSyncManager, startWithVoice: Bool = false) {
         _viewModel = StateObject(wrappedValue: AIAssistantViewModel(
             dashboardViewModel: dashboardViewModel,
             calendarManager: calendarManager
         ))
+        _startWithVoice = State(initialValue: startWithVoice)
     }
     
     var body: some View {
@@ -112,6 +115,16 @@ struct AIAssistantView: View {
                                 .opacity(0.3)
                             
                             HStack(spacing: 12) {
+                                // Microphone button
+                                VoiceInputButton(
+                                    isRecording: speechManager.isRecording,
+                                    isPad: isPad
+                                ) {
+                                    Task {
+                                        await speechManager.toggleRecording()
+                                    }
+                                }
+                                
                                 TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
                                     .textFieldStyle(.plain)
                                     .font(.system(size: isPad ? 17 : 16, weight: .medium, design: .rounded))
@@ -124,7 +137,16 @@ struct AIAssistantView: View {
                                             .overlay(
                                                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                                                     .stroke(
-                                                        LinearGradient(
+                                                        speechManager.isRecording
+                                                        ? LinearGradient(
+                                                            colors: [
+                                                                Color(red: 0.98, green: 0.29, blue: 0.55),
+                                                                Color(red: 0.58, green: 0.41, blue: 0.87)
+                                                            ],
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                                        : LinearGradient(
                                                             colors: [
                                                                 Color.white.opacity(0.3),
                                                                 Color.white.opacity(0.1)
@@ -132,7 +154,7 @@ struct AIAssistantView: View {
                                                             startPoint: .topLeading,
                                                             endPoint: .bottomTrailing
                                                         ),
-                                                        lineWidth: 1
+                                                        lineWidth: speechManager.isRecording ? 2 : 1
                                                     )
                                             )
                                     )
@@ -191,6 +213,21 @@ struct AIAssistantView: View {
                             .frame(maxWidth: .infinity)
                             .background(.ultraThinMaterial)
                             .background(Color(.systemGroupedBackground))
+                        }
+                    }
+                    .onChange(of: speechManager.transcribedText) { _, newText in
+                        // Update input text with transcription
+                        if !newText.isEmpty {
+                            viewModel.inputText = newText
+                        }
+                    }
+                    .onAppear {
+                        // Start voice input if requested (from deep link)
+                        if startWithVoice {
+                            startWithVoice = false
+                            Task {
+                                await speechManager.startRecording()
+                            }
                         }
                     }
                 } else {
@@ -719,6 +756,89 @@ private struct AIInlineUpgradePrompt: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
+    }
+}
+
+// MARK: - Voice Input Button
+
+private struct VoiceInputButton: View {
+    let isRecording: Bool
+    let isPad: Bool
+    let action: () -> Void
+    
+    @State private var pulseScale: CGFloat = 1.0
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                // Pulsing background when recording
+                if isRecording {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
+                                    Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: isPad ? 56 : 52, height: isPad ? 56 : 52)
+                        .scaleEffect(pulseScale)
+                        .animation(
+                            .easeInOut(duration: 0.8)
+                            .repeatForever(autoreverses: true),
+                            value: pulseScale
+                        )
+                }
+                
+                Circle()
+                    .fill(
+                        isRecording
+                        ? AnyShapeStyle(LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.29, blue: 0.55),
+                                Color(red: 0.58, green: 0.41, blue: 0.87)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
+                        : AnyShapeStyle(Color.secondary.opacity(0.15))
+                    )
+                    .frame(width: isPad ? 48 : 44, height: isPad ? 48 : 44)
+                    .shadow(
+                        color: isRecording
+                        ? Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4)
+                        : Color.clear,
+                        radius: 12,
+                        x: 0,
+                        y: 6
+                    )
+                
+                Image(systemName: isRecording ? "waveform" : "mic.fill")
+                    .font(.system(size: isPad ? 19 : 18, weight: .semibold))
+                    .foregroundStyle(
+                        isRecording
+                        ? Color.white
+                        : Color.secondary
+                    )
+                    .symbolEffect(.variableColor.iterative.reversing, isActive: isRecording)
+            }
+        }
+        .buttonStyle(ScaleButtonStyle())
+        .onAppear {
+            if isRecording {
+                pulseScale = 1.15
+            }
+        }
+        .onChange(of: isRecording) { _, recording in
+            if recording {
+                pulseScale = 1.15
+            } else {
+                pulseScale = 1.0
+            }
+        }
     }
 }
 
