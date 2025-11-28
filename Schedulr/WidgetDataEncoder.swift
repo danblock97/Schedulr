@@ -29,6 +29,7 @@ struct WidgetDataEncoder {
         let location: String?
         let colorData: Data // Store color as Data (archived UIColor/Color)
         let calendarTitle: String
+        let isAllDay: Bool
         
         var color: Color {
             if let uiColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData) {
@@ -58,7 +59,8 @@ struct WidgetDataEncoder {
                 endDate: event.end_date,
                 location: event.location,
                 colorData: colorData,
-                calendarTitle: event.calendar_name ?? "Schedulr"
+                calendarTitle: event.calendar_name ?? "Schedulr",
+                isAllDay: event.is_all_day
             )
         }
         

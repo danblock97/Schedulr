@@ -28,6 +28,7 @@ struct WidgetEvent: Identifiable, Codable {
     let location: String?
     let colorData: Data
     let calendarTitle: String
+    let isAllDay: Bool?
     
     var color: Color {
         if let uiColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: colorData) {
@@ -51,7 +52,8 @@ struct UpNextProvider: TimelineProvider {
             endDate: Date().addingTimeInterval(7200),
             location: "Conference Room A",
             colorData: (try? NSKeyedArchiver.archivedData(withRootObject: UIColor.systemPurple, requiringSecureCoding: false)) ?? Data(),
-            calendarTitle: "Work"
+            calendarTitle: "Work",
+            isAllDay: false
         )
         return UpNextEntry(
             date: Date(),

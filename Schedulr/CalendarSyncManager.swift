@@ -830,6 +830,7 @@ final class CalendarSyncManager: ObservableObject {
                 let location: String?
                 let colorData: Data
                 let calendarTitle: String
+                let isAllDay: Bool
             }
             
             let sharedEvents = filteredEvents.prefix(10).map { event in
@@ -848,7 +849,8 @@ final class CalendarSyncManager: ObservableObject {
                     endDate: event.end_date,
                     location: event.location,
                     colorData: colorData,
-                    calendarTitle: event.calendar_name ?? "Schedulr"
+                    calendarTitle: event.calendar_name ?? "Schedulr",
+                    isAllDay: event.is_all_day
                 )
             }
             

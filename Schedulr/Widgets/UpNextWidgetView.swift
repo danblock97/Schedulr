@@ -47,8 +47,10 @@ struct UpNextWidgetView: View {
                         .widgetAccentable()
                         .lineLimit(1)
                     
-                    Text(event.startDate, style: .time)
-                        .font(.caption)
+                    if !(event.isAllDay ?? false) {
+                        Text(event.startDate, style: .time)
+                            .font(.caption)
+                    }
                     
                     if let location = event.location, !location.isEmpty {
                         Text(location)
@@ -75,7 +77,7 @@ struct UpNextWidgetView: View {
                     Image(systemName: "calendar")
                         .font(.system(size: 10))
                         .foregroundStyle(secondaryColor)
-                    Text(event.startDate.formatted(.dateTime.weekday(.abbreviated)))
+                    Text(formatEventDate(for: event, abbreviated: true))
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
@@ -103,9 +105,15 @@ struct UpNextWidgetView: View {
                     Image(systemName: "clock.fill")
                         .font(.caption2)
                         .foregroundStyle(secondaryColor)
-                    Text(event.startDate, style: .time)
-                        .font(.caption)
-                        .fontWeight(.medium)
+                    if event.isAllDay ?? false {
+                        Text("All Day")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    } else {
+                        Text(event.startDate, style: .time)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                    }
                 }
                 .padding(.bottom, 2)
                 
@@ -117,10 +125,12 @@ struct UpNextWidgetView: View {
                 }
                 
                 // Relative time footer
-                Text(event.startDate, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(primaryColor)
-                    .padding(.top, 4)
+                if !(event.isAllDay ?? false) {
+                    Text(event.startDate, style: .relative)
+                        .font(.caption2)
+                        .foregroundStyle(primaryColor)
+                        .padding(.top, 4)
+                }
                     
             } else {
                 emptyStateView
@@ -134,23 +144,31 @@ struct UpNextWidgetView: View {
             if let event = entry.event {
                 // Left side: Time & Date
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(event.startDate, format: .dateTime.weekday(.wide))
+                    Text(formatEventDate(for: event, abbreviated: false))
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(secondaryColor)
                     
-                    Text(event.startDate, style: .time)
-                        .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(.primary)
+                    if event.isAllDay ?? false {
+                        Text("All Day")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundStyle(.primary)
+                    } else {
+                        Text(event.startDate, style: .time)
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundStyle(.primary)
+                    }
                     
                     Spacer()
                     
-                    HStack {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .foregroundStyle(primaryColor)
-                        Text(event.startDate, style: .relative)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    if !(event.isAllDay ?? false) {
+                        HStack {
+                            Image(systemName: "arrow.right.circle.fill")
+                                .foregroundStyle(primaryColor)
+                            Text(event.startDate, style: .relative)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -219,10 +237,16 @@ struct UpNextWidgetView: View {
                         HStack(alignment: .center, spacing: 12) {
                             // Time Column
                             VStack(alignment: .trailing) {
-                                Text(event.startDate, style: .time)
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                Text(event.startDate, format: .dateTime.weekday(.abbreviated))
+                                if event.isAllDay ?? false {
+                                    Text("All Day")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                } else {
+                                    Text(event.startDate, style: .time)
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                }
+                                Text(formatEventDate(for: event, abbreviated: true))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -279,5 +303,21 @@ struct UpNextWidgetView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    // MARK: - Helpers
+    private func formatEventDate(for event: WidgetEvent, abbreviated: Bool = true) -> String {
+        let calendar = Calendar.current
+        if !calendar.isDate(event.startDate, inSameDayAs: event.endDate) {
+            // Multi-day
+            let startDay = event.startDate.formatted(.dateTime.weekday(abbreviated ? .abbreviated : .wide))
+            // For all-day events, the end date is usually the start of the next day.
+            // So we should subtract a second to get the actual last day of the event.
+            let actualEndDate = event.endDate.addingTimeInterval(-1)
+            let endDay = actualEndDate.formatted(.dateTime.weekday(abbreviated ? .abbreviated : .wide))
+            
+            return "\(startDay)-\(endDay)"
+        }
+        
+        return event.startDate.formatted(.dateTime.weekday(abbreviated ? .abbreviated : .wide))
     }
 }
