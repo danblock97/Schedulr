@@ -201,7 +201,8 @@ final class CalendarEventService {
                 created_at: $0.created_at,
                 updated_at: $0.updated_at
             )},
-            hasAttendees: nil
+            hasAttendees: nil,
+            isCurrentUserAttendee: nil
         )
     }
     

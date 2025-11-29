@@ -513,7 +513,8 @@ extension Date {
             event_type: "group",
             user: DBUser(id: UUID(), display_name: "John Doe", avatar_url: nil, created_at: Date(), updated_at: Date()),
             category: nil,
-            hasAttendees: true
+            hasAttendees: true,
+            isCurrentUserAttendee: true
         )
     ]
 

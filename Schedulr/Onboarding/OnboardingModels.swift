@@ -132,6 +132,7 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable, Hashable {
     let user: DBUser?
     let category: EventCategory?
     let hasAttendees: Bool?
+    let isCurrentUserAttendee: Bool?
 
     struct UserInfo: Codable, Equatable {
         let id: UUID

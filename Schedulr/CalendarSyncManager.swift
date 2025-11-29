@@ -722,6 +722,7 @@ final class CalendarSyncManager: ObservableObject {
             }
             
             let hasAttendees = eventsWithAttendees.contains(row.id)
+            let isCurrentUserAttendee = eventAttendeesMap[row.id]?.contains(currentUserId) ?? false
             
             // Determine if this is a cross-group event (from a different group than the current one)
             let isCrossGroup = row.group_id != groupId && row.event_type == "group"
@@ -773,7 +774,8 @@ final class CalendarSyncManager: ObservableObject {
                 event_type: row.event_type,
                 user: user,
                 category: category,
-                hasAttendees: hasAttendees
+                hasAttendees: hasAttendees,
+                isCurrentUserAttendee: isCurrentUserAttendee
             )
         }
         
@@ -790,12 +792,12 @@ final class CalendarSyncManager: ObservableObject {
             groupEvents = sortedEvents
             
             // Save to shared container for Widget (Embedded logic to avoid file issues)
-            saveEventsToWidget(sortedEvents)
+            saveEventsToWidget(sortedEvents, currentGroupId: groupId)
         }
     }
     
     // MARK: - Widget Data Sharing (Embedded)
-    private func saveEventsToWidget(_ events: [CalendarEventWithUser]) {
+    private func saveEventsToWidget(_ events: [CalendarEventWithUser], currentGroupId: UUID) {
         let appGroupId = "group.uk.co.schedulr.Schedulr"
         let dataKey = "upcoming_widget_events"
         
@@ -820,6 +822,21 @@ final class CalendarSyncManager: ObservableObject {
                     let isBirthday = title.contains("birthday") || calendarName.contains("birthday")
                     return !(isHoliday || isBirthday)
                 }
+            }
+            
+            // Filter to only show relevant events for the widget:
+            // - Group events from the current group (user is a member)
+            // - Group events from other groups where the user is an attendee
+            // - The user's own personal events
+            filteredEvents = filteredEvents.filter { event in
+                if event.event_type == "group" {
+                    // Show group events from the current group OR where user is an attendee
+                    return event.group_id == currentGroupId || event.isCurrentUserAttendee == true
+                } else if event.event_type == "personal" {
+                    // Only show the current user's own personal events
+                    return event.user_id == userId
+                }
+                return false
             }
             
             struct SharedEvent: Codable {
