@@ -2,6 +2,8 @@ import SwiftUI
 import Combine
 import Supabase
 
+// MARK: - ViewModel (Preserved - Same Logic)
+
 @MainActor
 final class DashboardViewModel: ObservableObject {
     struct GroupSummary: Identifiable, Equatable {
@@ -49,9 +51,7 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func reloadMemberships() async {
-        guard !isLoadingMemberships else {
-            return
-        }
+        guard !isLoadingMemberships else { return }
         guard let client else {
             memberships = []
             selectedGroupID = nil
@@ -59,16 +59,13 @@ final class DashboardViewModel: ObservableObject {
             return
         }
 
-        // Store current selection before reload
         let previouslySelectedID = selectedGroupID
-
         isLoadingMemberships = true
         membershipsError = nil
         defer { isLoadingMemberships = false }
 
         do {
             let uid = try await currentUID()
-
             let rows: [GroupMembershipRow] = try await client.database
                 .from("group_members")
                 .select("group_id, role, joined_at, groups(id,name,invite_slug,created_at,created_by)")
@@ -91,7 +88,6 @@ final class DashboardViewModel: ObservableObject {
 
             memberships = summaries
 
-            // Try to restore previous selection first, then stored, then first group
             if let previouslySelectedID, summaries.contains(where: { $0.id == previouslySelectedID }) {
                 selectedGroupID = previouslySelectedID
             } else {
@@ -106,20 +102,16 @@ final class DashboardViewModel: ObservableObject {
                 }
             }
         } catch is CancellationError {
-            // Restore previous selection if it was cleared
             if selectedGroupID == nil, let previouslySelectedID {
                 selectedGroupID = previouslySelectedID
             }
-            // Don't show error to user - cancellation is normal behavior
         } catch {
-            // Only show error if it's not a cancellation
             let errorString = error.localizedDescription.lowercased()
             if !errorString.contains("cancel") {
                 membershipsError = error.localizedDescription
                 memberships = []
                 selectedGroupID = nil
             } else {
-                // Restore previous selection
                 if selectedGroupID == nil, let previouslySelectedID {
                     selectedGroupID = previouslySelectedID
                 }
@@ -128,18 +120,14 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func fetchMembers(for groupID: UUID) async {
-        guard !isLoadingMembers else {
-            return
-        }
+        guard !isLoadingMembers else { return }
         guard let client else {
             members = []
             membersError = "Supabase client is unavailable."
             return
         }
 
-        // Store existing members in case of cancellation
         let previousMembers = members
-
         isLoadingMembers = true
         membersError = nil
         defer { isLoadingMembers = false }
@@ -163,19 +151,15 @@ final class DashboardViewModel: ObservableObject {
                 )
             }
         } catch is CancellationError {
-            // Restore previous members if they were cleared
             if members.isEmpty && !previousMembers.isEmpty {
                 members = previousMembers
             }
-            // Don't show error to user
         } catch {
-            // Check if error message contains "cancel"
             let errorString = error.localizedDescription.lowercased()
             if !errorString.contains("cancel") {
                 membersError = error.localizedDescription
                 members = []
             } else {
-                // Restore previous members
                 if members.isEmpty && !previousMembers.isEmpty {
                     members = previousMembers
                 }
@@ -202,7 +186,6 @@ final class DashboardViewModel: ObservableObject {
 
     func syncGroupCalendar() async {
         guard let groupID = selectedGroupID, calendarManager.syncEnabled else { return }
-        
         Task {
             if let userId = try? await currentUID() {
                 await calendarManager.syncWithGroup(groupId: groupID, userId: userId)
@@ -244,13 +227,17 @@ private struct GroupMemberRow: Decodable {
     let users: DBUser?
 }
 
+// MARK: - Main Dashboard View
+
 struct GroupDashboardView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @EnvironmentObject private var calendarSync: CalendarSyncManager
-    @State private var currentUserId: UUID?
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
+    
     var onSignOut: (() -> Void)?
+    
+    @State private var currentUserId: UUID?
     @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
@@ -264,90 +251,107 @@ struct GroupDashboardView: View {
     @State private var memberCount: Int = 0
     @State private var isOwner: Bool = false
     @StateObject private var notificationViewModel = NotificationViewModel()
+    @State private var animateIn = false
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
-                        // Notification bell
-                        NotificationBellButton(viewModel: notificationViewModel)
-                            .environmentObject(themeManager)
+            ZStack {
+                // Animated background
+                DashboardBackground()
+                    .ignoresSafeArea()
+                
+                // Main scrollable content
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        // Hero section
+                        heroSection
                         
-                        // Settings menu
-                        Menu {
-                            Button {
-                                showGroupManagement = true
-                            } label: {
-                                Label("Create New Group", systemImage: "plus.circle.fill")
-                            }
-                            
-                            // Show delete option for owners (with different behavior based on member count)
-                            if let selectedGroup = currentGroup, isOwner {
-                                Divider()
-                                
-                                if memberCount == 1 {
-                                    // Can delete if sole member
-                                    Button(role: .destructive) {
-                                        showDeleteGroupConfirmation = true
-                                    } label: {
-                                        Label("Delete Group", systemImage: "trash.fill")
-                                    }
-                                } else {
-                                    // Show option that explains need to transfer ownership when multiple members
-                                    Button(role: .destructive) {
-                                        showDeleteGroupInfo = true
-                                    } label: {
-                                        Label("Delete Group", systemImage: "trash.fill")
-                                    }
+                        // Main content sections
+                        VStack(spacing: 24) {
+                            welcomeSection
+                            groupSelectorSection
+                            upcomingEventsSection
+                            membersSection
+                            inviteSection
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 120)
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    NotificationBellButton(viewModel: notificationViewModel)
+                        .environmentObject(themeManager)
+                    
+                    Menu {
+                        Button {
+                            showGroupManagement = true
+                        } label: {
+                            Label("Create New Group", systemImage: "plus.circle.fill")
+                        }
+                        
+                        if let _ = currentGroup, isOwner {
+                            Divider()
+                            if memberCount == 1 {
+                                Button(role: .destructive) {
+                                    showDeleteGroupConfirmation = true
+                                } label: {
+                                    Label("Delete Group", systemImage: "trash.fill")
+                                }
+                            } else {
+                                Button(role: .destructive) {
+                                    showDeleteGroupInfo = true
+                                } label: {
+                                    Label("Delete Group", systemImage: "trash.fill")
                                 }
                             }
-                        } label: {
+                        }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .frame(width: 36, height: 36)
                             Image(systemName: "gearshape.fill")
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundColor(Color(red: 0.98, green: 0.29, blue: 0.55))
-                                .padding(.top, 4) // Match padding with bell button
-                                .padding(.bottom, 2)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         }
                     }
                 }
+            }
         }
         .task {
             await viewModel.loadInitialData()
             await viewModel.refreshCalendarIfNeeded()
             await loadCalendarPrefs()
             await updateOwnerStatusAndMemberCount()
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
+                animateIn = true
+            }
         }
         .refreshable {
-            // Reload memberships first
             await viewModel.reloadMemberships()
-
-            // Only fetch members if we have a selected group after reload
             if let groupID = viewModel.selectedGroupID {
                 await viewModel.fetchMembers(for: groupID)
                 await updateOwnerStatusAndMemberCount()
             }
-
-            // Refresh calendar - don't let this fail the whole refresh
             await viewModel.syncGroupCalendar()
         }
         .onReceive(NotificationCenter.default.publisher(for: CalendarSyncManager.calendarDidChangeNotification)) { _ in
-            Task {
-                await viewModel.syncGroupCalendar()
-            }
+            Task { await viewModel.syncGroupCalendar() }
         }
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
-        .sheet(isPresented: $showGroupManagement) {
-            GroupManagementView(dashboardVM: viewModel)
-        }
+        .sheet(isPresented: $showPaywall) { PaywallView() }
+        .sheet(isPresented: $showGroupManagement) { GroupManagementView(dashboardVM: viewModel) }
         .alert("Upgrade Required", isPresented: $showUpgradePrompt, presenting: upgradePromptType) { type in
-            Button("Upgrade") {
-                showPaywall = true
-            }
+            Button("Upgrade") { showPaywall = true }
             Button("Maybe Later", role: .cancel) {}
         } message: { type in
             Text(type.message)
@@ -355,426 +359,19 @@ struct GroupDashboardView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowUpgradePaywall"))) { notification in
             if let reason = notification.userInfo?["reason"] as? String {
                 switch reason {
-                case "ai_limit":
-                    upgradePromptType = .ai
-                case "group_limit":
-                    upgradePromptType = .groups
-                case "member_limit":
-                    upgradePromptType = .members
-                default:
-                    return
+                case "ai_limit": upgradePromptType = .ai
+                case "group_limit": upgradePromptType = .groups
+                case "member_limit": upgradePromptType = .members
+                default: return
                 }
                 showUpgradePrompt = true
             }
         }
-    }
-
-    private var content: some View {
-        ZStack {
-            // Simple neutral background with subtle theme colors
-            ZStack {
-                Color(.systemGroupedBackground)
-                
-                // Subtle theme gradient overlay
-                themeManager.backgroundGradient
-                
-                // Soft radial gradients for depth
-                Circle()
-                    .fill(themeManager.backgroundRadialGradient1)
-                    .offset(x: -150, y: -200)
-                    .blur(radius: 80)
-                
-                Circle()
-                    .fill(themeManager.backgroundRadialGradient2)
-                    .offset(x: 180, y: 400)
-                    .blur(radius: 100)
-            }
-            .ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Hero image section with curved horizon
-                    heroImageSection
-                        .padding(.top, 20)
-                        .padding(.bottom, 32)
-                    
-                    VStack(alignment: .leading, spacing: 28) {
-                        // Welcome header
-                        welcomeHeader
-
-                        groupSelectorSection
-                        availabilitySection
-                        membersSection
-                        inviteSection
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 100) // Space for floating tab bar
-                }
-            }
-        }
-    }
-    
-    private var heroImageSection: some View {
-        ZStack(alignment: .bottom) {
-            // Hero image with curved top mask - full image visible
-            Image("dashboard-hero")
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity)
-                .mask(
-                    VStack(spacing: 0) {
-                        Rectangle()
-                        CurvedHorizonShape()
-                            .frame(height: 50)
-                    }
-                )
-            
-            // Curved overlay to create horizon effect - matches background
-            VStack(spacing: 0) {
-                Spacer()
-                ZStack {
-                    CurvedHorizonShape()
-                        .fill(Color(.systemGroupedBackground))
-                        .frame(height: 50)
-                    
-                    CurvedHorizonShape()
-                        .fill(themeManager.backgroundGradient)
-                        .frame(height: 50)
-                }
-            }
-        }
-    }
-    
-    private var welcomeHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                // Decorative icon with gradient background
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor.opacity(0.2),
-                                    themeManager.secondaryColor.opacity(0.15)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 56, height: 56)
-                        .blur(radius: 8)
-                    
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor.opacity(0.3),
-                                    themeManager.secondaryColor.opacity(0.2)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 48, height: 48)
-                    
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-                
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(greeting)
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .tracking(-0.5)
-                    
-                    Text("Here's what's happening with your groups")
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .tracking(0.2)
-                }
-            }
-        }
-        .padding(.bottom, 8)
-    }
-    
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<12: return "Good Morning"
-        case 12..<17: return "Good Afternoon"
-        case 17..<22: return "Good Evening"
-        default: return "Good Night"
-        }
-    }
-
-
-    private var groupSelectorSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(icon: "person.3.fill", title: "Your Groups", color: themeManager.primaryColor.opacity(0.6))
-
-            if viewModel.isLoadingMemberships {
-                BubblyCard {
-                ProgressView("Loading groups…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
-                }
-            } else if let error = viewModel.membershipsError {
-                BubblyCard {
-                VStack(alignment: .leading, spacing: 6) {
-                        Text("We couldn't load your groups.")
-                        .font(.subheadline.weight(.semibold))
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
-            } else if viewModel.memberships.isEmpty {
-                BubblyCard {
-                    VStack(spacing: 16) {
-                        Text("Create or join a group to start planning together.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        Button {
-                            showGroupManagement = true
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "person.3.fill")
-                                    .font(.system(size: 16, weight: .medium))
-                                Text("Create or Join Group")
-                                    .font(.system(size: 16, weight: .medium, design: .default))
-                            }
-                            .foregroundColor(.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(Color(.secondarySystemBackground))
-                                    
-                                    // Inverted emboss - pressed in look (more subtle in dark mode)
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    Color.black.opacity(colorScheme == .dark ? 0.15 : 0.05),
-                                                    Color.clear
-                                                ],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                }
-                            )
-                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.2), radius: 2, x: 1, y: 1)
-                            .shadow(color: colorScheme == .dark ? Color.clear : Color.white.opacity(0.7), radius: 1, x: -1, y: -1)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-            } else {
-                VStack(spacing: 12) {
-                    Menu {
-                        ForEach(viewModel.memberships) { membership in
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    viewModel.selectGroup(membership.id)
-                                }
-                            } label: {
-                                HStack {
-                                    Text(membership.name)
-                                    if viewModel.selectedGroupID == membership.id {
-                                        Spacer()
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        EnhancedGroupSelectorCard(groupName: currentGroup?.name ?? "Select a group")
-                    }
-                }
-            }
-        }
-    }
-
-    private var availabilitySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                SectionHeader(icon: "calendar.badge.clock", title: "Upcoming", color: themeManager.secondaryColor.opacity(0.6))
-                Spacer()
-                if calendarSync.syncEnabled && viewModel.selectedGroupID != nil {
-                    Button {
-                        Task {
-                            if let groupId = viewModel.selectedGroupID,
-                               let userId = try? await viewModel.client?.auth.session.user.id {
-                                await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: calendarSync.isRefreshing ? "arrow.clockwise" : "arrow.clockwise")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(calendarSync.isRefreshing ? 360 : 0))
-                            .animation(calendarSync.isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: calendarSync.isRefreshing)
-                    }
-                    .disabled(calendarSync.isRefreshing)
-                }
-            }
-
-            // Active filter indicators
-            if calendarPrefs.hideHolidays || calendarPrefs.dedupAllDay {
-                HStack(spacing: 10) {
-                    if calendarPrefs.hideHolidays {
-                        FilterBadge(text: "Holidays hidden", color: themeManager.secondaryColor.opacity(0.4))
-                    }
-                    if calendarPrefs.dedupAllDay {
-                        FilterBadge(text: "Deduped all‑day", color: themeManager.primaryColor.opacity(0.4))
-                    }
-                }
-            }
-
-            if viewModel.selectedGroupID == nil {
-                BubblyCard {
-                    Text("Select a group to view upcoming events.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 12)
-                }
-            } else if !calendarSync.syncEnabled {
-                BubblyCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                    Text("Turn on calendar sync to share your calendar with the group.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        Button {
-                        Task {
-                            if await calendarSync.enableSyncFlow() {
-                                if let groupId = viewModel.selectedGroupID,
-                                   let userId = try? await viewModel.client?.auth.session.user.id {
-                                    await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
-                                }
-                            }
-                        }
-                        } label: {
-                            Text("Enable calendar sync")
-                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 10)
-                                .background(
-                                    Color(red: 0.58, green: 0.41, blue: 0.87),
-                                    in: Capsule()
-                                )
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            } else if calendarSync.isRefreshing {
-                BubblyCard {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.9)
-                        Text("Syncing calendar…")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                }
-            } else if calendarSync.groupEvents.isEmpty {
-                BubblyCard {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("No events in the next couple of weeks.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Text("Tap the refresh button to sync your calendar with the group.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    }
-                    .padding(.vertical, 12)
-                }
-            } else {
-                // Upcoming list (events from upcoming month, limited to 10)
-                VStack(spacing: 14) {
-                    ForEach(upcomingMonthEvents) { devent in
-                        NavigationLink(destination: EventDetailView(event: devent.base, member: memberColorMapping[devent.base.user_id], currentUserId: currentUserId)) {
-                            EnhancedUpcomingEventRow(
-                                event: devent.base,
-                                memberColor: memberColorMapping[devent.base.user_id]?.color,
-                                memberName: memberColorMapping[devent.base.user_id]?.name,
-                                sharedCount: devent.sharedCount,
-                                currentUserId: currentUserId
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            // Show any sync errors
-            if let error = calendarSync.lastSyncError {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(8)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(8)
-            }
-        }
-        .onChange(of: viewModel.selectedGroupID) { _, newGroupID in
-            // Sync calendar when group changes
-            if let groupId = newGroupID, calendarSync.syncEnabled {
-                Task {
-                    if let userId = try? await viewModel.client?.auth.session.user.id {
-                        await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
-                    }
-                }
-            }
-            // Update owner status and member count
-            Task {
-                await updateOwnerStatusAndMemberCount()
-            }
-        }
-        .task {
-            // Get current user ID
-            currentUserId = try? await viewModel.client?.auth.session.user.id
-            await updateOwnerStatusAndMemberCount()
-        }
         .alert("Transfer Ownership", isPresented: $showTransferOwnershipConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Transfer", role: .destructive) {
-                if let member = memberToTransfer,
-                   let groupId = viewModel.selectedGroupID {
-                    Task {
-                        await transferOwnership(groupId: groupId, newOwnerId: member.id)
-                    }
+                if let member = memberToTransfer, let groupId = viewModel.selectedGroupID {
+                    Task { await transferOwnership(groupId: groupId, newOwnerId: member.id) }
                 }
             }
         } message: {
@@ -786,51 +383,409 @@ struct GroupDashboardView: View {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 if let groupId = viewModel.selectedGroupID {
-                    // Double-check member count before deleting
                     Task {
                         do {
                             let count = try await GroupService.shared.getMemberCount(groupId: groupId)
-                            if count == 1 {
-                                await deleteGroup(groupId: groupId)
-                            } else {
-                                // This shouldn't happen, but show error if it does
-                                print("❌ Cannot delete group: has \(count) members")
-                            }
-                        } catch {
-                            print("❌ Error checking member count: \(error)")
-                        }
+                            if count == 1 { await deleteGroup(groupId: groupId) }
+                        } catch { }
                     }
                 }
             }
         } message: {
             if let group = currentGroup {
-                Text("Are you sure you want to delete \"\(group.name)\"? This action cannot be undone. All events and members will be removed.")
+                Text("Are you sure you want to delete \"\(group.name)\"? This action cannot be undone.")
             }
         }
         .alert("Cannot Delete Group", isPresented: $showDeleteGroupInfo) {
-            Button("Transfer Ownership", role: .none) {
-                // Optionally could scroll to members section or highlight transfer option
-                // For now, just dismiss and let user use the member menu
-            }
+            Button("Transfer Ownership", role: .none) { }
             Button("OK", role: .cancel) { }
         } message: {
             if let group = currentGroup {
-                Text("To delete \"\(group.name)\", you must first transfer ownership to another member or remove all other members. The group currently has \(memberCount) member\(memberCount == 1 ? "" : "s").\n\nYou can transfer ownership by tapping the menu (⋯) next to any member's name.")
+                Text("To delete \"\(group.name)\", you must first transfer ownership to another member or remove all other members.")
             }
         }
+        .onChange(of: viewModel.selectedGroupID) { _, newGroupID in
+            if let groupId = newGroupID, calendarSync.syncEnabled {
+                Task {
+                    if let userId = try? await viewModel.client?.auth.session.user.id {
+                        await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
+                    }
+                }
+            }
+            Task { await updateOwnerStatusAndMemberCount() }
+        }
+        .task {
+            currentUserId = try? await viewModel.client?.auth.session.user.id
+            await updateOwnerStatusAndMemberCount()
+        }
     }
-
+    
+    // MARK: - Hero Section
+    
+    private var heroSection: some View {
+        ZStack(alignment: .bottom) {
+            Image("dashboard-hero")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+                .mask(
+                    VStack(spacing: 0) {
+                        Rectangle()
+                        LinearGradient(
+                            colors: [.white, .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 60)
+                    }
+                )
+                .opacity(animateIn ? 1 : 0)
+                .offset(y: animateIn ? 0 : -20)
+        }
+        .padding(.top, 8)
+    }
+    
+    // MARK: - Welcome Section
+    
+    private var welcomeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(greeting)
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+            
+            Text("Here's what's happening with your groups")
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+    
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12: return "Good Morning"
+        case 12..<17: return "Good Afternoon"
+        case 17..<22: return "Good Evening"
+        default: return "Good Night"
+        }
+    }
+    
+    // MARK: - Group Selector Section
+    
+    private var groupSelectorSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            DashboardSectionHeader(title: "Your Groups", icon: "person.3.fill")
+                .opacity(animateIn ? 1 : 0)
+            
+            if viewModel.isLoadingMemberships {
+                DashboardCard {
+                    HStack {
+                        ProgressView()
+                        Text("Loading groups...")
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                }
+            } else if let error = viewModel.membershipsError {
+                DashboardCard {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Couldn't load groups")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        Text(error)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if viewModel.memberships.isEmpty {
+                DashboardCard {
+                    VStack(spacing: 16) {
+                        Text("Create or join a group to start planning together")
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        
+                        Button {
+                            showGroupManagement = true
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("Create or Join Group")
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            )
+                        }
+                    }
+                }
+            } else {
+                Menu {
+                    ForEach(viewModel.memberships) { membership in
+                        Button {
+                            withAnimation(.spring(response: 0.3)) {
+                                viewModel.selectGroup(membership.id)
+                            }
+                        } label: {
+                            HStack {
+                                Text(membership.name)
+                                if viewModel.selectedGroupID == membership.id {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    GroupSelectorCard(groupName: currentGroup?.name ?? "Select a group")
+                }
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+    
+    // MARK: - Upcoming Events Section
+    
+    private var upcomingEventsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                DashboardSectionHeader(title: "Upcoming", icon: "calendar.badge.clock")
+                Spacer()
+                if calendarSync.syncEnabled && viewModel.selectedGroupID != nil {
+                    Button {
+                        Task {
+                            if let groupId = viewModel.selectedGroupID,
+                               let userId = try? await viewModel.client?.auth.session.user.id {
+                                await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(calendarSync.isRefreshing ? 360 : 0))
+                            .animation(calendarSync.isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: calendarSync.isRefreshing)
+                    }
+                    .disabled(calendarSync.isRefreshing)
+                }
+            }
+            
+            // Filter badges
+            if calendarPrefs.hideHolidays || calendarPrefs.dedupAllDay {
+                HStack(spacing: 8) {
+                    if calendarPrefs.hideHolidays {
+                        FilterPill(text: "Holidays hidden")
+                    }
+                    if calendarPrefs.dedupAllDay {
+                        FilterPill(text: "Deduped all-day")
+                    }
+                }
+            }
+            
+            if viewModel.selectedGroupID == nil {
+                DashboardCard {
+                    Text("Select a group to view upcoming events")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                }
+            } else if !calendarSync.syncEnabled {
+                DashboardCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Enable calendar sync to share availability with your group")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        
+                        Button {
+                            Task {
+                                if await calendarSync.enableSyncFlow() {
+                                    if let groupId = viewModel.selectedGroupID,
+                                       let userId = try? await viewModel.client?.auth.session.user.id {
+                                        await calendarSync.syncWithGroup(groupId: groupId, userId: userId)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Text("Enable Calendar Sync")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color(hex: "8b5cf6"), Color(hex: "06b6d4")],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ),
+                                    in: Capsule()
+                                )
+                        }
+                    }
+                }
+            } else if calendarSync.isRefreshing {
+                DashboardCard {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("Syncing calendar...")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+            } else if calendarSync.groupEvents.isEmpty {
+                DashboardCard {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("No events in the next couple of weeks")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text("Tap refresh to sync your calendar")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 8)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(upcomingMonthEvents) { event in
+                        NavigationLink(destination: EventDetailView(event: event.base, member: memberColorMapping[event.base.user_id], currentUserId: currentUserId)) {
+                            EventCard(
+                                event: event.base,
+                                memberName: memberColorMapping[event.base.user_id]?.name,
+                                sharedCount: event.sharedCount,
+                                currentUserId: currentUserId
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            
+            if let error = calendarSync.lastSyncError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(error)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+    
+    // MARK: - Members Section
+    
+    private var membersSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            DashboardSectionHeader(title: "Members", icon: "person.2.fill")
+            
+            if viewModel.selectedGroupID == nil {
+                DashboardCard {
+                    Text("Select a group to view members")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                }
+            } else if viewModel.isLoadingMembers {
+                DashboardCard {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading members...")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+            } else if let error = viewModel.membersError {
+                DashboardCard {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Couldn't load members")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        Text(error)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if viewModel.members.isEmpty {
+                DashboardCard {
+                    Text("No members yet. Share the invite link!")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                }
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(viewModel.members) { member in
+                        MemberCard(
+                            member: member,
+                            isOwner: isOwner,
+                            onTransferOwnership: {
+                                memberToTransfer = member
+                                showTransferOwnershipConfirmation = true
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+    
+    // MARK: - Invite Section
+    
+    private var inviteSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let selected = currentGroup {
+                DashboardSectionHeader(title: "Invite Friends", icon: "link.circle.fill")
+                InviteCard(inviteSlug: selected.inviteSlug, groupName: selected.name)
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+    
+    // MARK: - Computed Properties
+    
+    // MARK: - Display Event Model
+    
+    private struct DashboardDisplayEvent: Identifiable {
+        let base: CalendarEventWithUser
+        let sharedCount: Int
+        var id: UUID { base.id }
+    }
+    
+    private var currentGroup: DashboardViewModel.GroupSummary? {
+        guard let id = viewModel.selectedGroupID else { return nil }
+        return viewModel.memberships.first(where: { $0.id == id })
+    }
+    
     private var filteredEvents: [CalendarEventWithUser] {
         let now = Date()
         guard let currentGroupId = viewModel.selectedGroupID else { return [] }
-        // Only show upcoming group events from the current group (exclude cross-group events and personal events)
         var list = calendarSync.groupEvents.filter { event in
-            // Only show upcoming group events from the current group (not cross-group)
-            event.end_date >= now && 
-            event.event_type == "group" &&
-            event.group_id == currentGroupId  // Exclude cross-group events
+            event.end_date >= now && event.event_type == "group" && event.group_id == currentGroupId
         }
-        
         if calendarPrefs.hideHolidays {
             list = list.filter { ev in
                 let name = (ev.calendar_name ?? ev.title).lowercased()
@@ -845,162 +800,75 @@ struct GroupDashboardView: View {
             return lhs.start_date < rhs.start_date
         }
     }
-
-    private var upcomingDisplayEvents: [DisplayEvent] {
-        // Deduplicate events: group by event ID first (same ID = same event, show once)
-        // Then group remaining by title+time, but only show as "shared" if multiple different users have them
-        var result: [DisplayEvent] = []
+    
+    private var upcomingDashboardDisplayEvents: [DashboardDisplayEvent] {
+        var result: [DashboardDisplayEvent] = []
         let calendar = Calendar.current
-        
-        // First pass: Group by event ID to handle true duplicates - each event ID appears once
         let idGroups = Dictionary(grouping: filteredEvents) { $0.id }
-        
         for (_, events) in idGroups {
-            // All events with same ID are the same event - show once with count 1
             if let first = events.first {
-                result.append(DisplayEvent(base: first, sharedCount: 1))
+                result.append(DashboardDisplayEvent(base: first, sharedCount: 1))
             }
         }
-        
-        // Second pass: For events not already in result, group by title+time
-        // Only show as "shared" if multiple different users have different events with same title/time
         let alreadyIncludedIds = Set(result.map { $0.base.id })
         let remainingEvents = filteredEvents.filter { !alreadyIncludedIds.contains($0.id) }
-        
         let groups = Dictionary(grouping: remainingEvents) { ev -> String in
             let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if ev.is_all_day {
-                // For all-day events, group by day + title
                 let day = calendar.startOfDay(for: ev.start_date)
                 return "allday:\(day.timeIntervalSince1970):\(title)"
             } else {
-                // For timed events, group by start/end time (within 1 minute tolerance) + title
                 let startRounded = round(ev.start_date.timeIntervalSince1970 / 60) * 60
                 let endRounded = round(ev.end_date.timeIntervalSince1970 / 60) * 60
                 return "timed:\(startRounded):\(endRounded):\(title)"
             }
         }
-        
         for (_, arr) in groups {
             if let first = arr.first {
-                // Only show as "shared" if there are multiple unique event IDs AND multiple unique users
-                // This ensures personal events from same user don't show as shared
                 let uniqueIds = Set(arr.map { $0.id })
                 let uniqueUsers = Set(arr.map { $0.user_id })
-                
                 if uniqueIds.count > 1 && uniqueUsers.count > 1 {
-                    // Multiple different events from different users with same title/time = shared
-                    result.append(DisplayEvent(base: first, sharedCount: uniqueIds.count))
+                    result.append(DashboardDisplayEvent(base: first, sharedCount: uniqueIds.count))
                 } else {
-                    // Single event or events from same user = not shared, show once
-                    result.append(DisplayEvent(base: first, sharedCount: 1))
+                    result.append(DashboardDisplayEvent(base: first, sharedCount: 1))
                 }
             }
         }
-        
         return result.sorted { a, b in
             if a.base.start_date == b.base.start_date { return a.base.end_date < b.base.end_date }
             return a.base.start_date < b.base.start_date
         }
     }
     
-    private var upcomingMonthEvents: [DisplayEvent] {
-        guard let firstEvent = upcomingDisplayEvents.first else {
-            return []
-        }
-        
+    private var upcomingMonthEvents: [DashboardDisplayEvent] {
+        guard let firstEvent = upcomingDashboardDisplayEvents.first else { return [] }
         let calendar = Calendar.current
         let firstEventMonth = calendar.component(.month, from: firstEvent.base.start_date)
         let firstEventYear = calendar.component(.year, from: firstEvent.base.start_date)
-        
-        // Filter events to only those in the same month and year as the first event
-        let filtered = upcomingDisplayEvents.filter { event in
+        let filtered = upcomingDashboardDisplayEvents.filter { event in
             let eventMonth = calendar.component(.month, from: event.base.start_date)
             let eventYear = calendar.component(.year, from: event.base.start_date)
             return eventMonth == firstEventMonth && eventYear == firstEventYear
         }
-        
-        // Apply 10-event limit within that month
         return Array(filtered.prefix(10))
     }
-
+    
     private var memberColorMapping: [UUID: (name: String, color: Color)] {
         var mapping: [UUID: (name: String, color: Color)] = [:]
         for member in viewModel.members {
-            mapping[member.id] = (
-                name: member.displayName,
-                color: calendarSync.userColor(for: member.id)
-            )
+            mapping[member.id] = (name: member.displayName, color: calendarSync.userColor(for: member.id))
         }
         return mapping
     }
-
-    private var membersSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(icon: "person.2.fill", title: "Members", color: Color(red: 0.59, green: 0.85, blue: 0.34).opacity(0.8))
-
-            if viewModel.selectedGroupID == nil {
-                BubblyCard {
-                Text("Pick a group to view its members.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 12)
-                }
-            } else if viewModel.isLoadingMembers {
-                BubblyCard {
-                ProgressView("Loading members…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
-                }
-            } else if let error = viewModel.membersError {
-                BubblyCard {
-                VStack(alignment: .leading, spacing: 6) {
-                        Text("We couldn't load member details.")
-                        .font(.subheadline.weight(.semibold))
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
-                }
-            } else if viewModel.members.isEmpty {
-                BubblyCard {
-                Text("No members found yet. Share the invite link to get people in!")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 12)
-                }
-            } else {
-                VStack(spacing: 14) {
-                    ForEach(viewModel.members) { member in
-                        EnhancedMemberRow(
-                            member: member,
-                            isOwner: isOwner,
-                            onTransferOwnership: {
-                                memberToTransfer = member
-                                showTransferOwnershipConfirmation = true
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
     
-    private var inviteSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if let selected = currentGroup {
-                SectionHeader(icon: "link.circle.fill", title: "Invite Friends", color: themeManager.primaryColor.opacity(0.6))
-                EnhancedGroupInviteView(inviteSlug: selected.inviteSlug, groupName: selected.name)
+    // MARK: - Helper Methods
+    
+    private func loadCalendarPrefs() async {
+        if let uid = try? await viewModel.client?.auth.session.user.id {
+            if let prefs = try? await CalendarPreferencesManager.shared.load(for: uid) {
+                calendarPrefs = prefs
             }
         }
-    }
-
-    private var currentGroup: DashboardViewModel.GroupSummary? {
-        guard let id = viewModel.selectedGroupID else { return nil }
-        return viewModel.memberships.first(where: { $0.id == id })
     }
     
     private func updateOwnerStatusAndMemberCount() async {
@@ -1009,30 +877,20 @@ struct GroupDashboardView: View {
             memberCount = 0
             return
         }
-        
-        // Verify group still exists in memberships before querying
         guard viewModel.memberships.contains(where: { $0.id == groupId }) else {
             isOwner = false
             memberCount = 0
             return
         }
-        
         do {
-            // Check if current user is owner
             if let currentGroup = currentGroup {
                 isOwner = currentGroup.role == "owner"
             } else {
                 isOwner = false
             }
-            
-            // Get member count
             memberCount = try await GroupService.shared.getMemberCount(groupId: groupId)
         } catch {
-            // Ignore cancellation errors (happens when group is deleted mid-query)
-            if (error as NSError).code == NSURLErrorCancelled {
-                return
-            }
-            print("Error updating owner status: \(error)")
+            if (error as NSError).code == NSURLErrorCancelled { return }
             isOwner = false
             memberCount = 0
         }
@@ -1041,950 +899,342 @@ struct GroupDashboardView: View {
     private func transferOwnership(groupId: UUID, newOwnerId: UUID) async {
         do {
             try await GroupService.shared.transferOwnership(groupId: groupId, newOwnerId: newOwnerId)
-            // Refresh members and memberships
             await viewModel.reloadMemberships()
             if let groupID = viewModel.selectedGroupID {
                 await viewModel.fetchMembers(for: groupID)
             }
             await updateOwnerStatusAndMemberCount()
-        } catch {
-            // Handle error - could show alert
-            print("Error transferring ownership: \(error)")
-        }
+        } catch { }
     }
     
     private func deleteGroup(groupId: UUID) async {
         do {
-            print("🗑️ Attempting to delete group: \(groupId)")
             try await GroupService.shared.deleteGroup(groupId: groupId)
-            print("✅ Group deleted successfully")
-            
-            // Clear selection first before reload to avoid querying deleted group
             if viewModel.selectedGroupID == groupId {
                 viewModel.selectedGroupID = nil
             }
-            
-            // Refresh memberships (group will be removed)
             await viewModel.reloadMemberships()
-            
-            // Reset owner status and member count since we're no longer viewing a group
             isOwner = false
             memberCount = 0
-            
-            // Select first available group if any remain
             if !viewModel.memberships.isEmpty {
                 viewModel.selectedGroupID = viewModel.memberships.first?.id
-                if let newGroupId = viewModel.selectedGroupID {
+                if let _ = viewModel.selectedGroupID {
                     await updateOwnerStatusAndMemberCount()
                 }
             }
-        } catch {
-            print("❌ Error deleting group: \(error)")
-            // Show error alert
-            await MainActor.run {
-                // Could show an alert here if we add error state
-            }
-        }
+        } catch { }
     }
+}
 
-    private func membershipIcon(for role: String) -> String {
-        switch role.lowercased() {
-        case "owner": return "star.fill"
-        default: return "person.2.fill"
+
+// MARK: - Background
+
+private struct DashboardBackground: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        ZStack {
+            Color(.systemGroupedBackground)
+            
+            // Animated gradient orbs
+            TimelineView(.animation(minimumInterval: 1/20)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                
+                Canvas { context, size in
+                    let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
+                        (Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.08 : 0.06), 0.1, 0.1, 0.35),
+                        (Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.06 : 0.05), 0.9, 0.2, 0.3),
+                        (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.05 : 0.04), 0.5, 0.6, 0.25)
+                    ]
+                    
+                    for (index, (color, baseX, baseY, baseRadius)) in blobs.enumerated() {
+                        let offset = Double(index) * 0.8
+                        let x = size.width * (baseX + 0.05 * sin(time * 0.15 + offset))
+                        let y = size.height * (baseY + 0.04 * cos(time * 0.12 + offset))
+                        let radius = min(size.width, size.height) * baseRadius
+                        
+                        let gradient = Gradient(colors: [color, color.opacity(0)])
+                        context.fill(
+                            Path(ellipseIn: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)),
+                            with: .radialGradient(gradient, center: CGPoint(x: x, y: y), startRadius: 0, endRadius: radius)
+                        )
+                    }
+                }
+            }
+            .blur(radius: 60)
         }
     }
 }
 
-private struct UpcomingEventRow: View {
-    let event: CalendarEventWithUser
-    var memberColor: Color?
-    var memberName: String?
-    var sharedCount: Int = 1
-    @EnvironmentObject var themeManager: ThemeManager
+// MARK: - Section Header
 
+private struct DashboardSectionHeader: View {
+    let title: String
+    let icon: String
+    
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            
+            Text(title)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+        }
+    }
+}
+
+// MARK: - Dashboard Card
+
+private struct DashboardCard<Content: View>: View {
+    @ViewBuilder let content: Content
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        content
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+            )
+    }
+}
+
+// MARK: - Filter Pill
+
+private struct FilterPill: View {
+    let text: String
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.secondary.opacity(0.1), in: Capsule())
+    }
+}
+
+// MARK: - Group Selector Card
+
+private struct GroupSelectorCard: View {
+    let groupName: String
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
         HStack(spacing: 14) {
-            Circle()
-                .fill(dotColor.opacity(0.75))
-                .frame(width: 12, height: 12)
-                .overlay(
-                    Circle()
-                        .fill(dotColor.opacity(0.25))
-                        .frame(width: 24, height: 24)
-                        .blur(radius: 4)
-                )
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(event.title.isEmpty ? "Busy" : event.title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-
-                if sharedCount > 1 {
-                    Text("shared by \(sharedCount)")
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.15), in: Capsule())
-                }
-
-                HStack(spacing: 6) {
-                    Image(systemName: "clock.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Text(timeSummary(event))
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-
-                if let memberName {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(dotColor)
-                        Text(memberName)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(dotColor)
-                    }
-                }
-
-                if let location = event.location, !location.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Text(location)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "ff4d8d").opacity(0.15), Color(hex: "8b5cf6").opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
+            
+            Text(groupName)
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+            
             Spacer()
+            
+            Image(systemName: "chevron.down")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
         .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-        )
-    }
-
-    private var defaultColor: Color {
-        // Use theme primary color as default instead of hardcoded blue
-        themeManager.primaryColor
-    }
-
-    private var dotColor: Color {
-        // Use theme color instead of calendar/member colors for upcoming events
-        return defaultColor
-    }
-
-    private func timeSummary(_ e: CalendarEventWithUser) -> String {
-        if e.is_all_day {
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateStyle = .medium
-            dateFormatter.timeStyle = .none
-
-            // For all-day events, show date range
-            if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
-                return dateFormatter.string(from: e.start_date)
-            } else {
-                // Subtract one day from end_date since all-day events end at midnight of the next day
-                let endDate = Calendar.current.date(byAdding: .day, value: -1, to: e.end_date) ?? e.end_date
-                return "\(dateFormatter.string(from: e.start_date)) - \(dateFormatter.string(from: endDate))"
-            }
-        }
-
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateStyle = .medium
-        dayFormatter.timeStyle = .none
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateStyle = .none
-        timeFormatter.timeStyle = .short
-
-        if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
-            return "\(dayFormatter.string(from: e.start_date)) • \(timeFormatter.string(from: e.start_date)) – \(timeFormatter.string(from: e.end_date))"
-        } else {
-            return "\(dayFormatter.string(from: e.start_date)) \(timeFormatter.string(from: e.start_date)) → \(dayFormatter.string(from: e.end_date)) \(timeFormatter.string(from: e.end_date))"
-        }
-    }
-}
-
-// MARK: - Prefs IO
-extension GroupDashboardView {
-    private func loadCalendarPrefs() async {
-        if let uid = try? await viewModel.client?.auth.session.user.id {
-            if let prefs = try? await CalendarPreferencesManager.shared.load(for: uid) {
-                calendarPrefs = prefs
-            }
-        }
-    }
-}
-
-private struct GroupInviteView: View {
-    let inviteSlug: String
-    @State private var showCopied = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("🎉 Invite Link")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                Spacer()
-                if showCopied {
-                    Text("Copied!")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(Color(red: 0.59, green: 0.85, blue: 0.34))
-                        .transition(.scale.combined(with: .opacity))
-                }
-            }
-
-            Button {
-                UIPasteboard.general.string = inviteSlug
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    showCopied = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    withAnimation {
-                        showCopied = false
-                    }
-                }
-            } label: {
-                HStack {
-                    Text(inviteSlug)
-                        .font(.system(size: 15, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "doc.on.doc.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                    Color(red: 0.58, green: 0.41, blue: 0.87)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-                .padding(14)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
-            }
-        }
-        .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color(hex: "ff4d8d").opacity(0.2), Color(hex: "8b5cf6").opacity(0.15)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
         )
     }
 }
 
-private struct CalendarEventCard: View {
-    let event: CalendarSyncManager.SyncedEvent
-    var userColor: Color?
-    var showUserAttribution: Bool = false
+// MARK: - Event Card
 
+private struct EventCard: View {
+    let event: CalendarEventWithUser
+    var memberName: String?
+    var sharedCount: Int = 1
+    let currentUserId: UUID?
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var isPrivate: Bool {
+        event.event_type == "personal" && event.user_id != currentUserId
+    }
+    
     var body: some View {
         HStack(spacing: 14) {
-            // Color accent circle - use user color if provided, otherwise calendar color
-            Circle()
-                .fill(userColor ?? color(for: event))
-                .frame(width: 12, height: 12)
-                .overlay(
-                    Circle()
-                        .fill((userColor ?? color(for: event)).opacity(0.3))
-                        .frame(width: 24, height: 24)
-                        .blur(radius: 4)
+            // Color bar
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 )
-
+                .frame(width: 4, height: 50)
+            
             VStack(alignment: .leading, spacing: 6) {
-                // Event title
-                Text(event.title.isEmpty ? "🔒 Busy" : event.title)
+                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-
-                // Show user name if attribution is enabled
-                if showUserAttribution, let userName = event.userName {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(userColor ?? .secondary)
-                        Text(userName)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(userColor ?? .secondary)
-                    }
-                }
-
-                // Time info
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                
                 HStack(spacing: 6) {
-                    Image(systemName: "clock.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Text(dateSummary(event))
+                    Image(systemName: "clock")
+                        .font(.system(size: 11, weight: .medium))
+                    Text(formatTime(event))
                         .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
                 }
-
-                // Location
-                if let location = event.location, !location.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Text(location)
+                .foregroundStyle(.secondary)
+                
+                if sharedCount > 1 && !isPrivate {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 10, weight: .medium))
+                        Text("\(sharedCount) attending")
                             .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.tertiary)
                     }
+                    .foregroundStyle(Color(hex: "8b5cf6"))
                 }
             }
+            
             Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.tertiary)
         }
         .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke((userColor ?? Color.white).opacity(0.2), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
         )
     }
-
-    private func dateSummary(_ event: CalendarSyncManager.SyncedEvent) -> String {
-        if event.isAllDay {
-            return "All day • \(event.calendarTitle)"
+    
+    private func formatTime(_ e: CalendarEventWithUser) -> String {
+        if e.is_all_day {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return formatter.string(from: e.start_date)
         }
-
         let dayFormatter = DateFormatter()
-        dayFormatter.dateStyle = .medium
+        dayFormatter.dateStyle = .short
         dayFormatter.timeStyle = .none
-
         let timeFormatter = DateFormatter()
         timeFormatter.dateStyle = .none
         timeFormatter.timeStyle = .short
-
-        if Calendar.current.isDate(event.startDate, inSameDayAs: event.endDate) {
-            return "\(dayFormatter.string(from: event.startDate)) • \(timeFormatter.string(from: event.startDate)) – \(timeFormatter.string(from: event.endDate))"
-        } else {
-            return "\(dayFormatter.string(from: event.startDate)) \(timeFormatter.string(from: event.startDate)) → \(dayFormatter.string(from: event.endDate)) \(timeFormatter.string(from: event.endDate))"
-        }
-    }
-
-    private func color(for event: CalendarSyncManager.SyncedEvent) -> Color {
-        Color(
-            red: event.calendarColor.red,
-            green: event.calendarColor.green,
-            blue: event.calendarColor.blue,
-            opacity: event.calendarColor.alpha
-        )
+        return "\(dayFormatter.string(from: e.start_date)) • \(timeFormatter.string(from: e.start_date))"
     }
 }
 
-private struct MemberRow: View {
-    let member: DashboardViewModel.MemberSummary
+// MARK: - Member Card
 
+private struct MemberCard: View {
+    let member: DashboardViewModel.MemberSummary
+    let isOwner: Bool
+    let onTransferOwnership: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
         HStack(spacing: 14) {
+            // Avatar
             ZStack {
                 if let url = member.avatarURL {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
+                            image.resizable().scaledToFill()
                         case .empty:
                             ProgressView()
                         case .failure:
-                            AvatarView(initials: initials(for: member.displayName))
+                            AvatarPlaceholder(initials: initials)
                         @unknown default:
-                            AvatarView(initials: initials(for: member.displayName))
+                            AvatarPlaceholder(initials: initials)
                         }
                     }
-                    .frame(width: 50, height: 50)
+                    .frame(width: 44, height: 44)
                     .clipShape(Circle())
                 } else {
-                    AvatarView(initials: initials(for: member.displayName))
-                        .frame(width: 50, height: 50)
+                    AvatarPlaceholder(initials: initials)
+                        .frame(width: 44, height: 44)
                 }
             }
             .overlay(
                 Circle()
-                    .stroke(
+                    .strokeBorder(
                         LinearGradient(
-                            colors: [
-                                Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4),
-                                Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.4)
-                            ],
+                            colors: [Color(hex: "ff4d8d").opacity(0.4), Color(hex: "8b5cf6").opacity(0.3)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         lineWidth: 2
                     )
             )
-            .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 3)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(member.displayName)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-
-                HStack(spacing: 4) {
-                    Text(member.role == "owner" ? "👑" : "✨")
-                        .font(.system(size: 12))
-                    Text(member.role.capitalized)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-        }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-        )
-    }
-
-    private func initials(for name: String) -> String {
-        let parts = name.split(separator: " ")
-        let initials = parts.prefix(2).map { part in
-            part.first.map(String.init) ?? ""
-        }
-        return initials.joined()
-    }
-}
-
-private struct AvatarView: View {
-    let initials: String
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            Text(initials.isEmpty ? "✨" : initials)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-        }
-    }
-}
-
-// MARK: - Curved Horizon Shape
-
-private struct CurvedHorizonShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        
-        // Start from bottom left
-        path.move(to: CGPoint(x: 0, y: rect.maxY))
-        
-        // Draw curved top using bezier curve
-        path.addCurve(
-            to: CGPoint(x: rect.maxX, y: rect.maxY),
-            control1: CGPoint(x: rect.width * 0.25, y: rect.height * 0.15),
-            control2: CGPoint(x: rect.width * 0.75, y: rect.height * 0.15)
-        )
-        
-        // Complete the rectangle
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: 0, y: rect.maxY))
-        path.closeSubpath()
-        
-        return path
-    }
-}
-
-// MARK: - Section Header
-
-private struct SectionHeader: View {
-    let icon: String
-    let title: String
-    let color: Color
-    
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium, design: .default))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            color,
-                            color.opacity(0.7)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
             
-            Text(title)
-                .font(.system(size: 20, weight: .semibold, design: .default))
-                .foregroundStyle(.primary)
-        }
-    }
-}
-
-// MARK: - Embossed Card
-
-private struct BubblyCard<Content: View>: View {
-    @ViewBuilder let content: Content
-    @EnvironmentObject var themeManager: ThemeManager
-    @Environment(\.colorScheme) var colorScheme
-    
-    var body: some View {
-        content
-            .padding(20)
-        .background(
-            ZStack {
-                // Base background
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.systemBackground))
-                
-                // Very subtle neutral tint (no theme color)
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(.secondarySystemBackground).opacity(0.3),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                
-                // Embossed effect - light highlight (reduced in dark mode)
-                if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.6),
-                                    Color.clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .center
-                            )
-                        )
-                }
-            }
-        )
-            // Inverted emboss shadows - more subtle in dark mode
-            .shadow(color: colorScheme == .light ? Color.white.opacity(0.8) : Color.clear, radius: 1, x: -1, y: -1)
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 4, x: 2, y: 2)
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.05), radius: 8, x: 0, y: 4)
-    }
-}
-
-// MARK: - Filter Badge
-
-private struct FilterBadge: View {
-    let text: String
-    let color: Color
-    @Environment(\.colorScheme) var colorScheme
-    
-    var body: some View {
-        Text(text)
-            .font(.system(size: 12, weight: .regular, design: .default))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(color.opacity(0.15))
-            )
-            .foregroundStyle(colorScheme == .dark ? .primary : color)
-    }
-}
-
-// MARK: - Enhanced Upcoming Event Row
-
-private struct EnhancedUpcomingEventRow: View {
-    let event: CalendarEventWithUser
-    var memberColor: Color?
-    var memberName: String?
-    var sharedCount: Int = 1
-    let currentUserId: UUID?
-    @State private var isPressed = false
-    @EnvironmentObject var themeManager: ThemeManager
-    @Environment(\.colorScheme) var colorScheme
-
-    private var isPrivate: Bool {
-        return event.event_type == "personal" && event.user_id != currentUserId
-    }
-
-    private var dotColor: Color {
-        // Use theme color instead of calendar/member colors for upcoming events
-        return themeManager.primaryColor
-    }
-
-    var body: some View {
-        HStack(spacing: 16) {
-            // Enhanced color indicator with vibrant glow
-            ZStack {
-                // Outer glow
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                dotColor.opacity(0.4),
-                                dotColor.opacity(0.2)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 8, height: 50)
-                    .blur(radius: 4)
-                
-                // Middle glow
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(dotColor.opacity(0.3))
-                    .frame(width: 6, height: 48)
-                    .blur(radius: 2)
-                
-                // Main indicator with gradient
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                dotColor,
-                                dotColor.opacity(0.7)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 5, height: 46)
-            }
-            
-            VStack(alignment: .leading, spacing: 10) {
-                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                .primary,
-                                .primary.opacity(0.8)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .lineLimit(2)
-                
-                if sharedCount > 1 && !isPrivate {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 11, weight: .medium))
-                        Text("\(sharedCount) members")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                    }
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor,
-                                themeManager.secondaryColor
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor.opacity(0.15),
-                                        themeManager.secondaryColor.opacity(0.1)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                    )
-                }
-                
-                HStack(spacing: 8) {
-                    Label {
-                        Text(timeSummary(event))
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    } icon: {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        dotColor.opacity(0.65),
-                                        dotColor.opacity(0.5)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                }
-                
-                if let memberName {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(dotColor)
-                        Text(memberName)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                
-                if let location = event.location, !location.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(dotColor.opacity(0.7))
-                        Text(location)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            Spacer()
-        }
-        .padding(20)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(.systemBackground))
-                
-                // Vibrant theme color tint with gradient
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                dotColor.opacity(0.12),
-                                dotColor.opacity(0.06),
-                                themeManager.primaryColor.opacity(0.04),
-                                Color.clear
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                
-                // Border accent with gradient
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                dotColor.opacity(0.4),
-                                dotColor.opacity(0.2),
-                                Color.clear
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        lineWidth: 1.5
-                    )
-                
-                // Enhanced embossed highlight (reduced in dark mode)
-                if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.8),
-                                    Color.white.opacity(0.5),
-                                    Color.clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            }
-        )
-        // Enhanced emboss shadows with color tint
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
-        .shadow(color: dotColor.opacity(colorScheme == .dark ? 0.08 : 0.15), radius: 14, x: 0, y: 7)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
-        .scaleEffect(isPressed ? 0.98 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
-    }
-    
-    private var defaultColor: Color {
-        // Use theme primary color as default instead of hardcoded purple
-        themeManager.primaryColor
-    }
-    
-    private func timeSummary(_ e: CalendarEventWithUser) -> String {
-        if e.is_all_day {
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateStyle = .medium
-            dateFormatter.timeStyle = .none
-
-            // For all-day events, show date range
-            if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
-                return dateFormatter.string(from: e.start_date)
-            } else {
-                // Subtract one day from end_date since all-day events end at midnight of the next day
-                let endDate = Calendar.current.date(byAdding: .day, value: -1, to: e.end_date) ?? e.end_date
-                return "\(dateFormatter.string(from: e.start_date)) - \(dateFormatter.string(from: endDate))"
-            }
-        }
-
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateStyle = .medium
-        dayFormatter.timeStyle = .none
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateStyle = .none
-        timeFormatter.timeStyle = .short
-
-        if Calendar.current.isDate(e.start_date, inSameDayAs: e.end_date) {
-            return "\(dayFormatter.string(from: e.start_date)) • \(timeFormatter.string(from: e.start_date)) – \(timeFormatter.string(from: e.end_date))"
-        } else {
-            return "\(dayFormatter.string(from: e.start_date)) \(timeFormatter.string(from: e.start_date)) → \(dayFormatter.string(from: e.end_date)) \(timeFormatter.string(from: e.end_date))"
-        }
-    }
-}
-
-// MARK: - Enhanced Member Row
-
-private struct EnhancedMemberRow: View {
-    let member: DashboardViewModel.MemberSummary
-    let isOwner: Bool
-    let onTransferOwnership: () -> Void
-    @State private var isPressed = false
-    @EnvironmentObject var themeManager: ThemeManager
-    @Environment(\.colorScheme) var colorScheme
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            // Enhanced Avatar with gradient border
-            ZStack {
-                // Outer glow
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.2),
-                                themeManager.secondaryColor.opacity(0.15)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 60, height: 60)
-                    .blur(radius: 4)
-                
-                if let url = member.avatarURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .empty:
-                            ProgressView()
-                        case .failure:
-                            EnhancedAvatarView(initials: initials(for: member.displayName))
-                        @unknown default:
-                            EnhancedAvatarView(initials: initials(for: member.displayName))
-                        }
-                    }
-                    .frame(width: 56, height: 56)
-                    .clipShape(Circle())
-                } else {
-                    EnhancedAvatarView(initials: initials(for: member.displayName))
-                        .frame(width: 56, height: 56)
-                }
-            }
-            .overlay(
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.6),
-                                themeManager.secondaryColor.opacity(0.4)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 2.5
-                    )
-            )
-            .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 8, x: 0, y: 4)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
                     Text(member.displayName)
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    .primary,
-                                    .primary.opacity(0.8)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
                     
                     if member.role == "owner" {
                         Image(systemName: "crown.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 1.0, green: 0.84, blue: 0.0),
-                                        Color(red: 1.0, green: 0.65, blue: 0.0)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color(hex: "f59e0b"))
                     }
                 }
                 
-                HStack(spacing: 6) {
-                    Image(systemName: member.role == "owner" ? "star.fill" : "person.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                    Text(member.role.capitalized)
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
+                Text(member.role.capitalized)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
             }
+            
             Spacer()
             
-            // Enhanced transfer ownership button for owners (not on themselves)
             if isOwner && member.role != "owner" {
                 Menu {
                     Button(role: .destructive) {
@@ -1993,409 +1243,87 @@ private struct EnhancedMemberRow: View {
                         Label("Transfer Ownership", systemImage: "person.crop.circle.badge.checkmark")
                     }
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor.opacity(0.1),
-                                        themeManager.secondaryColor.opacity(0.08)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 36, height: 36)
-                        
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor,
-                                        themeManager.secondaryColor
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Color.secondary.opacity(0.1), in: Circle())
                 }
             }
         }
-        .padding(20)
+        .padding(14)
         .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(.systemBackground))
-                
-                // Vibrant theme color tint with gradient
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.1),
-                                themeManager.secondaryColor.opacity(0.06),
-                                Color.clear
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                
-                // Softer border accent with gradient
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.2),
-                                themeManager.secondaryColor.opacity(0.15),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-                
-                // Enhanced embossed highlight (reduced in dark mode)
-                if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.8),
-                                    Color.white.opacity(0.5),
-                                    Color.clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            }
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
         )
-        // Enhanced emboss shadows with color tint
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
-        .shadow(color: themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.12), radius: 12, x: 0, y: 6)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
-        .scaleEffect(isPressed ? 0.98 : 1.0)
-        .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isPressed)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+        )
     }
     
-    private func initials(for name: String) -> String {
-        let parts = name.split(separator: " ")
-        let initials = parts.prefix(2).map { part in
-            part.first.map(String.init) ?? ""
-        }
-        return initials.joined()
+    private var initials: String {
+        let parts = member.displayName.split(separator: " ")
+        return parts.prefix(2).compactMap { $0.first.map(String.init) }.joined()
     }
 }
 
-// MARK: - Enhanced Group Selector Card
+// MARK: - Avatar Placeholder
 
-private struct EnhancedGroupSelectorCard: View {
-    let groupName: String
-    @EnvironmentObject var themeManager: ThemeManager
-    @Environment(\.colorScheme) var colorScheme
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                // Softer glow effect
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.18),
-                                themeManager.secondaryColor.opacity(0.15)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 56, height: 56)
-                    .blur(radius: 8)
-                
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.15),
-                                themeManager.secondaryColor.opacity(0.12)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 52, height: 52)
-                    .blur(radius: 4)
-                
-                // Icon with vibrant gradient
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.15),
-                                themeManager.secondaryColor.opacity(0.1)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 50, height: 50)
-                
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor,
-                                themeManager.secondaryColor
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            
-            Text(groupName)
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            .primary,
-                            .primary.opacity(0.8)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-            
-            Spacer()
-            
-            // Enhanced chevron button
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.1),
-                                themeManager.secondaryColor.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 36, height: 36)
-                
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor,
-                                themeManager.secondaryColor
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-        }
-        .padding(20)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(.systemBackground))
-                
-                // Softer theme color tint with gradient
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.08),
-                                themeManager.secondaryColor.opacity(0.05),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                
-                // Border accent
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.3),
-                                themeManager.secondaryColor.opacity(0.2),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-                
-                // Enhanced embossed highlight (reduced in dark mode)
-                if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.8),
-                                    Color.white.opacity(0.4),
-                                    Color.clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            }
-        )
-        // Enhanced emboss shadows with color tint
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
-        .shadow(color: themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.12), radius: 12, x: 0, y: 6)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
-    }
-}
-
-// MARK: - Enhanced Avatar View
-
-private struct EnhancedAvatarView: View {
+private struct AvatarPlaceholder: View {
     let initials: String
     
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(.secondarySystemBackground))
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: "ff4d8d").opacity(0.2), Color(hex: "8b5cf6").opacity(0.15)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
             
             Text(initials.isEmpty ? "?" : initials.uppercased())
-                .font(.system(size: 18, weight: .medium, design: .default))
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
         }
     }
 }
 
-// MARK: - Enhanced Group Invite View
+// MARK: - Invite Card
 
-private struct EnhancedGroupInviteView: View {
+private struct InviteCard: View {
     let inviteSlug: String
     let groupName: String
     @State private var showCopied = false
-    
-    @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 16) {
-                // Enhanced icon with vibrant gradient and glow
-                ZStack {
-                    // Outer glow
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor.opacity(0.18),
-                                    themeManager.secondaryColor.opacity(0.15)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 60, height: 60)
-                        .blur(radius: 8)
-                    
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor.opacity(0.15),
-                                    themeManager.secondaryColor.opacity(0.12)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 56, height: 56)
-                        .blur(radius: 4)
-                    
-                    Image(systemName: "link.circle.fill")
-                        .font(.system(size: 26, weight: .semibold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-                
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Invite Friends")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    .primary,
-                                    .primary.opacity(0.8)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                    
                     Text("Share \(groupName)")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    Text("Tap to copy invite link")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
                 
                 Spacer()
                 
                 if showCopied {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                         Text("Copied!")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
                     }
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor,
-                                themeManager.secondaryColor
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor.opacity(0.15),
-                                        themeManager.secondaryColor.opacity(0.1)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                    )
+                    .foregroundStyle(Color(hex: "10b981"))
                     .transition(.scale.combined(with: .opacity))
                 }
             }
-            .padding(.horizontal, 4)
             
             Button {
                 UIPasteboard.general.string = inviteSlug
@@ -2403,166 +1331,50 @@ private struct EnhancedGroupInviteView: View {
                     showCopied = true
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    withAnimation {
-                        showCopied = false
-                    }
+                    withAnimation { showCopied = false }
                 }
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Image(systemName: "link")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(hex: "8b5cf6"))
                     
                     Text(inviteSlug)
-                        .font(.system(size: 15, weight: .medium, design: .monospaced))
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
                     
                     Spacer()
                     
                     Image(systemName: "doc.on.doc.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
+                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
                         )
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(.secondarySystemBackground),
-                                        Color(.secondarySystemBackground).opacity(0.8)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                        
-                        // Softer theme color tint
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor.opacity(0.08),
-                                        themeManager.secondaryColor.opacity(0.05),
-                                        Color.clear
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                        
-                        // Border accent
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor.opacity(0.2),
-                                        themeManager.secondaryColor.opacity(0.15)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                lineWidth: 1.5
-                            )
-                        
-                        // Inverted emboss (more subtle in dark mode)
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color.black.opacity(colorScheme == .dark ? 0.15 : 0.04),
-                                        Color.clear
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                )
-                .shadow(color: themeManager.primaryColor.opacity(0.15), radius: 4, x: 0, y: 2)
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 3, x: 2, y: 2)
-                .shadow(color: colorScheme == .light ? Color.white.opacity(0.7) : Color.clear, radius: 2, x: -2, y: -2)
+                .padding(14)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
         }
-        .padding(22)
+        .padding(18)
         .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color(.systemBackground))
-                
-                // Softer theme color tint with gradient
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.08),
-                                themeManager.secondaryColor.opacity(0.05),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                
-                // Border accent with gradient
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.2),
-                                themeManager.secondaryColor.opacity(0.15),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-                
-                // Enhanced embossed highlight (reduced in dark mode)
-                if colorScheme == .light {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.8),
-                                    Color.white.opacity(0.5),
-                                    Color.clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-            }
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
         )
-        // Enhanced emboss shadows with color tint
-        .shadow(color: colorScheme == .light ? Color.white.opacity(0.9) : Color.clear, radius: 3, x: -3, y: -3)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.15), radius: 6, x: 4, y: 4)
-        .shadow(color: themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.12), radius: 14, x: 0, y: 7)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.08), radius: 10, x: 0, y: 5)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color(hex: "ff4d8d").opacity(0.15), Color(hex: "8b5cf6").opacity(0.1)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
     }
 }
-

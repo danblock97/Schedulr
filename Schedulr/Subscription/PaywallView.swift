@@ -125,21 +125,21 @@ struct PaywallView: View {
                 FeatureComparisonRow(
                     title: "Groups",
                     freeValue: "1",
-                    proValue: "5",
+                    proValue: "Unlimited",
                     icon: "person.3.fill"
                 )
                 
                 FeatureComparisonRow(
                     title: "Members per group",
                     freeValue: "5",
-                    proValue: "10",
+                    proValue: "Unlimited",
                     icon: "person.2.fill"
                 )
                 
                 FeatureComparisonRow(
                     title: "AI requests/month",
                     freeValue: "0",
-                    proValue: "100",
+                    proValue: "300",
                     icon: "sparkles"
                 )
                 

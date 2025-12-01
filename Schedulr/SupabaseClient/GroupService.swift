@@ -102,5 +102,41 @@ final class GroupService {
         
         return count ?? 0
     }
+    
+    /// Rename a group (only allowed by owner)
+    /// - Parameters:
+    ///   - groupId: The group ID
+    ///   - newName: The new name for the group
+    /// - Throws: Error if rename fails (user not owner, invalid name, etc.)
+    nonisolated func renameGroup(groupId: UUID, newName: String) async throws {
+        let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedName.isEmpty else {
+            throw NSError(
+                domain: "GroupService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Group name cannot be empty"]
+            )
+        }
+        
+        guard trimmedName.count <= 100 else {
+            throw NSError(
+                domain: "GroupService",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Group name cannot exceed 100 characters"]
+            )
+        }
+        
+        // Call the rename_group function using AnyJSON for mixed types
+        struct RenameParams: Encodable {
+            let p_group_id: UUID
+            let p_new_name: String
+        }
+        
+        try await client.database.rpc(
+            "rename_group",
+            params: RenameParams(p_group_id: groupId, p_new_name: trimmedName)
+        ).execute()
+    }
 }
 

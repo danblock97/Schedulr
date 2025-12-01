@@ -7,14 +7,15 @@ import SafariServices
 
 struct AuthView: View {
     @ObservedObject var viewModel: AuthViewModel
-    @State private var emblem: String = "🫧💖🌈"
-    @State private var sparkle: String = "✨"
     @State private var showPassword: Bool = false
     @State private var showForgotPassword: Bool = false
     @State private var showResetEmailSent: Bool = false
     @State private var showSignUpEmailSent: Bool = false
     @State private var showNewPassword: Bool = false
     @State private var showConfirmPassword: Bool = false
+    @State private var animateIn = false
+    @State private var logoScale: CGFloat = 0.5
+    @State private var isButtonPressed = false
     @FocusState private var isEmailFocused: Bool
     @FocusState private var isPasswordFocused: Bool
     @FocusState private var isNewPasswordFocused: Bool
@@ -26,64 +27,337 @@ struct AuthView: View {
     private var isPad: Bool { false }
     #endif
 
-    private let emblemOptions: [String] = [
-        "🫧💖🌈", "☁️🌸🫧", "🌈🫧✨", "🧁✨🫧", "⭐️🫧🌈", "🍓🫧✨"
-    ]
-    private let sparkleOptions: [String] = ["✨", "💫", "🌟"]
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Animated background
+                AuthAnimatedBackground()
+                    .ignoresSafeArea()
+                
+                // Floating particles
+                AuthFloatingParticles()
+                    .ignoresSafeArea()
+                
+                // Main content
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: geometry.safeAreaInsets.top + 40)
+                        
+                        // Logo and header
+                        AuthHeaderView(animateIn: $animateIn, logoScale: $logoScale)
+                            .padding(.bottom, 40)
+                        
+                        // Main auth card
+                        if viewModel.isPasswordResetMode {
+                            PasswordResetCard(
+                                viewModel: viewModel,
+                                showNewPassword: $showNewPassword,
+                                showConfirmPassword: $showConfirmPassword,
+                                isNewPasswordFocused: $isNewPasswordFocused,
+                                isConfirmPasswordFocused: $isConfirmPasswordFocused
+                            )
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
+                        } else {
+                            AuthFormCard(
+                                viewModel: viewModel,
+                                showPassword: $showPassword,
+                                showForgotPassword: $showForgotPassword,
+                                showResetEmailSent: $showResetEmailSent,
+                                showSignUpEmailSent: $showSignUpEmailSent,
+                                isEmailFocused: $isEmailFocused,
+                                isPasswordFocused: $isPasswordFocused,
+                                isPad: isPad
+                            )
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity),
+                                removal: .move(edge: .trailing).combined(with: .opacity)
+                            ))
+                        }
+                        
+                        // Error/Notice messages
+                        AuthMessagesView(viewModel: viewModel)
+                            .padding(.top, 16)
+                        
+                        // Terms and Privacy
+                        AuthFooterView()
+                            .padding(.top, 24)
+                            .padding(.bottom, geometry.safeAreaInsets.bottom + 24)
+                    }
+                    .padding(.horizontal, isPad ? 40 : 24)
+                    .frame(maxWidth: isPad ? 520 : .infinity)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                dismissKeyboard()
+            }
+        }
+        .ignoresSafeArea()
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.isPasswordResetMode)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showForgotPassword)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showResetEmailSent)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showSignUpEmailSent)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.authMode)
+        .onAppear {
+            viewModel.loadInitialSession()
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.6).delay(0.1)) {
+                logoScale = 1
+            }
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.7).delay(0.2)) {
+                animateIn = true
+            }
+        }
+    }
+    
+    private func dismissKeyboard() {
+        isEmailFocused = false
+        isPasswordFocused = false
+        isNewPasswordFocused = false
+        isConfirmPasswordFocused = false
+    }
+}
 
-    private var gradient: LinearGradient {
+// MARK: - Animated Background
+
+private struct AuthAnimatedBackground: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1/30)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            
+            Canvas { context, size in
+                // Base gradient
+                let baseGradient = Gradient(colors: [
+                    colorScheme == .dark ? Color(hex: "0a0a12") : Color(hex: "faf8ff"),
+                    colorScheme == .dark ? Color(hex: "0c0815") : Color(hex: "f5f0ff"),
+                    colorScheme == .dark ? Color(hex: "080a10") : Color(hex: "f0f5ff")
+                ])
+                
+                context.fill(
+                    Path(CGRect(origin: .zero, size: size)),
+                    with: .linearGradient(
+                        baseGradient,
+                        startPoint: CGPoint(x: 0, y: 0),
+                        endPoint: CGPoint(x: size.width, y: size.height)
+                    )
+                )
+                
+                // Animated blobs
+                let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
+                    (Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.18 : 0.15), 0.15, 0.15, 0.5),
+                    (Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.15 : 0.12), 0.85, 0.25, 0.6),
+                    (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.12 : 0.10), 0.5, 0.5, 0.45),
+                    (Color(hex: "f59e0b").opacity(colorScheme == .dark ? 0.10 : 0.08), 0.2, 0.75, 0.4),
+                    (Color(hex: "10b981").opacity(colorScheme == .dark ? 0.08 : 0.06), 0.8, 0.85, 0.35)
+                ]
+                
+                for (index, (color, baseX, baseY, baseRadius)) in blobs.enumerated() {
+                    let offset = Double(index) * 0.7
+                    let x = size.width * (baseX + 0.08 * sin(time * 0.25 + offset))
+                    let y = size.height * (baseY + 0.06 * cos(time * 0.2 + offset))
+                    let radius = min(size.width, size.height) * (baseRadius + 0.05 * sin(time * 0.15 + offset))
+                    
+                    let blobGradient = Gradient(colors: [color, color.opacity(0)])
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)),
+                        with: .radialGradient(
+                            blobGradient,
+                            center: CGPoint(x: x, y: y),
+                            startRadius: 0,
+                            endRadius: radius
+                        )
+                    )
+                }
+            }
+        }
+        .blur(radius: 80)
+    }
+}
+
+// MARK: - Floating Particles
+
+private struct AuthFloatingParticles: View {
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                ForEach(0..<12, id: \.self) { index in
+                    AuthParticle(
+                        index: index,
+                        containerSize: geometry.size
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct AuthParticle: View {
+    let index: Int
+    let containerSize: CGSize
+    
+    @State private var offset: CGSize = .zero
+    @State private var opacity: Double = 0
+    @State private var rotation: Double = 0
+    
+    private var size: CGFloat { CGFloat.random(in: 3...8) }
+    private var startX: CGFloat { CGFloat.random(in: 0...1) * containerSize.width }
+    private var startY: CGFloat { CGFloat.random(in: 0...1) * containerSize.height }
+    
+    var body: some View {
+        Circle()
+            .fill(
         LinearGradient(
             colors: [
-                Color(red: 1.00, green: 0.82, blue: 0.93),
-                Color(red: 0.87, green: 0.93, blue: 1.00),
-                Color(red: 0.86, green: 1.00, blue: 0.95)
+                        Color(hex: "ff4d8d").opacity(0.5),
+                        Color(hex: "8b5cf6").opacity(0.3)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+            )
+            .frame(width: CGFloat(4 + index % 4), height: CGFloat(4 + index % 4))
+            .blur(radius: CGFloat(1 + index % 2))
+            .position(x: containerSize.width * CGFloat(index % 5 + 1) / 6, 
+                     y: containerSize.height * CGFloat(index % 4 + 1) / 5)
+            .offset(offset)
+            .opacity(opacity)
+            .rotationEffect(.degrees(rotation))
+            .onAppear {
+                let delay = Double(index) * 0.15
+                
+                withAnimation(.easeOut(duration: 1).delay(delay)) {
+                    opacity = 0.6
+                }
+                
+                withAnimation(
+                    .easeInOut(duration: Double.random(in: 5...9))
+                    .repeatForever(autoreverses: true)
+                    .delay(delay)
+                ) {
+                    offset = CGSize(
+                        width: CGFloat.random(in: -40...40),
+                        height: CGFloat.random(in: -60...60)
+                    )
+                    rotation = Double.random(in: -30...30)
+                }
+            }
     }
+}
+
+// MARK: - Header View
+
+private struct AuthHeaderView: View {
+    @Binding var animateIn: Bool
+    @Binding var logoScale: CGFloat
 
     var body: some View {
+        VStack(spacing: 20) {
+            // App logo with glow
         ZStack {
-            gradient.ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // Dismiss keyboard when tapping background
-                    isEmailFocused = false
-                    isPasswordFocused = false
-                    isNewPasswordFocused = false
-                    isConfirmPasswordFocused = false
+                // Glow effect
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(hex: "ff4d8d").opacity(0.3),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 60
+                        )
+                    )
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 20)
+                
+                // Logo container
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 88, height: 88)
+                    
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color(hex: "ff4d8d").opacity(0.5),
+                                    Color(hex: "8b5cf6").opacity(0.5)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 2
+                        )
+                        .frame(width: 88, height: 88)
+                    
+                    if UIImage(named: "schedulr-logo") != nil {
+                        Image("schedulr-logo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else if UIImage(named: "schedulr-logo-any") != nil {
+                        Image("schedulr-logo-any")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 52, height: 52)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 36, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
                 }
-
-            // Playful, bubbly background circles
-            BubbleBackground()
-                .scaleEffect(isPad ? 1.18 : 1.0)
-                .allowsHitTesting(false)
-
-            VStack(spacing: isPad ? 26 : 22) {
-                // Cute header with playful emoji variants
+                .shadow(color: Color(hex: "ff4d8d").opacity(0.2), radius: 20, x: 0, y: 10)
+            }
+            .scaleEffect(logoScale)
+            
+            // Title
                 VStack(spacing: 8) {
-                    Text(emblem)
-                        .font(.system(size: isPad ? 72 : 56))
                     Text("Welcome to Schedulr")
-                        .font(
-                            isPad
-                            ? .system(size: 44, weight: .heavy, design: .rounded)
-                            : .system(.largeTitle, design: .rounded).weight(.heavy)
-                        )
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
-                    Text("Plan your day with a sprinkle of magic \(sparkle)")
-                        .font(
-                            isPad
-                            ? .system(.title3, design: .rounded).weight(.medium)
-                            : .system(.subheadline, design: .rounded).weight(.medium)
-                        )
-                        .foregroundStyle(Color.primary.opacity(0.7))
+                
+                Text("Schedule together, effortlessly")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
+            }
+            .opacity(animateIn ? 1 : 0)
+            .offset(y: animateIn ? 0 : 20)
+        }
+    }
+}
 
-                // Sign in with Apple (first option)
+// MARK: - Auth Form Card
+
+private struct AuthFormCard: View {
+    @ObservedObject var viewModel: AuthViewModel
+    @Binding var showPassword: Bool
+    @Binding var showForgotPassword: Bool
+    @Binding var showResetEmailSent: Bool
+    @Binding var showSignUpEmailSent: Bool
+    var isEmailFocused: FocusState<Bool>.Binding
+    var isPasswordFocused: FocusState<Bool>.Binding
+    let isPad: Bool
+    
+    @State private var animateIn = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Sign in with Apple
                 #if os(iOS)
                 SignInWithAppleButton(
                     onRequest: { request in
@@ -92,7 +366,6 @@ struct AuthView: View {
                     onCompletion: { result in
                         switch result {
                         case .success(let authorization):
-                            // Store user identifier for future sign-ins
                             if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
                                 UserDefaults.standard.set(appleIDCredential.user, forKey: "appleUserIdentifier")
                             }
@@ -101,561 +374,772 @@ struct AuthView: View {
                             }
                         case .failure(let error):
                             viewModel.handleAppleAuthorizationError(error)
-                            #if DEBUG
-                            let nsError = error as NSError
-                            print("[Auth] Apple Sign In error: \(error.localizedDescription), code: \(nsError.code), domain: \(nsError.domain)")
-                            #endif
                         }
                     }
                 )
                 .signInWithAppleButtonStyle(.black)
-                .frame(height: isPad ? 56 : 50)
-                .cornerRadius(isPad ? 28 : 25)
-                .padding(.horizontal)
+            .frame(height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 6)
                 .disabled(viewModel.isLoadingApple)
+            .opacity(animateIn ? 1 : 0)
+            .offset(y: animateIn ? 0 : 20)
                 #endif
 
-                // Playful divider
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.primary.opacity(0.12))
-                        .frame(height: 2)
-                    Text("or use email")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Color.primary.opacity(0.6))
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.primary.opacity(0.12))
-                        .frame(height: 2)
+            // Divider
+            AuthDivider()
+                .opacity(animateIn ? 1 : 0)
+            
+            // Form content
+            if showForgotPassword {
+                ForgotPasswordView(
+                    viewModel: viewModel,
+                    showForgotPassword: $showForgotPassword,
+                    showResetEmailSent: $showResetEmailSent,
+                    isEmailFocused: isEmailFocused,
+                    isPad: isPad
+                )
+            } else if showSignUpEmailSent {
+                SignUpSuccessView(
+                    viewModel: viewModel,
+                    showSignUpEmailSent: $showSignUpEmailSent
+                )
+            } else {
+                // Email/Password form
+                VStack(spacing: 16) {
+                    // Email field
+                    AuthTextField(
+                        text: $viewModel.email,
+                        placeholder: "Email address",
+                        icon: "envelope.fill",
+                        iconColor: Color(hex: "ff4d8d"),
+                        keyboardType: .emailAddress,
+                        textContentType: .emailAddress,
+                        isFocused: isEmailFocused
+                    )
+                    .opacity(animateIn ? 1 : 0)
+                    .offset(y: animateIn ? 0 : 20)
+                    
+                    // Password field
+                    AuthSecureField(
+                        text: $viewModel.password,
+                        placeholder: "Password",
+                        icon: "lock.fill",
+                        iconColor: Color(hex: "8b5cf6"),
+                        showPassword: $showPassword,
+                        textContentType: viewModel.authMode == .signUp ? .newPassword : .password,
+                        isFocused: isPasswordFocused
+                    )
+                    .opacity(animateIn ? 1 : 0)
+                    .offset(y: animateIn ? 0 : 20)
+                    
+                    // Forgot password link
+                    if viewModel.authMode == .signIn {
+                                HStack {
+                            Spacer()
+                            Button(action: { showForgotPassword = true }) {
+                                Text("Forgot Password?")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(Color(hex: "8b5cf6"))
+                            }
+                        }
+                        .opacity(animateIn ? 1 : 0)
+                    }
                 }
-                .padding(.horizontal)
+                
+                // Sign in/Sign up button
+                AuthPrimaryButton(
+                    title: viewModel.authMode == .signIn ? "Sign In" : "Create Account",
+                    isLoading: viewModel.isLoadingEmail,
+                    action: {
+                        Task {
+                            if viewModel.authMode == .signIn {
+                                await viewModel.signInWithEmail()
+                            } else {
+                                await viewModel.signUpWithEmail()
+                                if viewModel.noticeMessage != nil {
+                                    showSignUpEmailSent = true
+                                }
+                            }
+                        }
+                    }
+                )
+                .disabled(viewModel.isLoadingEmail)
+                .opacity(animateIn ? 1 : 0)
+                .offset(y: animateIn ? 0 : 20)
+                
+                // Toggle auth mode
+                AuthModeToggle(authMode: $viewModel.authMode, password: $viewModel.password, errorMessage: $viewModel.errorMessage, showSignUpEmailSent: $showSignUpEmailSent)
+                    .opacity(animateIn ? 1 : 0)
+            }
+        }
+        .padding(24)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.08), radius: 24, x: 0, y: 12)
+        )
+                                    .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.3),
+                            Color.white.opacity(0.1)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.3)) {
+                animateIn = true
+            }
+        }
+    }
+}
 
-                // Password Reset Mode UI
-                if viewModel.isPasswordResetMode {
-                    VStack(spacing: isPad ? 20 : 16) {
-                        Text("Set New Password")
-                            .font(
-                                isPad
-                                ? .system(size: 32, weight: .bold, design: .rounded)
-                                : .system(.title, design: .rounded).weight(.bold)
+// MARK: - Password Reset Card
+
+private struct PasswordResetCard: View {
+    @ObservedObject var viewModel: AuthViewModel
+    @Binding var showNewPassword: Bool
+    @Binding var showConfirmPassword: Bool
+    var isNewPasswordFocused: FocusState<Bool>.Binding
+    var isConfirmPasswordFocused: FocusState<Bool>.Binding
+    
+    @State private var animateIn = false
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "06b6d4").opacity(0.2), Color(hex: "8b5cf6").opacity(0.2)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
                             )
-                            .padding(.bottom, 4)
-                        
-                        Text("Enter your new password below")
-                            .font(isPad ? .system(.body, design: .rounded) : .system(.subheadline, design: .rounded))
-                            .foregroundStyle(Color.primary.opacity(0.7))
-                            .padding(.bottom, isPad ? 8 : 4)
-                        
-                        // New Password field
-                        HStack(spacing: isPad ? 14 : 12) {
-                            ZStack {
-                                Circle()
-                                    .fill(.blue.gradient)
-                                    .frame(width: isPad ? 48 : 40, height: isPad ? 48 : 40)
-                                    .shadow(color: .blue.opacity(0.25), radius: isPad ? 10 : 8, x: 0, y: 4)
-                                Image(systemName: "lock.fill")
-                                    .foregroundStyle(.white)
-                            }
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(.thinMaterial)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5)
-                                    )
-                                HStack {
-                                    if showNewPassword {
-                                        TextField("New Password", text: $viewModel.newPassword)
-                                            .textContentType(.newPassword)
-                                            .autocapitalization(.none)
-                                            .disableAutocorrection(true)
-                                            .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
-                                            .focused($isNewPasswordFocused)
-                                    } else {
-                                        SecureField("New Password", text: $viewModel.newPassword)
-                                            .textContentType(.newPassword)
-                                            .autocapitalization(.none)
-                                            .disableAutocorrection(true)
-                                            .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
-                                            .focused($isNewPasswordFocused)
-                                    }
-                                    Button(action: { showNewPassword.toggle() }) {
-                                        Image(systemName: showNewPassword ? "eye.slash.fill" : "eye.fill")
-                                            .foregroundStyle(.secondary)
-                                            .font(isPad ? .title3 : .body)
-                                    }
-                                }
-                                .padding(.horizontal, isPad ? 16 : 14)
-                                .padding(.vertical, isPad ? 12 : 10)
-                            }
-                            .frame(height: isPad ? 52 : 44)
-                        }
-                        
-                        // Confirm Password field
-                        HStack(spacing: isPad ? 14 : 12) {
-                            ZStack {
-                                Circle()
-                                    .fill(.cyan.gradient)
-                                    .frame(width: isPad ? 48 : 40, height: isPad ? 48 : 40)
-                                    .shadow(color: .cyan.opacity(0.25), radius: isPad ? 10 : 8, x: 0, y: 4)
-                                Image(systemName: "lock.rotation")
-                                    .foregroundStyle(.white)
-                            }
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(.thinMaterial)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5)
-                                    )
-                                HStack {
-                                    if showConfirmPassword {
-                                        TextField("Confirm Password", text: $viewModel.confirmPassword)
-                                            .textContentType(.newPassword)
-                                            .autocapitalization(.none)
-                                            .disableAutocorrection(true)
-                                            .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
-                                            .focused($isConfirmPasswordFocused)
-                                    } else {
-                                        SecureField("Confirm Password", text: $viewModel.confirmPassword)
-                                            .textContentType(.newPassword)
-                                            .autocapitalization(.none)
-                                            .disableAutocorrection(true)
-                                            .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
-                                            .focused($isConfirmPasswordFocused)
-                                    }
-                                    Button(action: { showConfirmPassword.toggle() }) {
-                                        Image(systemName: showConfirmPassword ? "eye.slash.fill" : "eye.fill")
-                                            .foregroundStyle(.secondary)
-                                            .font(isPad ? .title3 : .body)
-                                    }
-                                }
-                                .padding(.horizontal, isPad ? 16 : 14)
-                                .padding(.vertical, isPad ? 12 : 10)
-                            }
-                            .frame(height: isPad ? 52 : 44)
-                        }
-                        
-                        // Update Password button
-                        Button(action: {
+                        )
+                        .frame(width: 64, height: 64)
+                    
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(hex: "06b6d4"), Color(hex: "8b5cf6")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+                
+                Text("Set New Password")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                
+                Text("Enter your new password below")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .opacity(animateIn ? 1 : 0)
+            .offset(y: animateIn ? 0 : 20)
+            
+            // Password fields
+            VStack(spacing: 16) {
+                AuthSecureField(
+                    text: $viewModel.newPassword,
+                    placeholder: "New Password",
+                    icon: "lock.fill",
+                    iconColor: Color(hex: "06b6d4"),
+                    showPassword: $showNewPassword,
+                    textContentType: .newPassword,
+                    isFocused: isNewPasswordFocused
+                )
+                
+                AuthSecureField(
+                    text: $viewModel.confirmPassword,
+                    placeholder: "Confirm Password",
+                    icon: "lock.rotation",
+                    iconColor: Color(hex: "8b5cf6"),
+                    showPassword: $showConfirmPassword,
+                    textContentType: .newPassword,
+                    isFocused: isConfirmPasswordFocused
+                )
+            }
+            .opacity(animateIn ? 1 : 0)
+            .offset(y: animateIn ? 0 : 20)
+            
+            // Update button
+            AuthPrimaryButton(
+                title: "Update Password",
+                isLoading: viewModel.isLoadingEmail,
+                gradient: [Color(hex: "06b6d4"), Color(hex: "8b5cf6")],
+                action: {
                             Task {
                                 await viewModel.updatePasswordAfterReset()
                             }
-                        }) {
-                            HStack(spacing: isPad ? 10 : 8) {
-                                if viewModel.isLoadingEmail { ProgressView() }
-                                Text(viewModel.isLoadingEmail ? "Updating…" : "Update Password")
-                                    .font(
-                                        isPad
-                                        ? .system(.title3, design: .rounded).weight(.semibold)
-                                        : .system(.headline, design: .rounded).weight(.semibold)
-                                    )
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, isPad ? 16 : 14)
-                            .background(
-                                LinearGradient(colors: [.green.opacity(0.95), .mint.opacity(0.95)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                            )
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                            .shadow(color: .green.opacity(0.25), radius: isPad ? 12 : 10, x: 0, y: 8)
-                        }
+                }
+            )
                         .disabled(viewModel.isLoadingEmail)
+            .opacity(animateIn ? 1 : 0)
                         
-                        Button(action: {
-                            viewModel.cancelPasswordReset()
-                        }) {
+            // Cancel button
+            Button(action: { viewModel.cancelPasswordReset() }) {
                             Text("Cancel")
-                                .font(isPad ? .footnote : .caption)
-                                .foregroundStyle(Color.primary.opacity(0.7))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
                         }
-                        .padding(.top, 4)
+            .opacity(animateIn ? 1 : 0)
                     }
-                    .padding(isPad ? 18 : 16)
+        .padding(24)
                     .background(
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
                             .fill(.ultraThinMaterial)
-                            .shadow(color: .black.opacity(0.06), radius: isPad ? 18 : 16, x: 0, y: 10)
-                    )
-                    .padding(.horizontal)
-                } else {
-                    // Email/Password card
-                    VStack(spacing: isPad ? 14 : 12) {
-                        // Email field (hide when showing reset or sign up email sent success)
-                        if !showResetEmailSent && !showSignUpEmailSent {
-                            HStack(spacing: isPad ? 14 : 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(.pink.gradient)
-                                        .frame(width: isPad ? 48 : 40, height: isPad ? 48 : 40)
-                                        .shadow(color: .pink.opacity(0.25), radius: isPad ? 10 : 8, x: 0, y: 4)
-                                    Image(systemName: "envelope.fill")
-                                        .foregroundStyle(.white)
-                                }
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .fill(.thinMaterial)
+                .shadow(color: .black.opacity(0.08), radius: 24, x: 0, y: 12)
+        )
                                         .overlay(
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5)
-                                        )
-                                    TextField("your@email.com", text: $viewModel.email)
-                                        .keyboardType(.emailAddress)
-                                        .textContentType(.emailAddress)
-                                        .autocapitalization(.none)
-                                        .disableAutocorrection(true)
-                                        .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
-                                        .padding(.horizontal, isPad ? 16 : 14)
-                                        .padding(.vertical, isPad ? 12 : 10)
-                                        .focused($isEmailFocused)
-                                }
-                                .frame(height: isPad ? 52 : 44)
-                            }
-                        }
-
-                        // Password field (only show when not in forgot password mode and not showing sign up success)
-                        if !showForgotPassword && !showSignUpEmailSent {
-                            HStack(spacing: isPad ? 14 : 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(.purple.gradient)
-                                        .frame(width: isPad ? 48 : 40, height: isPad ? 48 : 40)
-                                        .shadow(color: .purple.opacity(0.25), radius: isPad ? 10 : 8, x: 0, y: 4)
-                                    Image(systemName: "lock.fill")
-                                        .foregroundStyle(.white)
-                                }
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .fill(.thinMaterial)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .strokeBorder(Color.white.opacity(0.3), lineWidth: 0.5)
-                                        )
-                                    HStack {
-                                        if showPassword {
-                                            TextField("Password", text: $viewModel.password)
-                                                .textContentType(viewModel.authMode == .signUp ? .newPassword : .password)
-                                                .autocapitalization(.none)
-                                                .disableAutocorrection(true)
-                                                .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
-                                                .focused($isPasswordFocused)
-                                        } else {
-                                            SecureField("Password", text: $viewModel.password)
-                                                .textContentType(viewModel.authMode == .signUp ? .newPassword : .password)
-                                                .autocapitalization(.none)
-                                                .disableAutocorrection(true)
-                                                .font(isPad ? .system(.title3, design: .rounded) : .system(.body, design: .rounded))
-                                                .focused($isPasswordFocused)
-                                        }
-                                        Button(action: { showPassword.toggle() }) {
-                                            Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                                .foregroundStyle(.secondary)
-                                                .font(isPad ? .title3 : .body)
-                                        }
-                                    }
-                                    .padding(.horizontal, isPad ? 16 : 14)
-                                    .padding(.vertical, isPad ? 12 : 10)
-                                }
-                                .frame(height: isPad ? 52 : 44)
-                            }
-                        }
-
-                    // Forgot password link (only show in sign in mode and not already showing forgot password)
-                    if viewModel.authMode == .signIn && !showForgotPassword {
-                        HStack {
-                            Spacer()
-                            Button(action: {
-                                showForgotPassword = true
-                            }) {
-                                Text("Forgot Password?")
-                                    .font(isPad ? .footnote : .caption)
-                                    .foregroundStyle(Color.primary.opacity(0.7))
-                            }
-                            .padding(.trailing, isPad ? 4 : 2)
-                        }
-                    }
-
-                    // Forgot password email input (when forgot password is active)
-                    if showForgotPassword {
-                        if showResetEmailSent {
-                            // Success state - email sent
-                            VStack(spacing: isPad ? 24 : 20) {
-                                ZStack {
-                                    Circle()
-                                        .fill(.green.gradient)
-                                        .frame(width: isPad ? 80 : 64, height: isPad ? 80 : 64)
-                                        .shadow(color: .green.opacity(0.3), radius: isPad ? 16 : 12, x: 0, y: 8)
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: isPad ? 40 : 32, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
-                                
-                                VStack(spacing: isPad ? 12 : 8) {
-                                    Text("Check your email")
-                                        .font(
-                                            isPad
-                                            ? .system(size: 28, weight: .bold, design: .rounded)
-                                            : .system(.title2, design: .rounded).weight(.bold)
-                                        )
-                                    
-                                    Text("We've sent a password reset link to")
-                                        .font(isPad ? .system(.body, design: .rounded) : .system(.subheadline, design: .rounded))
-                                        .foregroundStyle(Color.primary.opacity(0.7))
-                                        .multilineTextAlignment(.center)
-                                    
-                                    Text(viewModel.email)
-                                        .font(isPad ? .system(.body, design: .rounded).weight(.semibold) : .system(.subheadline, design: .rounded).weight(.semibold))
-                                        .foregroundStyle(.blue)
-                                        .multilineTextAlignment(.center)
-                                    
-                                    Text("Click the link in the email to reset your password.")
-                                        .font(isPad ? .system(.body, design: .rounded) : .system(.subheadline, design: .rounded))
-                                        .foregroundStyle(Color.primary.opacity(0.7))
-                                        .multilineTextAlignment(.center)
-                                        .padding(.top, 4)
-                                }
-                                
-                                Button(action: {
-                                    showForgotPassword = false
-                                    showResetEmailSent = false
-                                }) {
-                                    Text("Back to Sign In")
-                                        .font(isPad ? .footnote : .caption)
-                                        .foregroundStyle(Color.primary.opacity(0.7))
-                                }
-                                .padding(.top, 8)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, isPad ? 24 : 20)
-                        } else {
-                            // Email input and send button
-                            Button(action: {
-                                Task {
-                                    await viewModel.resetPassword()
-                                    if viewModel.noticeMessage != nil {
-                                        showResetEmailSent = true
-                                    }
-                                }
-                            }) {
-                                HStack(spacing: isPad ? 10 : 8) {
-                                    if viewModel.isLoadingEmail { ProgressView() }
-                                    Text(viewModel.isLoadingEmail ? "Sending…" : "Send Reset Email")
-                                        .font(
-                                            isPad
-                                            ? .system(.title3, design: .rounded).weight(.semibold)
-                                            : .system(.headline, design: .rounded).weight(.semibold)
-                                        )
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, isPad ? 16 : 14)
-                                .background(
-                                    LinearGradient(colors: [.blue.opacity(0.95), .cyan.opacity(0.95)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                )
-                                .foregroundStyle(.white)
-                                .clipShape(Capsule())
-                                .shadow(color: .blue.opacity(0.25), radius: isPad ? 12 : 10, x: 0, y: 8)
-                            }
-                            .disabled(viewModel.isLoadingEmail)
-                            
-                            Button(action: {
-                                showForgotPassword = false
-                                showResetEmailSent = false
-                            }) {
-                                Text("Back to Sign In")
-                                    .font(isPad ? .footnote : .caption)
-                                    .foregroundStyle(Color.primary.opacity(0.7))
-                            }
-                            .padding(.top, 4)
-                        }
-                    } else {
-                        // Show sign up success UI or regular sign in/sign up buttons
-                        if showSignUpEmailSent {
-                            // Success state - sign up email confirmation sent
-                            VStack(spacing: isPad ? 24 : 20) {
-                                ZStack {
-                                    Circle()
-                                        .fill(.green.gradient)
-                                        .frame(width: isPad ? 80 : 64, height: isPad ? 80 : 64)
-                                        .shadow(color: .green.opacity(0.3), radius: isPad ? 16 : 12, x: 0, y: 8)
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: isPad ? 40 : 32, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
-                                
-                                VStack(spacing: isPad ? 12 : 8) {
-                                    Text("Check your email")
-                                        .font(
-                                            isPad
-                                            ? .system(size: 28, weight: .bold, design: .rounded)
-                                            : .system(.title2, design: .rounded).weight(.bold)
-                                        )
-                                    
-                                    Text("We've sent a confirmation link to")
-                                        .font(isPad ? .system(.body, design: .rounded) : .system(.subheadline, design: .rounded))
-                                        .foregroundStyle(Color.primary.opacity(0.7))
-                                        .multilineTextAlignment(.center)
-                                    
-                                    Text(viewModel.email)
-                                        .font(isPad ? .system(.body, design: .rounded).weight(.semibold) : .system(.subheadline, design: .rounded).weight(.semibold))
-                                        .foregroundStyle(.blue)
-                                        .multilineTextAlignment(.center)
-                                    
-                                    Text("Click the link in the email to confirm your account and get started.")
-                                        .font(isPad ? .system(.body, design: .rounded) : .system(.subheadline, design: .rounded))
-                                        .foregroundStyle(Color.primary.opacity(0.7))
-                                        .multilineTextAlignment(.center)
-                                        .padding(.top, 4)
-                                }
-                                
-                                Button(action: {
-                                    showSignUpEmailSent = false
-                                    viewModel.authMode = .signIn
-                                }) {
-                                    Text("Back to Sign In")
-                                        .font(isPad ? .footnote : .caption)
-                                        .foregroundStyle(Color.primary.opacity(0.7))
-                                }
-                                .padding(.top, 8)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, isPad ? 24 : 20)
-                        } else {
-                            // Sign in/Sign up button
-                            Button(action: {
-                                Task {
-                                    if viewModel.authMode == .signIn {
-                                        await viewModel.signInWithEmail()
-                                    } else {
-                                        await viewModel.signUpWithEmail()
-                                        if viewModel.noticeMessage != nil {
-                                            showSignUpEmailSent = true
-                                        }
-                                    }
-                                }
-                            }) {
-                                HStack(spacing: isPad ? 10 : 8) {
-                                    if viewModel.isLoadingEmail { ProgressView() }
-                                    Text(viewModel.isLoadingEmail ? "Please wait…" : (viewModel.authMode == .signIn ? "Sign In" : "Sign Up"))
-                                        .font(
-                                            isPad
-                                            ? .system(.title3, design: .rounded).weight(.semibold)
-                                            : .system(.headline, design: .rounded).weight(.semibold)
-                                        )
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, isPad ? 16 : 14)
-                                .background(
-                                    LinearGradient(colors: [.purple.opacity(0.95), .pink.opacity(0.95)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                )
-                                .foregroundStyle(.white)
-                                .clipShape(Capsule())
-                                .shadow(color: .purple.opacity(0.25), radius: isPad ? 12 : 10, x: 0, y: 8)
-                            }
-                            .disabled(viewModel.isLoadingEmail)
-
-                            // Toggle between sign in and sign up
-                            Button(action: {
-                                withAnimation {
-                                    viewModel.authMode = viewModel.authMode == .signIn ? .signUp : .signIn
-                                    viewModel.password = ""
-                                    viewModel.errorMessage = nil
-                                    showSignUpEmailSent = false
-                                }
-                            }) {
-                                HStack(spacing: 4) {
-                                    Text(viewModel.authMode == .signIn ? "Don't have an account?" : "Already have an account?")
-                                        .font(isPad ? .footnote : .caption)
-                                        .foregroundStyle(Color.primary.opacity(0.7))
-                                    Text(viewModel.authMode == .signIn ? "Sign Up" : "Sign In")
-                                        .font(isPad ? .footnote : .caption)
-                                        .foregroundStyle(.purple)
-                                        .fontWeight(.semibold)
-                                }
-                            }
-                            .padding(.top, 4)
-                        }
-                    }
-                }
-                .padding(isPad ? 18 : 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.06), radius: isPad ? 18 : 16, x: 0, y: 10)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.3),
+                            Color.white.opacity(0.1)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
                 )
-                .padding(.horizontal)
-                }
+        )
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1)) {
+                animateIn = true
+            }
+        }
+    }
+}
 
+// MARK: - Forgot Password View
+
+private struct ForgotPasswordView: View {
+    @ObservedObject var viewModel: AuthViewModel
+    @Binding var showForgotPassword: Bool
+    @Binding var showResetEmailSent: Bool
+    var isEmailFocused: FocusState<Bool>.Binding
+    let isPad: Bool
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            if showResetEmailSent {
+                // Success state
+                SuccessStateView(
+                    title: "Check Your Email",
+                    message: "We've sent a password reset link to",
+                    email: viewModel.email,
+                    subtitle: "Click the link in the email to reset your password.",
+                    buttonTitle: "Back to Sign In",
+                    action: {
+                        showForgotPassword = false
+                        showResetEmailSent = false
+                    }
+                )
+                                        } else {
+                // Email input
+                VStack(spacing: 16) {
+                    VStack(spacing: 8) {
+                        Text("Reset Password")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                        
+                        Text("Enter your email to receive a reset link")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                                                .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    
+                    AuthTextField(
+                        text: $viewModel.email,
+                        placeholder: "Email address",
+                        icon: "envelope.fill",
+                        iconColor: Color(hex: "ff4d8d"),
+                        keyboardType: .emailAddress,
+                        textContentType: .emailAddress,
+                        isFocused: isEmailFocused
+                    )
+                    
+                    AuthPrimaryButton(
+                        title: "Send Reset Link",
+                        isLoading: viewModel.isLoadingEmail,
+                        gradient: [Color(hex: "06b6d4"), Color(hex: "8b5cf6")],
+                        action: {
+                            Task {
+                                await viewModel.resetPassword()
+                                if viewModel.noticeMessage != nil {
+                                    showResetEmailSent = true
+                                }
+                            }
+                        }
+                    )
+                    .disabled(viewModel.isLoadingEmail)
+                    
+                            Button(action: {
+                        showForgotPassword = false
+                        showResetEmailSent = false
+                    }) {
+                        Text("Back to Sign In")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Sign Up Success View
+
+private struct SignUpSuccessView: View {
+    @ObservedObject var viewModel: AuthViewModel
+    @Binding var showSignUpEmailSent: Bool
+    
+    var body: some View {
+        SuccessStateView(
+            title: "Check Your Email",
+            message: "We've sent a confirmation link to",
+            email: viewModel.email,
+            subtitle: "Click the link in the email to confirm your account.",
+            buttonTitle: "Back to Sign In",
+            action: {
+                showSignUpEmailSent = false
+                viewModel.authMode = .signIn
+            }
+        )
+    }
+}
+
+// MARK: - Success State View
+
+private struct SuccessStateView: View {
+    let title: String
+    let message: String
+    let email: String
+    let subtitle: String
+    let buttonTitle: String
+    let action: () -> Void
+    
+    @State private var checkmarkScale: CGFloat = 0
+    @State private var animateIn = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Success checkmark
+                                ZStack {
+                                    Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "10b981"), Color(hex: "059669")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 72, height: 72)
+                    .shadow(color: Color(hex: "10b981").opacity(0.2), radius: 10, x: 0, y: 5)
+                
+                                    Image(systemName: "checkmark")
+                    .font(.system(size: 32, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+            .scaleEffect(checkmarkScale)
+            
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                
+                Text(message)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.center)
+                                    
+                Text(email)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(hex: "8b5cf6"))
+                                        .multilineTextAlignment(.center)
+                                    
+                Text(subtitle)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.top, 4)
+                                }
+            .opacity(animateIn ? 1 : 0)
+            .offset(y: animateIn ? 0 : 20)
+            
+            Button(action: action) {
+                Text(buttonTitle)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color(hex: "8b5cf6"))
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 24)
+                    .background(Color(hex: "8b5cf6").opacity(0.1), in: Capsule())
+            }
+            .opacity(animateIn ? 1 : 0)
+        }
+        .padding(.vertical, 8)
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
+                checkmarkScale = 1
+            }
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2)) {
+                animateIn = true
+            }
+        }
+    }
+}
+
+// MARK: - Auth Divider
+
+private struct AuthDivider: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.clear, Color.primary.opacity(0.15)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 1)
+            
+            Text("or continue with email")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.primary.opacity(0.15), Color.clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 1)
+        }
+    }
+}
+
+// MARK: - Auth Text Field
+
+private struct AuthTextField: View {
+    @Binding var text: String
+    let placeholder: String
+    let icon: String
+    let iconColor: Color
+    var keyboardType: UIKeyboardType = .default
+    var textContentType: UITextContentType? = nil
+    var isFocused: FocusState<Bool>.Binding
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            // Icon
+                                ZStack {
+                                    Circle()
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(iconColor)
+            }
+            
+            // Text field
+            TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(Color.secondary.opacity(0.6)))
+                .font(.system(size: 17, weight: .medium, design: .rounded))
+                .foregroundStyle(.primary)
+                .keyboardType(keyboardType)
+                .textContentType(textContentType)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+                .focused(isFocused)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    isFocused.wrappedValue ?
+                    AnyShapeStyle(iconColor.opacity(0.4)) :
+                    AnyShapeStyle(Color.primary.opacity(0.08)),
+                    lineWidth: 1
+                )
+        )
+        .animation(.spring(response: 0.3), value: isFocused.wrappedValue)
+    }
+}
+
+// MARK: - Auth Secure Field
+
+private struct AuthSecureField: View {
+    @Binding var text: String
+    let placeholder: String
+    let icon: String
+    let iconColor: Color
+    @Binding var showPassword: Bool
+    var textContentType: UITextContentType? = nil
+    var isFocused: FocusState<Bool>.Binding
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(iconColor)
+            }
+            
+            // Password field
+            Group {
+                if showPassword {
+                    TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(Color.secondary.opacity(0.6)))
+                } else {
+                    SecureField("", text: $text, prompt: Text(placeholder).foregroundStyle(Color.secondary.opacity(0.6)))
+                }
+            }
+            .font(.system(size: 17, weight: .medium, design: .rounded))
+            .foregroundStyle(.primary)
+            .textContentType(textContentType)
+            .autocapitalization(.none)
+            .disableAutocorrection(true)
+            .focused(isFocused)
+            
+            // Toggle visibility
+            Button(action: { showPassword.toggle() }) {
+                Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    isFocused.wrappedValue ?
+                    AnyShapeStyle(iconColor.opacity(0.4)) :
+                    AnyShapeStyle(Color.primary.opacity(0.08)),
+                    lineWidth: 1
+                )
+        )
+        .animation(.spring(response: 0.3), value: isFocused.wrappedValue)
+    }
+}
+
+// MARK: - Primary Button
+
+private struct AuthPrimaryButton: View {
+    let title: String
+    var isLoading: Bool = false
+    var gradient: [Color]
+    let action: () -> Void
+    
+    init(title: String, isLoading: Bool = false, gradient: [Color] = [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")], action: @escaping () -> Void) {
+        self.title = title
+        self.isLoading = isLoading
+        self.gradient = gradient
+        self.action = action
+    }
+    
+    @State private var isPressed = false
+    @State private var shimmerPhase: CGFloat = 0
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                // Background
+                LinearGradient(
+                    colors: gradient,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                
+                // Shimmer
+                GeometryReader { geometry in
+                    LinearGradient(
+                        colors: [.clear, .white.opacity(0.25), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: geometry.size.width * 0.5)
+                    .offset(x: shimmerPhase * geometry.size.width * 1.5 - geometry.size.width * 0.5)
+                }
+                .opacity(0.5)
+                
+                // Content
+                HStack(spacing: 10) {
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                    }
+                    Text(isLoading ? "Please wait..." : title)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                }
+            }
+            .frame(height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: gradient.first!.opacity(0.2), radius: 8, x: 0, y: 4)
+            .scaleEffect(isPressed ? 0.97 : 1)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    withAnimation(.spring(response: 0.2)) { isPressed = true }
+                }
+                .onEnded { _ in
+                    withAnimation(.spring(response: 0.3)) { isPressed = false }
+                }
+        )
+        .onAppear {
+            withAnimation(
+                .linear(duration: 2.5)
+                .repeatForever(autoreverses: false)
+            ) {
+                shimmerPhase = 1
+            }
+        }
+    }
+}
+
+// MARK: - Auth Mode Toggle
+
+private struct AuthModeToggle: View {
+    @Binding var authMode: AuthViewModel.AuthMode
+    @Binding var password: String
+    @Binding var errorMessage: String?
+    @Binding var showSignUpEmailSent: Bool
+    
+    var body: some View {
+                            Button(action: {
+            withAnimation(.spring(response: 0.4)) {
+                authMode = authMode == .signIn ? .signUp : .signIn
+                password = ""
+                errorMessage = nil
+                                    showSignUpEmailSent = false
+                                }
+                            }) {
+            HStack(spacing: 6) {
+                Text(authMode == .signIn ? "Don't have an account?" : "Already have an account?")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                
+                Text(authMode == .signIn ? "Sign Up" : "Sign In")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color(hex: "8b5cf6"))
+            }
+        }
+    }
+}
+
+// MARK: - Messages View
+
+private struct AuthMessagesView: View {
+    @ObservedObject var viewModel: AuthViewModel
+    
+    var body: some View {
+        VStack(spacing: 8) {
                 if let error = viewModel.errorMessage, !error.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14, weight: .semibold))
                     Text(error)
-                        .font(.footnote)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                }
                         .foregroundStyle(.red)
-                        .padding(.top, 2)
-                        .padding(.horizontal)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .multilineTextAlignment(.center)
+                .transition(.move(edge: .top).combined(with: .opacity))
                 }
+            
                 if let notice = viewModel.noticeMessage, !notice.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
                     Text(notice)
-                        .font(.footnote)
-                        .foregroundStyle(Color.primary.opacity(0.7))
-                        .padding(.top, 2)
-                        .padding(.horizontal)
-                        .multilineTextAlignment(.center)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                 }
+                .foregroundStyle(Color(hex: "06b6d4"))
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(Color(hex: "06b6d4").opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .multilineTextAlignment(.center)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.4), value: viewModel.errorMessage)
+        .animation(.spring(response: 0.4), value: viewModel.noticeMessage)
+    }
+}
 
+// MARK: - Footer View
+
+private struct AuthFooterView: View {
+    var body: some View {
                 HStack(spacing: 4) {
                     Text("By continuing, you agree to our")
-                        .font(isPad ? .footnote : .caption2)
-                        .foregroundStyle(Color.primary.opacity(0.7))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+            
                     Button("Terms") {
-                        Task {
-                            await openURL(urlString: "https://schedulr.co.uk/terms")
-                        }
-                    }
-                    .font(isPad ? .footnote : .caption2)
-                    .foregroundStyle(Color.primary.opacity(0.7))
-                    Text("&")
-                        .font(isPad ? .footnote : .caption2)
-                        .foregroundStyle(Color.primary.opacity(0.7))
-                    Button("Privacy Policy") {
-                        Task {
-                            await openURL(urlString: "https://schedulr.co.uk/privacy")
-                        }
-                    }
-                    .font(isPad ? .footnote : .caption2)
-                    .foregroundStyle(Color.primary.opacity(0.7))
-                }
-                .padding(.bottom, 12)
+                openURL(urlString: "https://schedulr.co.uk/terms")
             }
-            .padding(.horizontal, isPad ? 28 : 16)
-            .frame(maxWidth: isPad ? 560 : .infinity)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea()
-        .onAppear {
-            viewModel.loadInitialSession()
-            emblem = emblemOptions.randomElement() ?? emblem
-            sparkle = sparkleOptions.randomElement() ?? sparkle
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color(hex: "8b5cf6"))
+            
+                    Text("&")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+            
+            Button("Privacy") {
+                openURL(urlString: "https://schedulr.co.uk/privacy")
+            }
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color(hex: "8b5cf6"))
         }
     }
     
-    /// Opens a URL in SFSafariViewController
-    /// No tracking is performed - cookies are only used for essential website functionality
-    private func openURL(urlString: String) async {
+    private func openURL(urlString: String) {
         guard let url = URL(string: urlString) else { return }
         
         #if os(iOS)
-        // Use SFSafariViewController for better in-app experience
         let config = SFSafariViewController.Configuration()
         config.entersReaderIfAvailable = false
         
         let safariVC = SFSafariViewController(url: url, configuration: config)
-        safariVC.preferredControlTintColor = .systemPurple
+        safariVC.preferredControlTintColor = UIColor(Color(hex: "8b5cf6"))
         safariVC.preferredBarTintColor = .systemBackground
         if #available(iOS 11.0, *) {
             safariVC.dismissButtonStyle = .close
         }
         
-        // Present the Safari view controller
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let rootViewController = windowScene.windows.first?.rootViewController {
             var presentingVC = rootViewController
@@ -664,54 +1148,12 @@ struct AuthView: View {
             }
             presentingVC.present(safariVC, animated: true)
         }
-        #else
-        await UIApplication.shared.open(url)
         #endif
     }
 }
 
-private struct BubbleBackground: View {
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.pink.opacity(0.28))
-                .frame(width: 200, height: 200)
-                .blur(radius: 24)
-                .offset(x: -130, y: -260)
 
-            Circle()
-                .fill(Color.blue.opacity(0.24))
-                .frame(width: 240, height: 240)
-                .blur(radius: 28)
-                .offset(x: 130, y: -210)
-
-            Circle()
-                .fill(Color.mint.opacity(0.28))
-                .frame(width: 300, height: 300)
-                .blur(radius: 34)
-                .offset(x: 0, y: 280)
-
-            // Extra tiny bubbles for a fuller feel
-            Circle()
-                .fill(Color.white.opacity(0.25))
-                .frame(width: 20, height: 20)
-                .blur(radius: 1)
-                .offset(x: -160, y: -40)
-
-            Circle()
-                .fill(Color.white.opacity(0.25))
-                .frame(width: 14, height: 14)
-                .blur(radius: 1)
-                .offset(x: 140, y: 60)
-
-            Circle()
-                .fill(Color.white.opacity(0.22))
-                .frame(width: 10, height: 10)
-                .blur(radius: 1)
-                .offset(x: -40, y: 160)
-        }
-    }
-}
+// MARK: - Preview
 
 #Preview {
     AuthView(viewModel: AuthViewModel())

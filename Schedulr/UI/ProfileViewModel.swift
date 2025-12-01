@@ -19,7 +19,10 @@ class ProfileViewModel: ObservableObject {
     @Published var groupToLeave: GroupMembership?
     @Published var groupToTransfer: GroupMembership?
     @Published var groupToDelete: GroupMembership?
+    @Published var groupToRename: GroupMembership?
     @Published var newOwnerId: UUID?
+    @Published var showingRenameGroupSheet: Bool = false
+    @Published var newGroupName: String = ""
 
     private var client: SupabaseClient {
         SupabaseManager.shared.client
@@ -27,7 +30,7 @@ class ProfileViewModel: ObservableObject {
 
     struct GroupMembership: Identifiable {
         let id: UUID
-        let name: String
+        var name: String
         let role: String?
     }
 
@@ -239,6 +242,30 @@ class ProfileViewModel: ObservableObject {
         }
         
         isLoading = false
+    }
+    
+    func renameGroup(_ group: GroupMembership, newName: String) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            try await GroupService.shared.renameGroup(groupId: group.id, newName: newName)
+            
+            // Update local state immediately
+            if let index = userGroups.firstIndex(where: { $0.id == group.id }) {
+                userGroups[index].name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            
+            print("✅ Group renamed successfully")
+        } catch {
+            errorMessage = "Failed to rename group: \(error.localizedDescription)"
+            print("Error renaming group: \(error)")
+        }
+        
+        isLoading = false
+        showingRenameGroupSheet = false
+        groupToRename = nil
+        newGroupName = ""
     }
 
     func deleteAccount() async -> Bool {

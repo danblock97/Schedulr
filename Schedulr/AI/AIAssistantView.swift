@@ -617,7 +617,7 @@ private struct AIProPaywallModal: View {
                     
                     VStack(spacing: 12) {
                         AIFeatureRow(text: "Natural language queries")
-                        AIFeatureRow(text: "100 AI requests per month")
+                        AIFeatureRow(text: "300 AI requests per month")
                         AIFeatureRow(text: "Find free time slots instantly")
                     }
                     .padding(.vertical, 8)
@@ -712,7 +712,7 @@ private struct AIInlineUpgradePrompt: View {
             
             VStack(spacing: 10) {
                 AIFeatureRow(text: "Natural language queries")
-                AIFeatureRow(text: "100 AI requests per month")
+                AIFeatureRow(text: "300 AI requests per month")
                 AIFeatureRow(text: "Find free time slots instantly")
             }
             .padding(.vertical, 8)

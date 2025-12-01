@@ -21,6 +21,11 @@ struct ProfileView: View {
     @State private var aiUsageInfo: AIUsageInfo?
     @State private var groupLimitInfo: (current: Int, max: Int)?
     @State private var showingThemePicker = false
+    @Environment(\.colorScheme) var colorScheme
+    
+    // Animation states
+    @State private var headerAppeared = false
+    @State private var sectionsAppeared = false
     
     private var currentThemeName: String {
         if case .preset = themeManager.currentTheme.type,
@@ -34,36 +39,48 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Bubbly background
-                Color(.systemGroupedBackground)
+                // Animated background
+                ProfileAnimatedBackground()
                     .ignoresSafeArea()
-
-                BubblyProfileBackground()
-                    .ignoresSafeArea()
-
+                
                 ScrollView {
-                    profileContent
-                        .padding(.bottom, 100) // Space for floating tab bar
+                    VStack(spacing: 0) {
+                        // Profile Header Card
+                        profileHeaderCard
+                            .padding(.horizontal, 20)
+                            .padding(.top, 20)
+                            .offset(y: headerAppeared ? 0 : -30)
+                            .opacity(headerAppeared ? 1 : 0)
+                        
+                        // Content sections
+                        VStack(spacing: 16) {
+                            subscriptionSection
+                            groupsSection
+                            calendarPreferencesSection
+                            colorThemeSection
+                            actionButtonsSection
+                            errorMessageView
+                            versionInfoView
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 24)
+                        .padding(.bottom, 120)
+                        .offset(y: sectionsAppeared ? 0 : 20)
+                        .opacity(sectionsAppeared ? 1 : 0)
+                    }
                 }
             }
-            .navigationTitle("Profile")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Profile")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                }
+            }
             .overlay {
                 if viewModel.isLoading {
-                    ZStack {
-                        Color.black.opacity(0.2)
-                            .ignoresSafeArea()
-
-                        VStack(spacing: 12) {
-                            ProgressView()
-                                .scaleEffect(1.2)
-                            Text("Loading...")
-                                .font(.system(size: 15, weight: .medium, design: .rounded))
-                        }
-                        .padding(24)
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    }
+                    ProfileLoadingOverlay()
                 }
             }
             .alert("Leave Group", isPresented: $viewModel.showingLeaveGroupConfirmation) {
@@ -72,7 +89,6 @@ struct ProfileView: View {
                     if let group = viewModel.groupToLeave {
                         Task {
                             await viewModel.leaveGroup(group)
-                            // Clear cached calendar events from the group we left
                             calendarManager.clearGroupEvents()
                         }
                     }
@@ -99,6 +115,14 @@ struct ProfileView: View {
                 await viewModel.loadUserProfile()
                 await loadCalendarPrefs()
                 await loadSubscriptionInfo()
+                
+                // Trigger animations
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    headerAppeared = true
+                }
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.15)) {
+                    sectionsAppeared = true
+                }
             }
             .onChange(of: viewModel.selectedPhotoItem) { _, _ in
                 Task {
@@ -115,6 +139,26 @@ struct ProfileView: View {
                     }
                 }
             }
+            .sheet(isPresented: $viewModel.showingRenameGroupSheet) {
+                RenameGroupSheet(
+                    groupName: $viewModel.newGroupName,
+                    isLoading: viewModel.isLoading,
+                    onCancel: {
+                        viewModel.showingRenameGroupSheet = false
+                        viewModel.groupToRename = nil
+                        viewModel.newGroupName = ""
+                    },
+                    onSave: {
+                        if let group = viewModel.groupToRename {
+                            Task {
+                                await viewModel.renameGroup(group, newName: viewModel.newGroupName)
+                            }
+                        }
+                    }
+                )
+                .presentationDetents([.height(220)])
+                .presentationDragIndicator(.visible)
+            }
             .refreshable {
                 await SubscriptionManager.shared.fetchSubscriptionStatus()
                 await loadSubscriptionInfo()
@@ -127,16 +171,199 @@ struct ProfileView: View {
         }
     }
     
+    // MARK: - Profile Header Card
+    
+    private var profileHeaderCard: some View {
+        VStack(spacing: 20) {
+            // Avatar with edit button
+            ZStack {
+                // Glow ring
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color(hex: "ff4d8d").opacity(0.4),
+                                Color(hex: "8b5cf6").opacity(0.4)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 3
+                    )
+                    .frame(width: 130, height: 130)
+                    .blur(radius: 4)
+                
+                if let avatarURL = viewModel.avatarURL, let url = URL(string: avatarURL) {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        ProgressView()
+                            .tint(Color(hex: "ff4d8d"))
+                    }
+                    .frame(width: 110, height: 110)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 3
+                            )
+                    )
+                } else {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 110, height: 110)
+                        .overlay(
+                            Text(viewModel.displayName.prefix(1).uppercased())
+                                .font(.system(size: 44, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                        )
+                }
+                
+                // Camera button
+                PhotosPicker(selection: $viewModel.selectedPhotoItem, matching: .images) {
+                    ZStack {
+                        Circle()
+                            .fill(colorScheme == .dark ? Color(hex: "1a1a2e") : .white)
+                            .frame(width: 38, height: 38)
+                        
+                        Circle()
+                            .stroke(Color(hex: "ff4d8d").opacity(0.5), lineWidth: 2)
+                            .frame(width: 38, height: 38)
+                        
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+                }
+                .offset(x: 42, y: 42)
+            }
+            
+            // Name section
+            if isEditingName {
+                nameEditView
+            } else {
+                nameDisplayView
+            }
+        }
+        .padding(.vertical, 28)
+        .padding(.horizontal, 24)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(colorScheme == .dark ? Color(hex: "1a1a2e").opacity(0.8) : Color.white.opacity(0.9))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.08), radius: 20, x: 0, y: 10)
+    }
+    
+    private var nameDisplayView: some View {
+        Button {
+            tempDisplayName = viewModel.displayName
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                isEditingName = true
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text(viewModel.displayName.isEmpty ? "Set your name" : viewModel.displayName)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                
+                Image(systemName: "pencil.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        }
+    }
+    
+    private var nameEditView: some View {
+        VStack(spacing: 14) {
+            TextField("Display Name", text: $tempDisplayName)
+                .font(.system(size: 18, weight: .medium, design: .rounded))
+                .multilineTextAlignment(.center)
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+            
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        isEditingName = false
+                        tempDisplayName = viewModel.displayName
+                    }
+                } label: {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                
+                Button {
+                    viewModel.displayName = tempDisplayName
+                    Task {
+                        await viewModel.updateDisplayName()
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            isEditingName = false
+                        }
+                    }
+                } label: {
+                    Text("Save")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+        }
+    }
+    
     // MARK: - Subscription Section
     
     private var subscriptionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("💎 Subscription")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.horizontal)
-            
-            VStack(spacing: 12) {
+        ProfileSectionCard(title: "Subscription", icon: "sparkles") {
+            VStack(spacing: 14) {
                 HStack {
                     SubscriptionBadge(tier: subscriptionManager.currentTier)
                     
@@ -144,24 +371,23 @@ struct ProfileView: View {
                     
                     if subscriptionManager.currentTier == .free {
                         Button(action: { showPaywall = true }) {
-                            Text("Upgrade")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(
-                                    Capsule()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    themeManager.primaryColor,
-                                                    themeManager.secondaryColor
-                                                ],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            )
-                                        )
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 14))
+                                Text("Upgrade")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
                                 )
+                            )
+                            .clipShape(Capsule())
                         }
                     }
                 }
@@ -173,79 +399,98 @@ struct ProfileView: View {
                 
                 // Usage stats
                 if let groupLimitInfo = groupLimitInfo {
-                    UsageStatRow(
+                    ProfileUsageRow(
                         icon: "person.3.fill",
                         title: "Groups",
                         current: groupLimitInfo.current,
-                        max: groupLimitInfo.max,
-                        themeManager: themeManager
+                        max: groupLimitInfo.max
                     )
                 }
                 
                 if subscriptionManager.currentTier == .pro,
                    let aiUsage = aiUsageInfo {
-                    UsageStatRow(
+                    ProfileUsageRow(
                         icon: "sparkles",
                         title: "AI Requests",
                         current: aiUsage.requestCount,
-                        max: aiUsage.maxRequests,
-                        themeManager: themeManager
+                        max: aiUsage.maxRequests
                     )
                 }
             }
-            .padding()
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal)
         }
     }
     
-    // MARK: - Content Views
+    // MARK: - Groups Section
     
-    private var profileContent: some View {
-        VStack(spacing: 24) {
-            avatarSection
-            nameSection
-            subscriptionSection
-            groupsSection
-            calendarPreferencesSection
-            colorThemeSection
-            actionButtonsSection
-            errorMessageView
-            versionInfoView
-        }
-    }
-    
-    private var avatarSection: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                if let avatarURL = viewModel.avatarURL, let url = URL(string: avatarURL) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        ProgressView()
-                    }
-                    .frame(width: 120, height: 120)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor,
-                                        themeManager.secondaryColor
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 4
+    private var groupsSection: some View {
+        Group {
+            if !viewModel.userGroups.isEmpty {
+                ProfileSectionCard(title: "Your Groups", icon: "person.2.fill") {
+                    VStack(spacing: 10) {
+                        ForEach(viewModel.userGroups) { group in
+                            ProfileGroupRow(
+                                group: group,
+                                onLeave: {
+                                    viewModel.groupToLeave = group
+                                    viewModel.showingLeaveGroupConfirmation = true
+                                },
+                                onRename: {
+                                    viewModel.groupToRename = group
+                                    viewModel.newGroupName = group.name
+                                    viewModel.showingRenameGroupSheet = true
+                                }
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Calendar Preferences Section
+    
+    private var calendarPreferencesSection: some View {
+        ProfileSectionCard(title: "Calendar", icon: "calendar") {
+            VStack(spacing: 12) {
+                ProfileToggleRow(
+                    title: "Hide holidays & birthdays",
+                    subtitle: "Filters common holiday and birthday calendars",
+                    isOn: Binding(
+                        get: { calendarPrefs.hideHolidays },
+                        set: { newVal in
+                            calendarPrefs.hideHolidays = newVal
+                            Task { await saveCalendarPrefs() }
+                        }
                     )
-                    .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 8)
-                } else {
-                    Circle()
+                )
+                
+                Divider()
+                    .opacity(0.5)
+                
+                ProfileToggleRow(
+                    title: "Deduplicate all‑day events",
+                    subtitle: "Combines same‑title events into one row",
+                    isOn: Binding(
+                        get: { calendarPrefs.dedupAllDay },
+                        set: { newVal in
+                            calendarPrefs.dedupAllDay = newVal
+                            Task { await saveCalendarPrefs() }
+                        }
+                    )
+                )
+            }
+        }
+    }
+    
+    // MARK: - Color Theme Section
+    
+    private var colorThemeSection: some View {
+        ProfileSectionCard(title: "Appearance", icon: "paintpalette.fill") {
+            Button {
+                showingThemePicker = true
+            } label: {
+                HStack(spacing: 14) {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -256,346 +501,113 @@ struct ProfileView: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 120, height: 120)
+                        .frame(width: 44, height: 44)
                         .overlay(
-                            Text(viewModel.displayName.prefix(1).uppercased())
-                                .font(.system(size: 48, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(Color.white.opacity(0.3), lineWidth: 2)
                         )
-                        .shadow(color: Color.black.opacity(0.15), radius: 16, x: 0, y: 8)
-                }
-
-                // Camera button overlay
-                PhotosPicker(selection: $viewModel.selectedPhotoItem, matching: .images) {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 36, height: 36)
-                        .overlay(
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [
-                                            themeManager.primaryColor,
-                                            themeManager.secondaryColor
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        )
-                        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
-                }
-                .offset(x: 40, y: 40)
-            }
-
-            Text("✨ Tap to change")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundColor(.secondary)
-        }
-        .padding(.top, 20)
-    }
-    
-    private var nameSection: some View {
-        VStack(spacing: 12) {
-            if isEditingName {
-                VStack(spacing: 12) {
-                    TextField("Display Name", text: $tempDisplayName)
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .padding()
-                        .background(.ultraThinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                    HStack(spacing: 12) {
-                        Button {
-                            isEditingName = false
-                            tempDisplayName = viewModel.displayName
-                        } label: {
-                            Text("Cancel")
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(.ultraThinMaterial)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-
-                        Button {
-                            viewModel.displayName = tempDisplayName
-                            Task {
-                                await viewModel.updateDisplayName()
-                                isEditingName = false
-                            }
-                        } label: {
-                            Text("Save")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(
-                                    LinearGradient(
-                                        colors: [
-                                            themeManager.primaryColor,
-                                            themeManager.secondaryColor
-                                        ],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 12, x: 0, y: 6)
-                        }
-                    }
-                }
-                .padding(.horizontal)
-            } else {
-                Button {
-                    tempDisplayName = viewModel.displayName
-                    isEditingName = true
-                } label: {
-                    HStack {
-                        Text(viewModel.displayName.isEmpty ? "Set your name" : viewModel.displayName)
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundColor(.primary)
-
-                        Image(systemName: "pencil.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor,
-                                        themeManager.secondaryColor
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    }
-                }
-            }
-        }
-    }
-    
-    private var groupsSection: some View {
-        Group {
-            if !viewModel.userGroups.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("👥 Your Groups")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                        .padding(.horizontal)
-
-                    VStack(spacing: 12) {
-                        ForEach(viewModel.userGroups) { group in
-                            GroupCard(group: group) {
-                                viewModel.groupToLeave = group
-                                viewModel.showingLeaveGroupConfirmation = true
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var calendarPreferencesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("📅 Calendar Preferences")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.horizontal)
-
-            VStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Hide holidays & birthdays", isOn: Binding(
-                        get: { calendarPrefs.hideHolidays },
-                        set: { newVal in
-                            calendarPrefs.hideHolidays = newVal
-                            Task { await saveCalendarPrefs() }
-                        }
-                    ))
-                    .padding(.bottom, 2)
-                    .accessibilityHint("Filters common holiday and birthday calendars from your views and dashboard")
                     
-                    Text("Filters common holiday and birthday calendars from your Calendar and Upcoming.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Deduplicate identical all‑day events", isOn: Binding(
-                        get: { calendarPrefs.dedupAllDay },
-                        set: { newVal in
-                            calendarPrefs.dedupAllDay = newVal
-                            Task { await saveCalendarPrefs() }
-                        }
-                    ))
-                    .padding(.bottom, 2)
-                    .accessibilityHint("Combines same-title all-day events on a day into one row with a shared count")
-
-                    Text("Combines same‑title all‑day events on a day into one row with a shared count.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .padding(.horizontal)
-        }
-    }
-    
-    private var colorThemeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("🎨 Color Theme")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.horizontal)
-            
-            Button {
-                showingThemePicker = true
-            } label: {
-                HStack {
-                    // Theme preview
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: 40, height: 40)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text("App Theme")
                             .font(.system(size: 16, weight: .semibold, design: .rounded))
                             .foregroundColor(.primary)
                         
                         Text(currentThemeName)
-                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundColor(.secondary)
                     }
                     
                     Spacer()
                     
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.tertiary)
                 }
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .padding(.horizontal)
         }
     }
     
+    // MARK: - Action Buttons Section
+    
     private var actionButtonsSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             // Support Button
-            Button {
+            ProfileActionButton(
+                title: "Support",
+                icon: "questionmark.circle.fill",
+                style: .standard
+            ) {
                 Task {
                     await openURL(urlString: "https://www.schedulr.co.uk/support")
                 }
-            } label: {
-                HStack {
-                    Image(systemName: "questionmark.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("Support")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                }
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
             }
-
+            
             // Sign Out Button
-            Button {
+            ProfileActionButton(
+                title: "Sign Out",
+                icon: "rectangle.portrait.and.arrow.right",
+                style: .standard
+            ) {
                 Task {
                     await authViewModel.signOut()
                 }
-            } label: {
-                HStack {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("Sign Out")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                }
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
             }
-
+            
             // Delete Account Button
-            Button {
+            ProfileActionButton(
+                title: "Delete Account",
+                icon: "trash.fill",
+                style: .destructive
+            ) {
                 viewModel.showingDeleteAccountConfirmation = true
-            } label: {
-                HStack {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("Delete Account")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    LinearGradient(
-                        colors: [Color.red, Color.red.opacity(0.8)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: Color.red.opacity(0.3), radius: 12, x: 0, y: 6)
             }
         }
-        .padding(.horizontal)
-        .padding(.top, 12)
+        .padding(.top, 8)
     }
+    
+    // MARK: - Error Message View
     
     private var errorMessageView: some View {
         Group {
             if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundColor(.red)
-                    .padding()
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal)
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.red)
+                    
+                    Text(errorMessage)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(.red)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.red.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.red.opacity(0.3), lineWidth: 1)
+                )
             }
         }
     }
     
+    // MARK: - Version Info View
+    
     private var versionInfoView: some View {
         VStack(spacing: 4) {
-            Text(appVersion)
-                .font(.system(size: 12, weight: .regular))
+            Text("Version \(appVersion)")
+                .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundColor(.secondary)
+            
             Text("Build \(appBuildNumber)")
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: 11, weight: .regular, design: .rounded))
                 .foregroundStyle(.tertiary)
         }
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
     }
     
-    // MARK: - Helper
+    // MARK: - Helpers
     
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
@@ -606,7 +618,6 @@ struct ProfileView: View {
     }
     
     private func loadSubscriptionInfo() async {
-        // Load usage info
         groupLimitInfo = await SubscriptionLimitService.shared.getGroupLimitInfo()
         
         if subscriptionManager.currentTier == .pro {
@@ -617,31 +628,426 @@ struct ProfileView: View {
     }
 }
 
-// MARK: - Usage Stat Row
+// MARK: - Profile Section Card
 
-private struct UsageStatRow: View {
+private struct ProfileSectionCard<Content: View>: View {
+    let title: String
+    let icon: String
+    let content: Content
+    @Environment(\.colorScheme) var colorScheme
+    
+    init(title: String, icon: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                
+                Text(title)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+            }
+            
+            content
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(colorScheme == .dark ? Color(hex: "1a1a2e").opacity(0.7) : Color.white.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.2 : 0.05), radius: 12, x: 0, y: 6)
+    }
+}
+
+// MARK: - Profile Usage Row
+
+private struct ProfileUsageRow: View {
     let icon: String
     let title: String
     let current: Int
     let max: Int
-    @ObservedObject var themeManager: ThemeManager
+    
+    /// Threshold for unlimited (matches SubscriptionLimits.unlimited)
+    private let unlimitedThreshold = 999999
+    
+    private var isUnlimited: Bool {
+        max >= unlimitedThreshold
+    }
+    
+    private var progress: Double {
+        guard max > 0, !isUnlimited else { return 0 }
+        return Double(current) / Double(max)
+    }
+    
+    private var isAtLimit: Bool {
+        guard !isUnlimited else { return false }
+        return current >= max
+    }
+    
+    private var displayMax: String {
+        isUnlimited ? "∞" : "\(max)"
+    }
     
     var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(themeManager.secondaryColor)
-                .frame(width: 24)
+        VStack(spacing: 8) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: 20)
+                    
+                    Text(title)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(.primary)
+                }
+                
+                Spacer()
+                
+                if isUnlimited {
+                    HStack(spacing: 4) {
+                        Text("\(current)")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+                        Text("/ ∞")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                    }
+                } else {
+                    Text("\(current) / \(max)")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(isAtLimit ? .red : .secondary)
+                }
+            }
             
-            Text(title)
-                .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.primary)
+            // Progress bar (hidden for unlimited)
+            if !isUnlimited {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.primary.opacity(0.1))
+                            .frame(height: 6)
+                        
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(
+                                isAtLimit
+                                ? LinearGradient(colors: [.red, .red.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
+                                : LinearGradient(colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")], startPoint: .leading, endPoint: .trailing)
+                            )
+                            .frame(width: geometry.size.width * min(progress, 1.0), height: 6)
+                    }
+                }
+                .frame(height: 6)
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.03))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// MARK: - Profile Toggle Row
+
+private struct ProfileToggleRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var isOn: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $isOn) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundColor(.primary)
+                    
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .tint(Color(hex: "ff4d8d"))
+        }
+    }
+}
+
+// MARK: - Profile Group Row
+
+private struct ProfileGroupRow: View {
+    let group: ProfileViewModel.GroupMembership
+    let onLeave: () -> Void
+    let onRename: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Group icon
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: "ff4d8d").opacity(0.2), Color(hex: "8b5cf6").opacity(0.2)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 40, height: 40)
+                
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.name)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                
+                if let role = group.role {
+                    HStack(spacing: 4) {
+                        Image(systemName: role == "owner" ? "crown.fill" : "star.fill")
+                            .font(.system(size: 10))
+                        Text(role == "owner" ? "Owner" : "Member")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                    }
+                    .foregroundColor(role == "owner" ? Color(hex: "f59e0b") : .secondary)
+                }
+            }
             
             Spacer()
             
-            Text("\(current) / \(max)")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(current >= max ? .red : .secondary)
+            // Owner actions: Edit button
+            if group.role == "owner" {
+                Button(action: onRename) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .padding(8)
+                        .background(Color(hex: "ff4d8d").opacity(0.1))
+                        .clipShape(Circle())
+                }
+            } else {
+                // Member action: Leave button
+                Button(action: onLeave) {
+                    Text("Leave")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(Color.red.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.03))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// MARK: - Profile Action Button
+
+private struct ProfileActionButton: View {
+    enum Style {
+        case standard
+        case destructive
+    }
+    
+    let title: String
+    let icon: String
+    let style: Style
+    let action: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+            }
+            .foregroundColor(style == .destructive ? .white : .primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                Group {
+                    if style == .destructive {
+                        LinearGradient(
+                            colors: [Color(hex: "ef4444"), Color(hex: "dc2626")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    } else {
+                        colorScheme == .dark
+                        ? Color(hex: "1a1a2e").opacity(0.7)
+                        : Color.white.opacity(0.85)
+                    }
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(
+                        style == .destructive
+                        ? Color.clear
+                        : Color.primary.opacity(0.05),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: style == .destructive
+                ? Color.red.opacity(0.2)
+                : Color.black.opacity(colorScheme == .dark ? 0.2 : 0.05),
+                radius: style == .destructive ? 10 : 8,
+                x: 0,
+                y: 4
+            )
+        }
+    }
+}
+
+// MARK: - Rename Group Sheet
+
+private struct RenameGroupSheet: View {
+    @Binding var groupName: String
+    let isLoading: Bool
+    let onCancel: () -> Void
+    let onSave: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+    @FocusState private var isNameFocused: Bool
+    
+    private var isValid: Bool {
+        !groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                // Text field
+                TextField("Group name", text: $groupName)
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+                    .focused($isNameFocused)
+                
+                // Buttons
+                HStack(spacing: 12) {
+                    Button(action: onCancel) {
+                        Text("Cancel")
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .disabled(isLoading)
+                    
+                    Button(action: onSave) {
+                        HStack(spacing: 8) {
+                            if isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(0.9)
+                            } else {
+                                Text("Save")
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            LinearGradient(
+                                colors: isValid ? [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")] : [Color.gray.opacity(0.5), Color.gray.opacity(0.4)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .disabled(!isValid || isLoading)
+                }
+                
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("Rename Group")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                isNameFocused = true
+            }
+        }
+    }
+}
+
+// MARK: - Loading Overlay
+
+private struct ProfileLoadingOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .tint(Color(hex: "ff4d8d"))
+                
+                Text("Loading...")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundColor(.primary)
+            }
+            .padding(28)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
 }
@@ -654,16 +1060,23 @@ private struct GracePeriodWarningView: View {
     var body: some View {
         Group {
             if let days = daysRemaining {
-                HStack {
+                HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 16))
                         .foregroundColor(.orange)
+                    
                     Text("Grace period: \(days) day\(days == 1 ? "" : "s") remaining")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundColor(.orange)
                 }
-                .padding(12)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(12)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                )
             }
         }
         .task {
@@ -672,119 +1085,59 @@ private struct GracePeriodWarningView: View {
     }
 }
 
-// MARK: - Supporting Views
+// MARK: - Animated Background
 
-struct GroupCard: View {
-    let group: ProfileViewModel.GroupMembership
-    let onLeave: () -> Void
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(group.name)
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-
-                if let role = group.role {
-                    Text(role == "owner" ? "👑 Owner" : "✨ Member")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            if group.role != "owner" {
-                Button(action: onLeave) {
-                    Text("Leave")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(.red)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
-                }
-            }
-        }
-        .padding()
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
-        .padding(.horizontal)
-    }
-}
-
-struct BubblyProfileBackground: View {
+private struct ProfileAnimatedBackground: View {
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
         ZStack {
-            // Large pink bubble
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.15),
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.05)
-                        ],
-                        center: .center,
-                        startRadius: 50,
-                        endRadius: 200
-                    )
-                )
-                .frame(width: 300, height: 300)
-                .offset(x: -100, y: -250)
-                .blur(radius: 40)
-
-            // Purple bubble
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.15),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.05)
-                        ],
-                        center: .center,
-                        startRadius: 50,
-                        endRadius: 200
-                    )
-                )
-                .frame(width: 250, height: 250)
-                .offset(x: 120, y: 100)
-                .blur(radius: 40)
-
-            // Blue bubble
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.27, green: 0.63, blue: 0.98).opacity(0.12),
-                            Color(red: 0.27, green: 0.63, blue: 0.98).opacity(0.03)
-                        ],
-                        center: .center,
-                        startRadius: 50,
-                        endRadius: 150
-                    )
-                )
-                .frame(width: 200, height: 200)
-                .offset(x: -80, y: 400)
-                .blur(radius: 35)
-
-            // Small decorative bubbles
-            Circle()
-                .fill(Color.white.opacity(0.3))
-                .frame(width: 60, height: 60)
-                .offset(x: 140, y: -180)
-                .blur(radius: 10)
-
-            Circle()
-                .fill(Color.white.opacity(0.25))
-                .frame(width: 40, height: 40)
-                .offset(x: -130, y: 50)
-                .blur(radius: 8)
+            Color(.systemGroupedBackground)
+            
+            TimelineView(.animation(minimumInterval: 1/20)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                
+                Canvas { context, size in
+                    let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
+                        (Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.08 : 0.06), 0.15, 0.08, 0.32),
+                        (Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.06 : 0.05), 0.85, 0.18, 0.28),
+                        (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.05 : 0.04), 0.5, 0.55, 0.22)
+                    ]
+                    
+                    for (index, (color, baseX, baseY, baseRadius)) in blobs.enumerated() {
+                        let phase = time * 0.15 + Double(index) * 2.1
+                        let x = baseX + CGFloat(sin(phase)) * 0.06
+                        let y = baseY + CGFloat(cos(phase * 0.8)) * 0.04
+                        
+                        let center = CGPoint(x: size.width * x, y: size.height * y)
+                        let radius = size.width * baseRadius
+                        
+                        let gradient = Gradient(colors: [color, color.opacity(0)])
+                        let shading = GraphicsContext.Shading.radialGradient(
+                            gradient,
+                            center: center,
+                            startRadius: 0,
+                            endRadius: radius
+                        )
+                        
+                        context.fill(
+                            Path(ellipseIn: CGRect(
+                                x: center.x - radius,
+                                y: center.y - radius,
+                                width: radius * 2,
+                                height: radius * 2
+                            )),
+                            with: shading
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 // MARK: - Calendar Prefs IO
+
 extension ProfileView {
     private func loadCalendarPrefs() async {
         guard !isLoadingPrefs else { return }
@@ -804,12 +1157,10 @@ extension ProfileView {
     }
     
     /// Opens a URL in SFSafariViewController
-    /// No tracking is performed - cookies are only used for essential website functionality
     private func openURL(urlString: String) async {
         guard let url = URL(string: urlString) else { return }
         
         #if os(iOS)
-        // Use SFSafariViewController for better in-app experience
         let config = SFSafariViewController.Configuration()
         config.entersReaderIfAvailable = false
         
@@ -820,7 +1171,6 @@ extension ProfileView {
             safariVC.dismissButtonStyle = .close
         }
         
-        // Present the Safari view controller
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let rootViewController = windowScene.windows.first?.rootViewController {
             var presentingVC = rootViewController
@@ -834,3 +1184,4 @@ extension ProfileView {
         #endif
     }
 }
+

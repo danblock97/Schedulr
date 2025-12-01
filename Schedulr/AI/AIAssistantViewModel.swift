@@ -60,7 +60,7 @@ final class AIAssistantViewModel: ObservableObject {
             // Show limit reached message
             let limitMsg = ChatMessage(
                 role: .assistant,
-                content: "⚠️ You've reached your AI usage limit for this month. Upgrade to Pro to get 100 AI requests per month!"
+                content: "⚠️ You've reached your AI usage limit for this month. Upgrade to Pro to get 300 AI requests per month!"
             )
             messages.append(limitMsg)
             

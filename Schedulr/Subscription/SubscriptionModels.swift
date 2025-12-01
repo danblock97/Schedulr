@@ -53,6 +53,19 @@ struct SubscriptionLimits {
     let maxGroupMembers: Int
     let maxAIRequests: Int
     
+    /// Represents unlimited (used for Pro tier groups and members)
+    static let unlimited = 999999
+    
+    /// Check if groups are unlimited
+    var hasUnlimitedGroups: Bool {
+        maxGroups >= Self.unlimited
+    }
+    
+    /// Check if members are unlimited
+    var hasUnlimitedMembers: Bool {
+        maxGroupMembers >= Self.unlimited
+    }
+    
     init(for tier: SubscriptionTier) {
         switch tier {
         case .free:
@@ -60,9 +73,9 @@ struct SubscriptionLimits {
             self.maxGroupMembers = 5
             self.maxAIRequests = 0
         case .pro:
-            self.maxGroups = 5
-            self.maxGroupMembers = 10
-            self.maxAIRequests = 100
+            self.maxGroups = Self.unlimited  // Unlimited groups
+            self.maxGroupMembers = Self.unlimited  // Unlimited members per group
+            self.maxAIRequests = 300  // 300 AI requests per month
         }
     }
 }
