@@ -47,8 +47,12 @@ struct UpNextWidgetView: View {
                         .widgetAccentable()
                         .lineLimit(1)
                     
-                    if !(event.isAllDay ?? false) {
-                        Text(event.startDate, style: .time)
+                    // Show date and time
+                    if event.isAllDay ?? false {
+                        Text("\(formatEventDate(for: event, abbreviated: true)) • All Day")
+                            .font(.caption)
+                    } else {
+                        Text("\(formatEventDate(for: event, abbreviated: true)) • \(event.startDate.formatted(date: .omitted, time: .shortened))")
                             .font(.caption)
                     }
                     
@@ -219,11 +223,11 @@ struct UpNextWidgetView: View {
                 // Large Header
                 HStack {
                     VStack(alignment: .leading) {
-                        Text(Date().formatted(.dateTime.weekday(.wide).month().day()))
+                        Text("Upcoming Events")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .textCase(.uppercase)
-                        Text("Agenda")
+                        Text(Date().formatted(.dateTime.month(.wide)))
                             .font(.largeTitle)
                             .fontWeight(.bold)
                             .foregroundStyle(LinearGradient(colors: [primaryColor, secondaryColor], startPoint: .leading, endPoint: .trailing))
@@ -236,7 +240,7 @@ struct UpNextWidgetView: View {
                     ForEach(entry.upcomingEvents.prefix(4)) { event in
                         HStack(alignment: .center, spacing: 12) {
                             // Time Column
-                            VStack(alignment: .trailing) {
+                            VStack(alignment: .trailing, spacing: 2) {
                                 if event.isAllDay ?? false {
                                     Text("All Day")
                                         .font(.subheadline)
@@ -246,11 +250,13 @@ struct UpNextWidgetView: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
                                 }
-                                Text(formatEventDate(for: event, abbreviated: true))
+                                Text(formatCompactDate(for: event))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                             }
-                            .frame(width: 60, alignment: .trailing)
+                            .frame(width: 70, alignment: .trailing)
                             
                             // Vertical Line
                             Rectangle()
@@ -297,7 +303,7 @@ struct UpNextWidgetView: View {
                 .foregroundStyle(secondaryColor)
             Text("All caught up!")
                 .font(.headline)
-            Text("No upcoming events for the next 7 days.")
+            Text("No upcoming events in \(Date().formatted(.dateTime.month(.wide))).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -308,16 +314,47 @@ struct UpNextWidgetView: View {
     private func formatEventDate(for event: WidgetEvent, abbreviated: Bool = true) -> String {
         let calendar = Calendar.current
         if !calendar.isDate(event.startDate, inSameDayAs: event.endDate) {
-            // Multi-day
-            let startDay = event.startDate.formatted(.dateTime.weekday(abbreviated ? .abbreviated : .wide))
+            // Multi-day event - show full date range
             // For all-day events, the end date is usually the start of the next day.
             // So we should subtract a second to get the actual last day of the event.
             let actualEndDate = event.endDate.addingTimeInterval(-1)
-            let endDay = actualEndDate.formatted(.dateTime.weekday(abbreviated ? .abbreviated : .wide))
             
-            return "\(startDay)-\(endDay)"
+            if abbreviated {
+                // e.g., "Sat Dec 7 - Sun Dec 8"
+                let startFormatted = event.startDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+                let endFormatted = actualEndDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+                return "\(startFormatted) - \(endFormatted)"
+            } else {
+                // e.g., "Saturday Dec 7 - Sunday Dec 8"
+                let startFormatted = event.startDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+                let endFormatted = actualEndDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+                return "\(startFormatted) - \(endFormatted)"
+            }
         }
         
-        return event.startDate.formatted(.dateTime.weekday(abbreviated ? .abbreviated : .wide))
+        // Single day event - show day name and date
+        if abbreviated {
+            // e.g., "Sat Dec 7"
+            return event.startDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        } else {
+            // e.g., "Saturday Dec 7"
+            return event.startDate.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+        }
+    }
+    
+    /// Compact date format for large widget list view (narrower column)
+    private func formatCompactDate(for event: WidgetEvent) -> String {
+        let calendar = Calendar.current
+        if !calendar.isDate(event.startDate, inSameDayAs: event.endDate) {
+            // Multi-day event - show compact range like "18-19 Dec"
+            let actualEndDate = event.endDate.addingTimeInterval(-1)
+            let startDay = event.startDate.formatted(.dateTime.day())
+            let endDay = actualEndDate.formatted(.dateTime.day())
+            let month = actualEndDate.formatted(.dateTime.month(.abbreviated))
+            return "\(startDay)-\(endDay) \(month)"
+        }
+        
+        // Single day - show "Wed 3 Dec"
+        return event.startDate.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
     }
 }

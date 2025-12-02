@@ -70,15 +70,34 @@ struct UpNextProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<UpNextEntry>) -> ()) {
         let now = Date()
+        let calendar = Calendar.current
         var widgetEvents: [WidgetEvent] = []
         var theme = WidgetTheme(primary: Color(red: 0.85, green: 0.45, blue: 0.65), secondary: Color(red: 0.65, green: 0.55, blue: 0.80)) // Default Pink & Purple
+        
+        // Calculate the end of the current month using proper Calendar date arithmetic
+        // This correctly handles year wraparound (e.g., December -> January)
+        let endOfMonth: Date
+        if let monthInterval = calendar.dateInterval(of: .month, for: now) {
+            endOfMonth = monthInterval.end
+        } else {
+            // Fallback: add 1 month to start of current month
+            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+            endOfMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth) ?? now
+        }
         
         // Read from Shared UserDefaults
         if let userDefaults = UserDefaults(suiteName: appGroupId) {
             // Read Events
             if let data = userDefaults.data(forKey: dataKey),
                let decodedEvents = try? JSONDecoder().decode([WidgetEvent].self, from: data) {
-                widgetEvents = decodedEvents.filter { $0.endDate > now }
+                // Filter: only current/future events within the current month
+                widgetEvents = decodedEvents.filter { event in
+                    // Event must not have ended yet
+                    guard event.endDate > now else { return false }
+                    // Event must start before end of current month
+                    guard event.startDate < endOfMonth else { return false }
+                    return true
+                }
             }
             
             // Read Theme
