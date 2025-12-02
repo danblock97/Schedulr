@@ -174,7 +174,7 @@ struct ProfileView: View {
     // MARK: - Profile Header Card
     
     private var profileHeaderCard: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             // Avatar with edit button
             ZStack {
                 // Glow ring
@@ -265,17 +265,8 @@ struct ProfileView: View {
                 nameDisplayView
             }
         }
-        .padding(.vertical, 28)
+        .padding(.vertical, 32)
         .padding(.horizontal, 24)
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(colorScheme == .dark ? Color(hex: "1a1a2e").opacity(0.8) : Color.white.opacity(0.9))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.08), radius: 20, x: 0, y: 10)
     }
     
     private var nameDisplayView: some View {

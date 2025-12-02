@@ -49,13 +49,13 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(themeManager)
 
-            // Floating tab bar
+            // Tab bar - edge to edge at bottom
             VStack {
                 Spacer()
                 FloatingTabBar(selectedTab: $selectedTab, avatarURL: profileViewModel.avatarURL)
                     .environmentObject(themeManager)
             }
-            .ignoresSafeArea(.keyboard)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .task {
             await loadTheme()
