@@ -321,6 +321,9 @@ final class CalendarEventService {
             // Sync immediately (not in background Task) so it happens after attendees are inserted
             try? await syncGroupEventToAppleCalendar(eventId: eventId, input: input, creatorUserId: currentUserId)
         }
+        
+        // Notify attendees about the event update (async, don't fail if it errors)
+        NotificationService.shared.notifyEventUpdate(eventId: eventId, updaterUserId: currentUserId)
     }
 
     // Update current user's attendee status for an event
@@ -386,8 +389,12 @@ final class CalendarEventService {
             .execute()
             .value
 
-        // If we updated at least one row, we are done
-        if !updatedForUser.isEmpty { return }
+        // If we updated at least one row, notify and return
+        if !updatedForUser.isEmpty {
+            // Notify event creator about the RSVP response (async, don't fail if it errors)
+            NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
+            return
+        }
 
         // 2) Otherwise, try to claim a guest row by matching the user's display name
         if !myName.isEmpty {
@@ -401,7 +408,11 @@ final class CalendarEventService {
                 .execute()
                 .value
 
-            if !updatedGuest.isEmpty { return }
+            if !updatedGuest.isEmpty {
+                // Notify event creator about the RSVP response (async, don't fail if it errors)
+                NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
+                return
+            }
         }
 
         // 3) If nothing was updated, do nothing (avoid insert/delete due to RLS). The UI will stay on the optimistic value.
@@ -421,6 +432,10 @@ final class CalendarEventService {
             .eq("event_id", value: eventId)
             .execute()
             .value
+        
+        // Notify attendees about cancellation BEFORE deleting (async, don't fail if it errors)
+        let attendeeUserIds = attendeeRows.compactMap { $0.user_id }
+        NotificationService.shared.notifyEventCancellation(eventId: eventId, creatorUserId: currentUserId, attendeeUserIds: attendeeUserIds)
         
         // Delete Apple Calendar events for all attendees
         for attendee in attendeeRows {

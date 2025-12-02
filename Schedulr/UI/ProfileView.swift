@@ -14,28 +14,17 @@ struct ProfileView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @State private var isEditingName = false
     @State private var tempDisplayName = ""
-    @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
-    @State private var isLoadingPrefs = false
     @ObservedObject private var subscriptionManager = SubscriptionManager.shared
+    @State private var showingSettings = false
     @State private var showPaywall = false
     @State private var aiUsageInfo: AIUsageInfo?
     @State private var groupLimitInfo: (current: Int, max: Int)?
-    @State private var showingThemePicker = false
     @Environment(\.colorScheme) var colorScheme
     
     // Animation states
     @State private var headerAppeared = false
     @State private var sectionsAppeared = false
     
-    private var currentThemeName: String {
-        if case .preset = themeManager.currentTheme.type,
-           let name = themeManager.currentTheme.name,
-           let preset = PresetTheme(rawValue: name) {
-            return preset.displayName
-        }
-        return "Custom"
-    }
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -56,8 +45,7 @@ struct ProfileView: View {
                         VStack(spacing: 16) {
                             subscriptionSection
                             groupsSection
-                            calendarPreferencesSection
-                            colorThemeSection
+                            settingsButtonSection
                             actionButtonsSection
                             errorMessageView
                             versionInfoView
@@ -113,7 +101,6 @@ struct ProfileView: View {
             }
             .task {
                 await viewModel.loadUserProfile()
-                await loadCalendarPrefs()
                 await loadSubscriptionInfo()
                 
                 // Trigger animations
@@ -132,12 +119,9 @@ struct ProfileView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
             }
-            .sheet(isPresented: $showingThemePicker) {
-                ThemePickerView(themeManager: themeManager) { selectedTheme in
-                    Task {
-                        await viewModel.saveTheme(selectedTheme)
-                    }
-                }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
+                    .environmentObject(themeManager)
             }
             .sheet(isPresented: $viewModel.showingRenameGroupSheet) {
                 RenameGroupSheet(
@@ -438,72 +422,36 @@ struct ProfileView: View {
         }
     }
     
-    // MARK: - Calendar Preferences Section
+    // MARK: - Settings Button Section
     
-    private var calendarPreferencesSection: some View {
-        ProfileSectionCard(title: "Calendar", icon: "calendar") {
-            VStack(spacing: 12) {
-                ProfileToggleRow(
-                    title: "Hide holidays & birthdays",
-                    subtitle: "Filters common holiday and birthday calendars",
-                    isOn: Binding(
-                        get: { calendarPrefs.hideHolidays },
-                        set: { newVal in
-                            calendarPrefs.hideHolidays = newVal
-                            Task { await saveCalendarPrefs() }
-                        }
-                    )
-                )
-                
-                Divider()
-                    .opacity(0.5)
-                
-                ProfileToggleRow(
-                    title: "Deduplicate all‑day events",
-                    subtitle: "Combines same‑title events into one row",
-                    isOn: Binding(
-                        get: { calendarPrefs.dedupAllDay },
-                        set: { newVal in
-                            calendarPrefs.dedupAllDay = newVal
-                            Task { await saveCalendarPrefs() }
-                        }
-                    )
-                )
-            }
-        }
-    }
-    
-    // MARK: - Color Theme Section
-    
-    private var colorThemeSection: some View {
-        ProfileSectionCard(title: "Appearance", icon: "paintpalette.fill") {
+    private var settingsButtonSection: some View {
+        ProfileSectionCard(title: "Settings", icon: "gearshape.fill") {
             Button {
-                showingThemePicker = true
+                showingSettings = true
             } label: {
                 HStack(spacing: 14) {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor,
-                                    themeManager.secondaryColor
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(Color.white.opacity(0.3), lineWidth: 2)
-                        )
+                            .frame(width: 44, height: 44)
+                        
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
                     
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("App Theme")
+                        Text("App Settings")
                             .font(.system(size: 16, weight: .semibold, design: .rounded))
                             .foregroundColor(.primary)
                         
-                        Text(currentThemeName)
+                        Text("Notifications, calendar, appearance")
                             .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundColor(.secondary)
                     }
@@ -1127,26 +1075,9 @@ private struct ProfileAnimatedBackground: View {
     }
 }
 
-// MARK: - Calendar Prefs IO
+// MARK: - URL Handling
 
 extension ProfileView {
-    private func loadCalendarPrefs() async {
-        guard !isLoadingPrefs else { return }
-        isLoadingPrefs = true
-        defer { isLoadingPrefs = false }
-        if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
-            if let prefs = try? await CalendarPreferencesManager.shared.load(for: uid) {
-                calendarPrefs = prefs
-            }
-        }
-    }
-
-    private func saveCalendarPrefs() async {
-        if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
-            try? await CalendarPreferencesManager.shared.save(calendarPrefs, for: uid)
-        }
-    }
-    
     /// Opens a URL in SFSafariViewController
     private func openURL(urlString: String) async {
         guard let url = URL(string: urlString) else { return }

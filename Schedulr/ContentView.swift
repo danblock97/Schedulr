@@ -79,6 +79,19 @@ struct ContentView: View {
                 self.selectedTab = 2
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToGroup"))) { notification in
+            // Switch to dashboard/groups tab (index 0) for group-related notifications
+            // The groupId can be used by GroupDashboardView to highlight/scroll to the specific group
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.selectedTab = 0
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToProfile"))) { notification in
+            // Switch to profile tab (index 3) for subscription/account notifications
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.selectedTab = 3
+            }
+        }
     }
     
     private func loadTheme() async {

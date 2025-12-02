@@ -17,10 +17,16 @@ final class GroupService {
     ///   - newOwnerId: The user ID of the new owner
     /// - Throws: Error if transfer fails (user not owner, new owner not member, only one member, etc.)
     nonisolated func transferOwnership(groupId: UUID, newOwnerId: UUID) async throws {
+        let session = try await client.auth.session
+        let currentUserId = session.user.id
+        
         try await client.database.rpc(
             "transfer_group_ownership",
             params: ["p_group_id": groupId, "p_new_owner_id": newOwnerId]
         ).execute()
+        
+        // Notify the new owner about the ownership transfer
+        NotificationService.shared.notifyGroupOwnershipTransfer(groupId: groupId, newOwnerUserId: newOwnerId, actorUserId: currentUserId)
     }
     
     /// Delete a group (only allowed if owner is the sole member)
@@ -127,6 +133,9 @@ final class GroupService {
             )
         }
         
+        let session = try await client.auth.session
+        let currentUserId = session.user.id
+        
         // Call the rename_group function using AnyJSON for mixed types
         struct RenameParams: Encodable {
             let p_group_id: UUID
@@ -137,6 +146,27 @@ final class GroupService {
             "rename_group",
             params: RenameParams(p_group_id: groupId, p_new_name: trimmedName)
         ).execute()
+        
+        // Notify group members about the rename
+        NotificationService.shared.notifyGroupRenamed(groupId: groupId, newName: trimmedName, renamedByUserId: currentUserId)
+    }
+    
+    /// Delete a group and notify members (only allowed if owner is the sole member)
+    /// Note: For groups with multiple members, use the regular deleteGroup method
+    /// - Parameters:
+    ///   - groupId: The group ID
+    ///   - groupName: The group name (for notification)
+    ///   - memberUserIds: List of member user IDs to notify (fetch before deletion)
+    /// - Throws: Error if deletion fails
+    nonisolated func deleteGroupWithNotification(groupId: UUID, groupName: String, memberUserIds: [UUID]) async throws {
+        let session = try await client.auth.session
+        let currentUserId = session.user.id
+        
+        // Notify members BEFORE deleting (they need to know the group name)
+        NotificationService.shared.notifyGroupDeleted(groupName: groupName, memberUserIds: memberUserIds, deletedByUserId: currentUserId)
+        
+        // Now delete the group
+        try await deleteGroup(groupId: groupId)
     }
 }
 

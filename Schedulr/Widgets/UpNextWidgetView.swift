@@ -303,7 +303,7 @@ struct UpNextWidgetView: View {
                 .foregroundStyle(secondaryColor)
             Text("All caught up!")
                 .font(.headline)
-            Text("No upcoming events in \(Date().formatted(.dateTime.month(.wide))).")
+            Text("No upcoming events in the next 30 days.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

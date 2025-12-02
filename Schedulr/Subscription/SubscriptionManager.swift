@@ -522,6 +522,9 @@ final class SubscriptionManager: ObservableObject {
             .execute()
             .value
         
+        // Track previous tier to detect changes for notification
+        let previousTier = currentUser.subscription_tier
+        
         // If user has an active RevenueCat entitlement, ALWAYS sync it (even if they were previously manual pro)
         // This ensures purchases always update the database
         let hasActiveRevenueCatEntitlement = hasProEntitlement
@@ -578,6 +581,20 @@ final class SubscriptionManager: ObservableObject {
                 let errorMsg = "Database update failed - expected customer_id '\(customerInfo.originalAppUserId)' but got '\(verifyUser.revenuecat_customer_id ?? "NULL")'"
                 print("[SubscriptionManager] ERROR: \(errorMsg)")
                 throw SubscriptionError.purchaseFailed(errorMsg)
+            }
+            
+            // Send notification if subscription tier changed
+            // Only notify if we know the previous tier and it actually changed
+            if let prevTier = previousTier, prevTier != tier {
+                let changeType: String
+                if tier == "pro" && prevTier != "pro" {
+                    changeType = "upgraded"
+                } else if tier == "free" && prevTier == "pro" {
+                    changeType = "downgraded"
+                } else {
+                    changeType = "changed"
+                }
+                NotificationService.shared.notifySubscriptionChange(userId: userId, changeType: changeType, newTier: tier)
             }
         } catch {
             print("[SubscriptionManager] Failed to sync subscription to Supabase: \(error.localizedDescription)")

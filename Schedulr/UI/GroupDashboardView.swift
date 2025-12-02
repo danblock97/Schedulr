@@ -909,7 +909,10 @@ struct GroupDashboardView: View {
     
     private func deleteGroup(groupId: UUID) async {
         do {
+            // Deletion only works when owner is the sole member, so there's no one else to notify
+            // Use deleteGroup directly - deleteGroupWithNotification would just filter out the owner
             try await GroupService.shared.deleteGroup(groupId: groupId)
+            
             if viewModel.selectedGroupID == groupId {
                 viewModel.selectedGroupID = nil
             }

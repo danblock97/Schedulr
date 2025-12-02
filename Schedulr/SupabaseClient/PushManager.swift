@@ -158,21 +158,74 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
 
     // Handle notification taps
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        // Extract event_id from notification payload and post notification for navigation
         let userInfo = response.notification.request.content.userInfo
-        if let eventIdString = userInfo["event_id"] as? String,
-           let eventId = UUID(uuidString: eventIdString) {
-            // Store event ID in UserDefaults as a fallback in case notification is missed
-            UserDefaults.standard.set(eventIdString, forKey: "PendingNavigationEventId")
+        let notificationType = userInfo["notification_type"] as? String ?? "event_invite"
+        
+        // Handle navigation based on notification type
+        switch notificationType {
+        case "event_invite", "event_update", "event_cancellation", "rsvp_response", "event_reminder":
+            // Event-related notifications - navigate to event detail
+            if let eventIdString = userInfo["event_id"] as? String,
+               let eventId = UUID(uuidString: eventIdString) {
+                UserDefaults.standard.set(eventIdString, forKey: "PendingNavigationEventId")
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("NavigateToEvent"),
+                        object: nil,
+                        userInfo: ["eventId": eventId]
+                    )
+                }
+            }
             
-            // Post notification with a longer delay to ensure app is ready, especially on cold start
-            // This handles the case where the app launches from a notification tap
+        case "new_group_member", "group_member_left", "group_ownership_transfer", "group_renamed":
+            // Group-related notifications - navigate to group dashboard
+            if let groupIdString = userInfo["group_id"] as? String,
+               let groupId = UUID(uuidString: groupIdString) {
+                UserDefaults.standard.set(groupIdString, forKey: "PendingNavigationGroupId")
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("NavigateToGroup"),
+                        object: nil,
+                        userInfo: ["groupId": groupId]
+                    )
+                }
+            }
+            
+        case "group_deleted":
+            // Group deleted - navigate to profile/groups section
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("NavigateToEvent"),
+                    name: NSNotification.Name("NavigateToProfile"),
                     object: nil,
-                    userInfo: ["eventId": eventId]
+                    userInfo: nil
                 )
+            }
+            
+        case "subscription_change", "feature_limit_warning":
+            // Subscription-related notifications - navigate to profile/subscription
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("NavigateToProfile"),
+                    object: nil,
+                    userInfo: ["showSubscription": true]
+                )
+            }
+            
+        default:
+            // Fallback: try to navigate to event if event_id is present
+            if let eventIdString = userInfo["event_id"] as? String,
+               let eventId = UUID(uuidString: eventIdString) {
+                UserDefaults.standard.set(eventIdString, forKey: "PendingNavigationEventId")
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("NavigateToEvent"),
+                        object: nil,
+                        userInfo: ["eventId": eventId]
+                    )
+                }
             }
         }
         

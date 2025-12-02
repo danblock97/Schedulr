@@ -196,6 +196,9 @@ class ProfileViewModel: ObservableObject {
                 return
             }
 
+            // Notify group members about the leave BEFORE leaving
+            NotificationService.shared.notifyGroupMemberLeft(groupId: group.id, memberUserId: uid, actorUserId: uid)
+            
             // Use GroupService to leave with proper cleanup
             try await GroupService.shared.leaveGroupWithCleanup(groupId: group.id, userId: uid)
 
@@ -232,6 +235,9 @@ class ProfileViewModel: ObservableObject {
         errorMessage = nil
         
         do {
+            // Deletion only works when owner is the sole member, so there's no one else to notify
+            // Use deleteGroup directly - deleteGroupWithNotification would just filter out the owner
+            // and send no notifications anyway
             try await GroupService.shared.deleteGroup(groupId: group.id)
             
             // Reload groups to remove deleted group

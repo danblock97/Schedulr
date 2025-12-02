@@ -39,6 +39,8 @@ final class SubscriptionLimitService {
             }
             
             if check.canJoin {
+                // Check if approaching limit (80% or more of max)
+                checkAndNotifyGroupLimitWarning(userId: userId, current: check.currentCount, maxLimit: check.maxAllowed)
                 return LimitCheckResult(canProceed: true, reason: nil)
             } else {
                 return LimitCheckResult(
@@ -262,6 +264,70 @@ final class SubscriptionLimitService {
         guard let client else { throw LimitServiceError.noClient }
         let session = try await client.auth.session
         return session.user.id
+    }
+    
+    // MARK: - Limit Warning Notifications
+    
+    /// Check and send notification if user is approaching group limit (at 80% or more)
+    private func checkAndNotifyGroupLimitWarning(userId: UUID, current: Int, maxLimit: Int) {
+        // Only warn if max is limited (not unlimited = Int.max or very large)
+        guard maxLimit > 0 && maxLimit < 1000 else { return }
+        
+        // Skip warnings for very small limits (1 or 2) - not meaningful to warn
+        guard maxLimit > 2 else { return }
+        
+        // Calculate threshold (80% of max, minimum of 1 to avoid premature warnings)
+        let threshold = Swift.max(1, Int(Double(maxLimit) * 0.8))
+        
+        // Only notify if at or above threshold and not yet at max
+        if current >= threshold && current < maxLimit {
+            NotificationService.shared.notifyFeatureLimitWarning(
+                userId: userId,
+                limitType: "groups",
+                currentCount: current,
+                maxCount: maxLimit
+            )
+        }
+    }
+    
+    /// Check and send notification if group is approaching member limit
+    private func checkAndNotifyMemberLimitWarning(userId: UUID, current: Int, maxLimit: Int) {
+        guard maxLimit > 0 && maxLimit < 1000 else { return }
+        
+        // Skip warnings for very small limits (1 or 2) - not meaningful to warn
+        guard maxLimit > 2 else { return }
+        
+        // Calculate threshold (80% of max, minimum of 1 to avoid premature warnings)
+        let threshold = Swift.max(1, Int(Double(maxLimit) * 0.8))
+        
+        if current >= threshold && current < maxLimit {
+            NotificationService.shared.notifyFeatureLimitWarning(
+                userId: userId,
+                limitType: "group_members",
+                currentCount: current,
+                maxCount: maxLimit
+            )
+        }
+    }
+    
+    /// Check and send notification if user is approaching AI request limit
+    func checkAndNotifyAILimitWarning(userId: UUID, current: Int, maxLimit: Int) {
+        guard maxLimit > 0 && maxLimit < 10000 else { return }
+        
+        // Skip warnings for very small limits (1 or 2) - not meaningful to warn
+        guard maxLimit > 2 else { return }
+        
+        // Calculate threshold (80% of max, minimum of 1 to avoid premature warnings)
+        let threshold = Swift.max(1, Int(Double(maxLimit) * 0.8))
+        
+        if current >= threshold && current < maxLimit {
+            NotificationService.shared.notifyFeatureLimitWarning(
+                userId: userId,
+                limitType: "ai_requests",
+                currentCount: current,
+                maxCount: maxLimit
+            )
+        }
     }
 }
 

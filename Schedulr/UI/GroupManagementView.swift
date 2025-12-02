@@ -357,6 +357,9 @@ struct GroupManagementView: View {
             let member = DBGroupMember(group_id: group.id, user_id: uid, role: "member", joined_at: nil)
             _ = try await client.database.from("group_members").insert(member).execute()
             
+            // Notify other group members about the new member
+            NotificationService.shared.notifyNewGroupMember(groupId: group.id, memberUserId: uid)
+            
             // Refresh dashboard
             await dashboardVM.reloadMemberships()
             
