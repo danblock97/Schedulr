@@ -245,9 +245,11 @@ struct GroupDashboardView: View {
     @State private var upgradePromptType: UpgradePromptModal.LimitType?
     @State private var showGroupManagement = false
     @State private var showTransferOwnershipConfirmation = false
+    @State private var showKickMemberConfirmation = false
     @State private var showDeleteGroupConfirmation = false
     @State private var showDeleteGroupInfo = false
     @State private var memberToTransfer: DashboardViewModel.MemberSummary?
+    @State private var memberToKick: DashboardViewModel.MemberSummary?
     @State private var memberCount: Int = 0
     @State private var isOwner: Bool = false
     @StateObject private var notificationViewModel = NotificationViewModel()
@@ -377,6 +379,18 @@ struct GroupDashboardView: View {
         } message: {
             if let member = memberToTransfer {
                 Text("Are you sure you want to transfer ownership of this group to \(member.displayName)? You will become a regular member.")
+            }
+        }
+        .alert("Remove Member", isPresented: $showKickMemberConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                if let member = memberToKick, let groupId = viewModel.selectedGroupID {
+                    Task { await kickMember(groupId: groupId, memberUserId: member.id) }
+                }
+            }
+        } message: {
+            if let member = memberToKick {
+                Text("Are you sure you want to remove \(member.displayName) from this group?")
             }
         }
         .alert("Delete Group", isPresented: $showDeleteGroupConfirmation) {
@@ -742,6 +756,10 @@ struct GroupDashboardView: View {
                             onTransferOwnership: {
                                 memberToTransfer = member
                                 showTransferOwnershipConfirmation = true
+                            },
+                            onKickMember: {
+                                memberToKick = member
+                                showKickMemberConfirmation = true
                             }
                         )
                     }
@@ -899,6 +917,17 @@ struct GroupDashboardView: View {
     private func transferOwnership(groupId: UUID, newOwnerId: UUID) async {
         do {
             try await GroupService.shared.transferOwnership(groupId: groupId, newOwnerId: newOwnerId)
+            await viewModel.reloadMemberships()
+            if let groupID = viewModel.selectedGroupID {
+                await viewModel.fetchMembers(for: groupID)
+            }
+            await updateOwnerStatusAndMemberCount()
+        } catch { }
+    }
+    
+    private func kickMember(groupId: UUID, memberUserId: UUID) async {
+        do {
+            try await GroupService.shared.kickMember(groupId: groupId, memberUserId: memberUserId)
             await viewModel.reloadMemberships()
             if let groupID = viewModel.selectedGroupID {
                 await viewModel.fetchMembers(for: groupID)
@@ -1180,6 +1209,7 @@ private struct MemberCard: View {
     let member: DashboardViewModel.MemberSummary
     let isOwner: Bool
     let onTransferOwnership: () -> Void
+    let onKickMember: () -> Void
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
@@ -1241,6 +1271,12 @@ private struct MemberCard: View {
             if isOwner && member.role != "owner" {
                 Menu {
                     Button(role: .destructive) {
+                        onKickMember()
+                    } label: {
+                        Label("Remove from Group", systemImage: "person.crop.circle.badge.minus")
+                    }
+                    
+                    Button {
                         onTransferOwnership()
                     } label: {
                         Label("Transfer Ownership", systemImage: "person.crop.circle.badge.checkmark")

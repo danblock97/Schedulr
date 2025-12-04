@@ -29,6 +29,24 @@ final class GroupService {
         NotificationService.shared.notifyGroupOwnershipTransfer(groupId: groupId, newOwnerUserId: newOwnerId, actorUserId: currentUserId)
     }
     
+    /// Kick a member from a group (only allowed by owner)
+    /// - Parameters:
+    ///   - groupId: The group ID
+    ///   - memberUserId: The user ID of the member to kick
+    /// - Throws: Error if kick fails (user not owner, cannot kick yourself, member not found, etc.)
+    nonisolated func kickMember(groupId: UUID, memberUserId: UUID) async throws {
+        let session = try await client.auth.session
+        let currentUserId = session.user.id
+        
+        try await client.database.rpc(
+            "kick_group_member",
+            params: ["p_group_id": groupId, "p_member_user_id": memberUserId]
+        ).execute()
+        
+        // Notify the kicked member and other group members
+        NotificationService.shared.notifyGroupMemberLeft(groupId: groupId, memberUserId: memberUserId, actorUserId: currentUserId)
+    }
+    
     /// Delete a group (only allowed if owner is the sole member)
     /// - Parameter groupId: The group ID
     /// - Throws: Error if deletion fails (user not owner, multiple members, etc.)
