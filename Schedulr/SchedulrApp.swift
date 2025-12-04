@@ -62,6 +62,7 @@ private struct RootContainer: View {
                 }
             default:
                 AuthView(viewModel: authVM)
+                    .environmentObject(ThemeManager.shared)
                     .zIndex(0)
             }
 
@@ -150,6 +151,7 @@ private struct RootContainer: View {
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingFlowView(viewModel: onboardingVM)
                 .environmentObject(calendarManager)
+                .environmentObject(ThemeManager.shared)
                 .onAppear {
                     onboardingVM.onFinished = {
                         showOnboarding = false

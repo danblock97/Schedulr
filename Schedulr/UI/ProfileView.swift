@@ -166,8 +166,8 @@ struct ProfileView: View {
                     .stroke(
                         LinearGradient(
                             colors: [
-                                Color(hex: "ff4d8d").opacity(0.4),
-                                Color(hex: "8b5cf6").opacity(0.4)
+                                themeManager.primaryColor.opacity(0.4),
+                                themeManager.secondaryColor.opacity(0.4)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -184,7 +184,7 @@ struct ProfileView: View {
                             .scaledToFill()
                     } placeholder: {
                         ProgressView()
-                            .tint(Color(hex: "ff4d8d"))
+                            .tint(themeManager.primaryColor)
                     }
                     .frame(width: 110, height: 110)
                     .clipShape(Circle())
@@ -192,7 +192,7 @@ struct ProfileView: View {
                         Circle()
                             .stroke(
                                 LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
@@ -203,7 +203,7 @@ struct ProfileView: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -224,14 +224,14 @@ struct ProfileView: View {
                             .frame(width: 38, height: 38)
                         
                         Circle()
-                            .stroke(Color(hex: "ff4d8d").opacity(0.5), lineWidth: 2)
+                            .stroke(themeManager.primaryColor.opacity(0.5), lineWidth: 2)
                             .frame(width: 38, height: 38)
                         
                         Image(systemName: "camera.fill")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
@@ -323,7 +323,7 @@ struct ProfileView: View {
                         .padding(.vertical, 14)
                         .background(
                             LinearGradient(
-                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -357,7 +357,7 @@ struct ProfileView: View {
                             .padding(.vertical, 10)
                             .background(
                                 LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
@@ -434,7 +434,7 @@ struct ProfileView: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(
                                 LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
@@ -574,6 +574,7 @@ private struct ProfileSectionCard<Content: View>: View {
     let icon: String
     let content: Content
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     init(title: String, icon: String, @ViewBuilder content: () -> Content) {
         self.title = title
@@ -587,13 +588,7 @@ private struct ProfileSectionCard<Content: View>: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .foregroundStyle(themeManager.gradient)
                 
                 Text(title)
                     .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -622,6 +617,7 @@ private struct ProfileUsageRow: View {
     let title: String
     let current: Int
     let max: Int
+    @EnvironmentObject var themeManager: ThemeManager
     
     /// Threshold for unlimited (matches SubscriptionLimits.unlimited)
     private let unlimitedThreshold = 999999
@@ -652,7 +648,7 @@ private struct ProfileUsageRow: View {
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -675,7 +671,7 @@ private struct ProfileUsageRow: View {
                             .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                    colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
@@ -700,7 +696,7 @@ private struct ProfileUsageRow: View {
                             .fill(
                                 isAtLimit
                                 ? LinearGradient(colors: [.red, .red.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
-                                : LinearGradient(colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")], startPoint: .leading, endPoint: .trailing)
+                                : themeManager.gradient
                             )
                             .frame(width: geometry.size.width * min(progress, 1.0), height: 6)
                     }
@@ -746,6 +742,7 @@ private struct ProfileGroupRow: View {
     let onLeave: () -> Void
     let onRename: () -> Void
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         HStack(spacing: 12) {
@@ -754,7 +751,7 @@ private struct ProfileGroupRow: View {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "ff4d8d").opacity(0.2), Color(hex: "8b5cf6").opacity(0.2)],
+                            colors: [themeManager.primaryColor.opacity(0.2), themeManager.secondaryColor.opacity(0.2)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -763,13 +760,7 @@ private struct ProfileGroupRow: View {
                 
                 Image(systemName: "person.2.fill")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .foregroundStyle(themeManager.gradient)
             }
             
             VStack(alignment: .leading, spacing: 2) {
@@ -797,13 +788,13 @@ private struct ProfileGroupRow: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
                         .padding(8)
-                        .background(Color(hex: "ff4d8d").opacity(0.1))
+                        .background(themeManager.primaryColor.opacity(0.1))
                         .clipShape(Circle())
                 }
             } else {
@@ -895,6 +886,7 @@ private struct RenameGroupSheet: View {
     let onCancel: () -> Void
     let onSave: () -> Void
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     @FocusState private var isNameFocused: Bool
     
     private var isValid: Bool {
@@ -945,7 +937,7 @@ private struct RenameGroupSheet: View {
                         .padding(.vertical, 14)
                         .background(
                             LinearGradient(
-                                colors: isValid ? [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")] : [Color.gray.opacity(0.5), Color.gray.opacity(0.4)],
+                                colors: isValid ? [themeManager.primaryColor, themeManager.secondaryColor] : [Color.gray.opacity(0.5), Color.gray.opacity(0.4)],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -970,6 +962,8 @@ private struct RenameGroupSheet: View {
 // MARK: - Loading Overlay
 
 private struct ProfileLoadingOverlay: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    
     var body: some View {
         ZStack {
             Color.black.opacity(0.3)
@@ -978,7 +972,7 @@ private struct ProfileLoadingOverlay: View {
             VStack(spacing: 16) {
                 ProgressView()
                     .scaleEffect(1.2)
-                    .tint(Color(hex: "ff4d8d"))
+                    .tint(themeManager.primaryColor)
                 
                 Text("Loading...")
                     .font(.system(size: 15, weight: .medium, design: .rounded))
@@ -1028,6 +1022,7 @@ private struct GracePeriodWarningView: View {
 
 private struct ProfileAnimatedBackground: View {
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         ZStack {
@@ -1038,8 +1033,8 @@ private struct ProfileAnimatedBackground: View {
                 
                 Canvas { context, size in
                     let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
-                        (Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.08 : 0.06), 0.15, 0.08, 0.32),
-                        (Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.06 : 0.05), 0.85, 0.18, 0.28),
+                        (themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.06), 0.15, 0.08, 0.32),
+                        (themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.06 : 0.05), 0.85, 0.18, 0.28),
                         (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.05 : 0.04), 0.5, 0.55, 0.22)
                     ]
                     

@@ -319,11 +319,7 @@ struct GroupDashboardView: View {
                             Image(systemName: "gearshape.fill")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+                                    themeManager.gradient
                                 )
                         }
                     }
@@ -534,11 +530,7 @@ struct GroupDashboardView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                             .background(
-                                LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
+                                themeManager.gradient,
                                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                             )
                         }
@@ -963,6 +955,7 @@ struct GroupDashboardView: View {
 
 private struct DashboardBackground: View {
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         ZStack {
@@ -974,8 +967,8 @@ private struct DashboardBackground: View {
                 
                 Canvas { context, size in
                     let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
-                        (Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.08 : 0.06), 0.1, 0.1, 0.35),
-                        (Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.06 : 0.05), 0.9, 0.2, 0.3),
+                        (themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.06), 0.1, 0.1, 0.35),
+                        (themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.06 : 0.05), 0.9, 0.2, 0.3),
                         (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.05 : 0.04), 0.5, 0.6, 0.25)
                     ]
                     
@@ -1003,18 +996,13 @@ private struct DashboardBackground: View {
 private struct DashboardSectionHeader: View {
     let title: String
     let icon: String
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .foregroundStyle(themeManager.gradient)
             
             Text(title)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
@@ -1064,6 +1052,7 @@ private struct FilterPill: View {
 private struct GroupSelectorCard: View {
     let groupName: String
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         HStack(spacing: 14) {
@@ -1071,7 +1060,7 @@ private struct GroupSelectorCard: View {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "ff4d8d").opacity(0.15), Color(hex: "8b5cf6").opacity(0.1)],
+                            colors: [themeManager.primaryColor.opacity(0.15), themeManager.secondaryColor.opacity(0.1)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -1080,13 +1069,7 @@ private struct GroupSelectorCard: View {
                 
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .foregroundStyle(themeManager.gradient)
             }
             
             Text(groupName)
@@ -1108,7 +1091,7 @@ private struct GroupSelectorCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [Color(hex: "ff4d8d").opacity(0.2), Color(hex: "8b5cf6").opacity(0.15)],
+                        colors: [themeManager.primaryColor.opacity(0.2), themeManager.secondaryColor.opacity(0.15)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
@@ -1126,6 +1109,7 @@ private struct EventCard: View {
     var sharedCount: Int = 1
     let currentUserId: UUID?
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     private var isPrivate: Bool {
         event.event_type == "personal" && event.user_id != currentUserId
@@ -1137,7 +1121,7 @@ private struct EventCard: View {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                        colors: [themeManager.primaryColor, themeManager.secondaryColor],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -1165,7 +1149,7 @@ private struct EventCard: View {
                         Text("\(sharedCount) attending")
                             .font(.system(size: 12, weight: .medium, design: .rounded))
                     }
-                    .foregroundStyle(Color(hex: "8b5cf6"))
+                    .foregroundStyle(themeManager.secondaryColor)
                 }
             }
             
@@ -1211,6 +1195,7 @@ private struct MemberCard: View {
     let onTransferOwnership: () -> Void
     let onKickMember: () -> Void
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         HStack(spacing: 14) {
@@ -1240,7 +1225,7 @@ private struct MemberCard: View {
                 Circle()
                     .strokeBorder(
                         LinearGradient(
-                            colors: [Color(hex: "ff4d8d").opacity(0.4), Color(hex: "8b5cf6").opacity(0.3)],
+                            colors: [themeManager.primaryColor.opacity(0.4), themeManager.secondaryColor.opacity(0.3)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -1311,13 +1296,14 @@ private struct MemberCard: View {
 
 private struct AvatarPlaceholder: View {
     let initials: String
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         ZStack {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [Color(hex: "ff4d8d").opacity(0.2), Color(hex: "8b5cf6").opacity(0.15)],
+                        colors: [themeManager.primaryColor.opacity(0.2), themeManager.secondaryColor.opacity(0.15)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -1337,6 +1323,7 @@ private struct InviteCard: View {
     let groupName: String
     @State private var showCopied = false
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1376,7 +1363,7 @@ private struct InviteCard: View {
                 HStack(spacing: 10) {
                     Image(systemName: "link")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color(hex: "8b5cf6"))
+                        .foregroundStyle(themeManager.secondaryColor)
                     
                     Text(inviteSlug)
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
@@ -1389,7 +1376,7 @@ private struct InviteCard: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -1408,7 +1395,7 @@ private struct InviteCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [Color(hex: "ff4d8d").opacity(0.15), Color(hex: "8b5cf6").opacity(0.1)],
+                        colors: [themeManager.primaryColor.opacity(0.15), themeManager.secondaryColor.opacity(0.1)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),

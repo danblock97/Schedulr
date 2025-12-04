@@ -89,7 +89,7 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.menu)
-                    .tint(Color(hex: "ff4d8d"))
+                    .tint(themeManager.primaryColor)
                     .onChange(of: viewModel.selectedReminderTiming) { _, newValue in
                         viewModel.updateReminderTiming(newValue)
                     }
@@ -315,6 +315,7 @@ private struct SettingsSectionCard<Content: View>: View {
     let icon: String
     let content: Content
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     init(title: String, icon: String, @ViewBuilder content: () -> Content) {
         self.title = title
@@ -328,13 +329,7 @@ private struct SettingsSectionCard<Content: View>: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .foregroundStyle(themeManager.gradient)
                 
                 Text(title)
                     .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -362,6 +357,7 @@ private struct SettingsToggleRow: View {
     let title: String
     let subtitle: String
     @Binding var isOn: Bool
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         Toggle(isOn: $isOn) {
@@ -375,7 +371,7 @@ private struct SettingsToggleRow: View {
                     .foregroundColor(.secondary)
             }
         }
-        .tint(Color(hex: "ff4d8d"))
+        .tint(themeManager.primaryColor)
     }
 }
 
@@ -383,6 +379,7 @@ private struct SettingsToggleRow: View {
 
 private struct SettingsAnimatedBackground: View {
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         ZStack {
@@ -401,7 +398,7 @@ private struct SettingsAnimatedBackground: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.08 : 0.05),
+                                themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.05),
                                 Color.clear
                             ],
                             center: .center,
@@ -416,7 +413,7 @@ private struct SettingsAnimatedBackground: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.06 : 0.04),
+                                themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.06 : 0.04),
                                 Color.clear
                             ],
                             center: .center,

@@ -7,6 +7,7 @@ import SafariServices
 
 struct AuthView: View {
     @ObservedObject var viewModel: AuthViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var showPassword: Bool = false
     @State private var showForgotPassword: Bool = false
     @State private var showResetEmailSent: Bool = false
@@ -125,6 +126,7 @@ struct AuthView: View {
 
 private struct AuthAnimatedBackground: View {
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         TimelineView(.animation(minimumInterval: 1/30)) { timeline in
@@ -149,8 +151,8 @@ private struct AuthAnimatedBackground: View {
                 
                 // Animated blobs
                 let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
-                    (Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.18 : 0.15), 0.15, 0.15, 0.5),
-                    (Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.15 : 0.12), 0.85, 0.25, 0.6),
+                    (themeManager.primaryColor.opacity(colorScheme == .dark ? 0.18 : 0.15), 0.15, 0.15, 0.5),
+                    (themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.15 : 0.12), 0.85, 0.25, 0.6),
                     (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.12 : 0.10), 0.5, 0.5, 0.45),
                     (Color(hex: "f59e0b").opacity(colorScheme == .dark ? 0.10 : 0.08), 0.2, 0.75, 0.4),
                     (Color(hex: "10b981").opacity(colorScheme == .dark ? 0.08 : 0.06), 0.8, 0.85, 0.35)
@@ -199,6 +201,7 @@ private struct AuthFloatingParticles: View {
 private struct AuthParticle: View {
     let index: Int
     let containerSize: CGSize
+    @EnvironmentObject var themeManager: ThemeManager
     
     @State private var offset: CGSize = .zero
     @State private var opacity: Double = 0
@@ -213,8 +216,8 @@ private struct AuthParticle: View {
             .fill(
         LinearGradient(
             colors: [
-                        Color(hex: "ff4d8d").opacity(0.5),
-                        Color(hex: "8b5cf6").opacity(0.3)
+                        themeManager.primaryColor.opacity(0.5),
+                        themeManager.secondaryColor.opacity(0.3)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -254,6 +257,7 @@ private struct AuthParticle: View {
 private struct AuthHeaderView: View {
     @Binding var animateIn: Bool
     @Binding var logoScale: CGFloat
+    @EnvironmentObject var themeManager: ThemeManager
 
     var body: some View {
         VStack(spacing: 20) {
@@ -264,7 +268,7 @@ private struct AuthHeaderView: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(hex: "ff4d8d").opacity(0.3),
+                                themeManager.primaryColor.opacity(0.3),
                                 Color.clear
                             ],
                             center: .center,
@@ -285,8 +289,8 @@ private struct AuthHeaderView: View {
                         .strokeBorder(
                             LinearGradient(
                                 colors: [
-                                    Color(hex: "ff4d8d").opacity(0.5),
-                                    Color(hex: "8b5cf6").opacity(0.5)
+                                    themeManager.primaryColor.opacity(0.5),
+                                    themeManager.secondaryColor.opacity(0.5)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -310,16 +314,10 @@ private struct AuthHeaderView: View {
                     } else {
                         Image(systemName: "calendar")
                             .font(.system(size: 36, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .foregroundStyle(themeManager.gradient)
                     }
                 }
-                .shadow(color: Color(hex: "ff4d8d").opacity(0.2), radius: 20, x: 0, y: 10)
+                .shadow(color: themeManager.primaryColor.opacity(0.2), radius: 20, x: 0, y: 10)
             }
             .scaleEffect(logoScale)
             
@@ -345,6 +343,7 @@ private struct AuthHeaderView: View {
 
 private struct AuthFormCard: View {
     @ObservedObject var viewModel: AuthViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @Binding var showPassword: Bool
     @Binding var showForgotPassword: Bool
     @Binding var showResetEmailSent: Bool
@@ -412,7 +411,7 @@ private struct AuthFormCard: View {
                         text: $viewModel.email,
                         placeholder: "Email address",
                         icon: "envelope.fill",
-                        iconColor: Color(hex: "ff4d8d"),
+                        iconColor: themeManager.primaryColor,
                         keyboardType: .emailAddress,
                         textContentType: .emailAddress,
                         isFocused: isEmailFocused
@@ -425,7 +424,7 @@ private struct AuthFormCard: View {
                         text: $viewModel.password,
                         placeholder: "Password",
                         icon: "lock.fill",
-                        iconColor: Color(hex: "8b5cf6"),
+                        iconColor: themeManager.secondaryColor,
                         showPassword: $showPassword,
                         textContentType: viewModel.authMode == .signUp ? .newPassword : .password,
                         isFocused: isPasswordFocused
@@ -440,7 +439,7 @@ private struct AuthFormCard: View {
                             Button(action: { showForgotPassword = true }) {
                                 Text("Forgot Password?")
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color(hex: "8b5cf6"))
+                                    .foregroundStyle(themeManager.secondaryColor)
                             }
                         }
                         .opacity(animateIn ? 1 : 0)
@@ -505,6 +504,7 @@ private struct AuthFormCard: View {
 
 private struct PasswordResetCard: View {
     @ObservedObject var viewModel: AuthViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @Binding var showNewPassword: Bool
     @Binding var showConfirmPassword: Bool
     var isNewPasswordFocused: FocusState<Bool>.Binding
@@ -564,7 +564,7 @@ private struct PasswordResetCard: View {
                     text: $viewModel.confirmPassword,
                     placeholder: "Confirm Password",
                     icon: "lock.rotation",
-                    iconColor: Color(hex: "8b5cf6"),
+                    iconColor: themeManager.secondaryColor,
                     showPassword: $showConfirmPassword,
                     textContentType: .newPassword,
                     isFocused: isConfirmPasswordFocused
@@ -627,6 +627,7 @@ private struct PasswordResetCard: View {
 
 private struct ForgotPasswordView: View {
     @ObservedObject var viewModel: AuthViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @Binding var showForgotPassword: Bool
     @Binding var showResetEmailSent: Bool
     var isEmailFocused: FocusState<Bool>.Binding
@@ -664,7 +665,7 @@ private struct ForgotPasswordView: View {
                         text: $viewModel.email,
                         placeholder: "Email address",
                         icon: "envelope.fill",
-                        iconColor: Color(hex: "ff4d8d"),
+                        iconColor: themeManager.primaryColor,
                         keyboardType: .emailAddress,
                         textContentType: .emailAddress,
                         isFocused: isEmailFocused
@@ -729,6 +730,7 @@ private struct SuccessStateView: View {
     let subtitle: String
     let buttonTitle: String
     let action: () -> Void
+    @EnvironmentObject var themeManager: ThemeManager
     
     @State private var checkmarkScale: CGFloat = 0
     @State private var animateIn = false
@@ -765,7 +767,7 @@ private struct SuccessStateView: View {
                                     
                 Text(email)
                     .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(hex: "8b5cf6"))
+                    .foregroundStyle(themeManager.secondaryColor)
                                         .multilineTextAlignment(.center)
                                     
                 Text(subtitle)
@@ -780,10 +782,10 @@ private struct SuccessStateView: View {
             Button(action: action) {
                 Text(buttonTitle)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color(hex: "8b5cf6"))
+                    .foregroundStyle(themeManager.secondaryColor)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
-                    .background(Color(hex: "8b5cf6").opacity(0.1), in: Capsule())
+                    .background(themeManager.secondaryColor.opacity(0.1), in: Capsule())
             }
             .opacity(animateIn ? 1 : 0)
         }
@@ -955,10 +957,11 @@ private struct AuthSecureField: View {
 private struct AuthPrimaryButton: View {
     let title: String
     var isLoading: Bool = false
-    var gradient: [Color]
+    var gradient: [Color]?
     let action: () -> Void
+    @EnvironmentObject var themeManager: ThemeManager
     
-    init(title: String, isLoading: Bool = false, gradient: [Color] = [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")], action: @escaping () -> Void) {
+    init(title: String, isLoading: Bool = false, gradient: [Color]? = nil, action: @escaping () -> Void) {
         self.title = title
         self.isLoading = isLoading
         self.gradient = gradient
@@ -968,12 +971,16 @@ private struct AuthPrimaryButton: View {
     @State private var isPressed = false
     @State private var shimmerPhase: CGFloat = 0
     
+    private var buttonGradient: [Color] {
+        gradient ?? [themeManager.primaryColor, themeManager.secondaryColor]
+    }
+    
     var body: some View {
         Button(action: action) {
             ZStack {
                 // Background
                 LinearGradient(
-                    colors: gradient,
+                    colors: buttonGradient,
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -1003,7 +1010,7 @@ private struct AuthPrimaryButton: View {
             }
             .frame(height: 56)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: gradient.first!.opacity(0.2), radius: 8, x: 0, y: 4)
+            .shadow(color: buttonGradient.first!.opacity(0.2), radius: 8, x: 0, y: 4)
             .scaleEffect(isPressed ? 0.97 : 1)
         }
         .buttonStyle(.plain)
@@ -1034,6 +1041,7 @@ private struct AuthModeToggle: View {
     @Binding var password: String
     @Binding var errorMessage: String?
     @Binding var showSignUpEmailSent: Bool
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
                             Button(action: {
@@ -1051,7 +1059,7 @@ private struct AuthModeToggle: View {
                 
                 Text(authMode == .signIn ? "Sign Up" : "Sign In")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color(hex: "8b5cf6"))
+                    .foregroundStyle(themeManager.secondaryColor)
             }
         }
     }
@@ -1102,6 +1110,8 @@ private struct AuthMessagesView: View {
 // MARK: - Footer View
 
 private struct AuthFooterView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    
     var body: some View {
                 HStack(spacing: 4) {
                     Text("By continuing, you agree to our")
@@ -1112,7 +1122,7 @@ private struct AuthFooterView: View {
                 openURL(urlString: "https://schedulr.co.uk/terms")
             }
             .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .foregroundStyle(Color(hex: "8b5cf6"))
+            .foregroundStyle(themeManager.secondaryColor)
             
                     Text("&")
                 .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -1122,7 +1132,7 @@ private struct AuthFooterView: View {
                 openURL(urlString: "https://schedulr.co.uk/privacy")
             }
             .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .foregroundStyle(Color(hex: "8b5cf6"))
+            .foregroundStyle(themeManager.secondaryColor)
         }
     }
     
@@ -1134,7 +1144,7 @@ private struct AuthFooterView: View {
         config.entersReaderIfAvailable = false
         
         let safariVC = SFSafariViewController(url: url, configuration: config)
-        safariVC.preferredControlTintColor = UIColor(Color(hex: "8b5cf6"))
+        safariVC.preferredControlTintColor = UIColor(themeManager.secondaryColor)
         safariVC.preferredBarTintColor = .systemBackground
         if #available(iOS 11.0, *) {
             safariVC.dismissButtonStyle = .close

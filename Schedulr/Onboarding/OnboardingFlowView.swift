@@ -6,6 +6,7 @@ import EventKit
 
 struct OnboardingFlowView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var previousStep: OnboardingViewModel.Step = .avatar
     @State private var animateBackground = false
     @State private var showContent = false
@@ -105,6 +106,7 @@ struct OnboardingFlowView: View {
 private struct AnimatedMeshBackground: View {
     @State private var phase: CGFloat = 0
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         TimelineView(.animation) { timeline in
@@ -129,8 +131,8 @@ private struct AnimatedMeshBackground: View {
                 
                 // Animated color blobs
                 let colors: [(Color, CGFloat, CGFloat)] = [
-                    (Color(hex: "ff4d8d").opacity(colorScheme == .dark ? 0.15 : 0.12), 0.3, 0.2),
-                    (Color(hex: "8b5cf6").opacity(colorScheme == .dark ? 0.12 : 0.1), 0.7, 0.3),
+                    (themeManager.primaryColor.opacity(colorScheme == .dark ? 0.15 : 0.12), 0.3, 0.2),
+                    (themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.12 : 0.1), 0.7, 0.3),
                     (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.1 : 0.08), 0.5, 0.7),
                     (Color(hex: "f59e0b").opacity(colorScheme == .dark ? 0.08 : 0.06), 0.2, 0.8)
                 ]
@@ -183,6 +185,7 @@ private struct FloatingOrb: View {
     let size: CGFloat
     let startPosition: CGPoint
     let delay: Double
+    @EnvironmentObject var themeManager: ThemeManager
     
     @State private var offset: CGSize = .zero
     @State private var opacity: Double = 0
@@ -192,8 +195,8 @@ private struct FloatingOrb: View {
             .fill(
                 LinearGradient(
                     colors: [
-                        Color(hex: "ff4d8d").opacity(0.6),
-                        Color(hex: "8b5cf6").opacity(0.4)
+                        themeManager.primaryColor.opacity(0.6),
+                        themeManager.secondaryColor.opacity(0.4)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -226,6 +229,7 @@ private struct FloatingOrb: View {
 
 private struct OnboardingHeaderView: View {
     let step: OnboardingViewModel.Step
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var animateIn = false
     
     private var stepCount: Int { OnboardingViewModel.Step.allCases.count }
@@ -261,13 +265,7 @@ private struct OnboardingHeaderView: View {
                     } else {
                         Image(systemName: "calendar")
                             .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .foregroundStyle(themeManager.gradient)
                     }
                 }
                 .scaleEffect(animateIn ? 1 : 0.5)
@@ -280,11 +278,7 @@ private struct OnboardingHeaderView: View {
                     ForEach(0..<stepCount, id: \.self) { index in
                         Capsule()
                             .fill(index <= currentIndex ?
-                                  AnyShapeStyle(LinearGradient(
-                                    colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                  )) :
+                                  AnyShapeStyle(themeManager.gradient) :
                                     AnyShapeStyle(Color.white.opacity(0.15))
                             )
                             .frame(width: index == currentIndex ? 32 : 8, height: 8)
@@ -311,21 +305,15 @@ private struct OnboardingHeaderView: View {
                 // Animated accent line
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(themeManager.gradient)
                         .frame(width: 48, height: 4)
                     
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(hex: "ff4d8d").opacity(0.3))
+                        .fill(themeManager.primaryColor.opacity(0.3))
                         .frame(width: 16, height: 4)
                     
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(hex: "8b5cf6").opacity(0.2))
+                        .fill(themeManager.secondaryColor.opacity(0.2))
                         .frame(width: 8, height: 4)
                 }
                 .offset(x: animateIn ? 0 : -100)
@@ -344,6 +332,7 @@ private struct OnboardingHeaderView: View {
 
 private struct OnboardingNavigationBar: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var isPressed = false
     @State private var animateIn = false
     
@@ -393,11 +382,7 @@ private struct OnboardingNavigationBar: View {
                         .background(
                     ZStack {
                         // Gradient background
-                            LinearGradient(
-                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                        )
+                            themeManager.gradient
                         
                         // Shimmer effect
                         ShimmerView()
@@ -405,7 +390,7 @@ private struct OnboardingNavigationBar: View {
                     }
                     .clipShape(Capsule())
                 )
-                .shadow(color: Color(hex: "ff4d8d").opacity(0.2), radius: 8, x: 0, y: 4)
+                .shadow(color: themeManager.primaryColor.opacity(0.2), radius: 8, x: 0, y: 4)
                 .scaleEffect(isPressed ? 0.95 : 1)
             }
             .disabled(isNextDisabled)
@@ -462,6 +447,7 @@ private struct ShimmerView: View {
 
 private struct AvatarStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var pickerItem: PhotosPickerItem? = nil
     @State private var animateIn = false
     @State private var pulseRing = false
@@ -484,10 +470,10 @@ private struct AvatarStepView: View {
                 // Animated ring
                 Circle()
                     .stroke(
-                        LinearGradient(
+                                LinearGradient(
                             colors: [
-                                Color(hex: "ff4d8d").opacity(0.3),
-                                Color(hex: "8b5cf6").opacity(0.3)
+                                themeManager.primaryColor.opacity(0.3),
+                                themeManager.secondaryColor.opacity(0.3)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -503,8 +489,8 @@ private struct AvatarStepView: View {
                     .stroke(
                         LinearGradient(
                             colors: [
-                                Color(hex: "ff4d8d").opacity(0.2),
-                                Color(hex: "8b5cf6").opacity(0.2)
+                                themeManager.primaryColor.opacity(0.2),
+                                themeManager.secondaryColor.opacity(0.2)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -525,14 +511,14 @@ private struct AvatarStepView: View {
                         Circle()
                             .stroke(
                                 LinearGradient(
-                                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                        colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
                                 lineWidth: 4
                             )
                     )
-                        .shadow(color: Color(hex: "ff4d8d").opacity(0.15), radius: 12, x: 0, y: 6)
+                        .shadow(color: themeManager.primaryColor.opacity(0.15), radius: 12, x: 0, y: 6)
                         .transition(.scale.combined(with: .opacity))
             } else {
                     // Placeholder
@@ -541,8 +527,8 @@ private struct AvatarStepView: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                        Color(hex: "ff4d8d").opacity(0.1),
-                                        Color(hex: "8b5cf6").opacity(0.1)
+                                        themeManager.primaryColor.opacity(0.1),
+                                        themeManager.secondaryColor.opacity(0.1)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -554,8 +540,8 @@ private struct AvatarStepView: View {
                             .strokeBorder(
                                     LinearGradient(
                                         colors: [
-                                        Color(hex: "ff4d8d").opacity(0.5),
-                                        Color(hex: "8b5cf6").opacity(0.5)
+                                        themeManager.primaryColor.opacity(0.5),
+                                        themeManager.secondaryColor.opacity(0.5)
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
@@ -625,7 +611,7 @@ private struct AvatarStepView: View {
                 if viewModel.isUploadingAvatar {
                     HStack(spacing: 10) {
                         ProgressView()
-                            .tint(Color(hex: "ff4d8d"))
+                            .tint(themeManager.primaryColor)
                         Text("Uploading...")
                             .font(.system(size: 15, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
@@ -670,6 +656,7 @@ private struct AvatarStepView: View {
 
 private struct NameStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @FocusState private var nameFieldFocused: Bool
     @State private var animateIn = false
 
@@ -693,8 +680,8 @@ private struct NameStepView: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color(hex: "ff4d8d").opacity(0.15),
-                                    Color(hex: "8b5cf6").opacity(0.15)
+                                    themeManager.primaryColor.opacity(0.15),
+                                    themeManager.secondaryColor.opacity(0.15)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -722,10 +709,10 @@ private struct NameStepView: View {
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
                             .foregroundStyle(.secondary)
                         Text("•")
-                            .foregroundStyle(Color(hex: "ff4d8d"))
+                            .foregroundStyle(themeManager.primaryColor)
                         Text("Required")
                             .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color(hex: "ff4d8d"))
+                            .foregroundStyle(themeManager.primaryColor)
                     }
                     
                     TextField("", text: $viewModel.displayName, prompt: Text("Alex Morgan").foregroundStyle(Color.secondary.opacity(0.6)))
@@ -744,7 +731,7 @@ private struct NameStepView: View {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .strokeBorder(
                                     nameFieldFocused ?
-                                    AnyShapeStyle(Color(hex: "8b5cf6").opacity(0.4)) :
+                                    AnyShapeStyle(themeManager.secondaryColor.opacity(0.4)) :
                                     AnyShapeStyle(Color.primary.opacity(0.08)),
                                     lineWidth: 1
                                 )
@@ -773,7 +760,7 @@ private struct NameStepView: View {
                 if viewModel.isSavingName {
                     HStack(spacing: 10) {
                         ProgressView()
-                            .tint(Color(hex: "ff4d8d"))
+                            .tint(themeManager.primaryColor)
                         Text("Saving...")
                             .font(.system(size: 15, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
@@ -812,6 +799,7 @@ private struct NameStepView: View {
 
 private struct GroupStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
+    @EnvironmentObject var themeManager: ThemeManager
     @FocusState private var groupNameFieldFocused: Bool
     @FocusState private var joinInputFieldFocused: Bool
     @State private var animateIn = false
@@ -879,7 +867,7 @@ private struct GroupStepView: View {
                                     .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(
                                         LinearGradient(
-                                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                            colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
                                         )
@@ -1007,7 +995,7 @@ private struct GroupStepView: View {
             if viewModel.isHandlingGroup {
                     HStack(spacing: 10) {
                         ProgressView()
-                            .tint(Color(hex: "ff4d8d"))
+                            .tint(themeManager.primaryColor)
                         Text(viewModel.groupMode == .create ? "Creating..." : "Joining...")
                             .font(.system(size: 15, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
@@ -1040,6 +1028,7 @@ private struct GroupOptionButton: View {
     let icon: String
     let isSelected: Bool
     let action: () -> Void
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         Button(action: action) {
@@ -1056,11 +1045,7 @@ private struct GroupOptionButton: View {
             .background(
                 Group {
                     if isSelected {
-                        LinearGradient(
-                            colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                        themeManager.gradient
                     } else {
                         Color.clear
                     }
@@ -1086,6 +1071,7 @@ private struct GroupOptionButton: View {
 private struct CalendarStepView: View {
     @ObservedObject var viewModel: OnboardingViewModel
     @EnvironmentObject private var calendarSync: CalendarSyncManager
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var animateIn = false
 
     var body: some View {
@@ -1127,7 +1113,7 @@ private struct CalendarStepView: View {
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(
                                     LinearGradient(
-                                        colors: [Color(hex: "ff4d8d"), Color(hex: "8b5cf6")],
+                                        colors: [themeManager.primaryColor, themeManager.secondaryColor],
                                         startPoint: .leading,
                                         endPoint: .trailing
                                     )
@@ -1138,7 +1124,7 @@ private struct CalendarStepView: View {
                             LazyVGrid(columns: Array(repeating: GridItem(.fixed(8), spacing: 4), count: 7), spacing: 4) {
                                 ForEach(0..<21, id: \.self) { index in
                                     Circle()
-                                        .fill(index == 10 ? Color(hex: "ff4d8d") : Color.secondary.opacity(0.3))
+                                        .fill(index == 10 ? themeManager.primaryColor : Color.secondary.opacity(0.3))
                                         .frame(width: 8, height: 8)
                                 }
                             }
@@ -1193,7 +1179,7 @@ private struct CalendarStepView: View {
                             }
                         }
                     }
-                    .toggleStyle(SwitchToggleStyle(tint: Color(hex: "ff4d8d")))
+                    .toggleStyle(SwitchToggleStyle(tint: themeManager.primaryColor))
                     
                     // Authorization status
             Group {
@@ -1242,7 +1228,7 @@ private struct CalendarStepView: View {
             if calendarSync.isRequestingAccess {
                     HStack(spacing: 10) {
                         ProgressView()
-                            .tint(Color(hex: "ff4d8d"))
+                            .tint(themeManager.primaryColor)
                         Text("Requesting access...")
                             .font(.system(size: 15, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
@@ -1250,7 +1236,7 @@ private struct CalendarStepView: View {
             } else if calendarSync.isRefreshing {
                     HStack(spacing: 10) {
                         ProgressView()
-                            .tint(Color(hex: "ff4d8d"))
+                            .tint(themeManager.primaryColor)
                         Text("Syncing events...")
                             .font(.system(size: 15, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
@@ -1439,6 +1425,7 @@ private struct DoneStepView: View {
 
 private struct ConfettiView: View {
     @State private var particles: [ConfettiParticle] = []
+    @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
         GeometryReader { geometry in
@@ -1449,7 +1436,7 @@ private struct ConfettiView: View {
             }
         }
         .onAppear {
-            particles = (0..<50).map { _ in ConfettiParticle() }
+            particles = (0..<50).map { _ in ConfettiParticle(primaryColor: themeManager.primaryColor, secondaryColor: themeManager.secondaryColor) }
         }
     }
 }
@@ -1463,10 +1450,10 @@ private struct ConfettiParticle: Identifiable {
     let speed: Double
     let delay: Double
     
-    init() {
+    init(primaryColor: Color, secondaryColor: Color) {
         let colors: [Color] = [
-            Color(hex: "ff4d8d"),
-            Color(hex: "8b5cf6"),
+            primaryColor,
+            secondaryColor,
             Color(hex: "06b6d4"),
             Color(hex: "10b981"),
             Color(hex: "f59e0b"),
