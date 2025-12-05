@@ -92,10 +92,6 @@ struct AuthView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                dismissKeyboard()
-            }
         }
         .ignoresSafeArea()
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.isPasswordResetMode)
@@ -377,7 +373,8 @@ private struct AuthFormCard: View {
                     }
                 )
                 .signInWithAppleButtonStyle(.black)
-            .frame(height: 56)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .contentShape(Rectangle()) // make the whole area tappable
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 6)
                 .disabled(viewModel.isLoadingApple)
