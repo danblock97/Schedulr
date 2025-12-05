@@ -36,6 +36,7 @@ enum QueryType: String, Codable {
     case createEvent
     case findAndCreate
     case general
+    case listEvents
     case unknown
 }
 
@@ -55,6 +56,24 @@ struct AvailabilityQuery: Codable, Equatable {
         var start: String // ISO 8601 date string
         var end: String   // ISO 8601 date string
     }
+    
+    // Custom decoder to handle missing keys with default values
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decodeIfPresent(QueryType.self, forKey: .type) ?? .availability
+        users = try container.decodeIfPresent([String].self, forKey: .users) ?? []
+        durationHours = try container.decodeIfPresent(Double.self, forKey: .durationHours)
+        timeWindow = try container.decodeIfPresent(TimeWindow.self, forKey: .timeWindow)
+        dateRange = try container.decodeIfPresent(DateRange.self, forKey: .dateRange)
+    }
+    
+    init(type: QueryType = .availability, users: [String] = [], durationHours: Double? = nil, timeWindow: TimeWindow? = nil, dateRange: DateRange? = nil) {
+        self.type = type
+        self.users = users
+        self.durationHours = durationHours
+        self.timeWindow = timeWindow
+        self.dateRange = dateRange
+    }
 }
 
 struct EventCreationQuery: Codable, Equatable {
@@ -71,6 +90,40 @@ struct EventCreationQuery: Codable, Equatable {
     var guestNames: [String] = []
     var categoryName: String?
     var eventType: String? // "personal" or "group", defaults to "group" if attendees
+    
+    // Custom decoder to handle missing keys with default values
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decodeIfPresent(QueryType.self, forKey: .type) ?? .createEvent
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        date = try container.decodeIfPresent(String.self, forKey: .date)
+        time = try container.decodeIfPresent(String.self, forKey: .time)
+        durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes)
+        isAllDay = try container.decodeIfPresent(Bool.self, forKey: .isAllDay) ?? false
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        groupName = try container.decodeIfPresent(String.self, forKey: .groupName)
+        attendeeNames = try container.decodeIfPresent([String].self, forKey: .attendeeNames) ?? []
+        guestNames = try container.decodeIfPresent([String].self, forKey: .guestNames) ?? []
+        categoryName = try container.decodeIfPresent(String.self, forKey: .categoryName)
+        eventType = try container.decodeIfPresent(String.self, forKey: .eventType)
+    }
+    
+    init(type: QueryType = .createEvent, title: String? = nil, date: String? = nil, time: String? = nil, durationMinutes: Int? = nil, isAllDay: Bool = false, location: String? = nil, notes: String? = nil, groupName: String? = nil, attendeeNames: [String] = [], guestNames: [String] = [], categoryName: String? = nil, eventType: String? = nil) {
+        self.type = type
+        self.title = title
+        self.date = date
+        self.time = time
+        self.durationMinutes = durationMinutes
+        self.isAllDay = isAllDay
+        self.location = location
+        self.notes = notes
+        self.groupName = groupName
+        self.attendeeNames = attendeeNames
+        self.guestNames = guestNames
+        self.categoryName = categoryName
+        self.eventType = eventType
+    }
 }
 
 // MARK: - Free Time Slot Models
@@ -156,3 +209,46 @@ struct OpenAIErrorResponse: Codable {
     }
 }
 
+// MARK: - Database Models for AI Chat Persistence
+
+struct DBAIConversation: Codable, Identifiable, Equatable {
+    let id: UUID
+    let user_id: UUID
+    let title: String
+    let created_at: Date?
+    let updated_at: Date?
+}
+
+struct DBAIConversationInsert: Encodable {
+    let user_id: UUID
+    let title: String
+}
+
+struct DBAIConversationUpdate: Encodable {
+    let title: String?
+    let updated_at: Date?
+}
+
+struct DBAIMessage: Codable, Identifiable, Equatable {
+    let id: UUID
+    let conversation_id: UUID
+    let role: String
+    let content: String
+    let timestamp: Date?
+    
+    /// Convert to in-memory ChatMessage
+    func toChatMessage() -> ChatMessage {
+        ChatMessage(
+            id: id,
+            role: MessageRole(rawValue: role) ?? .assistant,
+            content: content,
+            timestamp: timestamp ?? Date()
+        )
+    }
+}
+
+struct DBAIMessageInsert: Encodable {
+    let conversation_id: UUID
+    let role: String
+    let content: String
+}

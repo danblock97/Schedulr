@@ -144,6 +144,13 @@ struct PaywallView: View {
                 )
                 
                 FeatureComparisonRow(
+                    title: "Propose times",
+                    freeValue: "Standard (manual)",
+                    proValue: "AI assist + natural language",
+                    icon: "wand.and.stars"
+                )
+                
+                FeatureComparisonRow(
                     title: "Calendar sync",
                     freeValue: "✓",
                     proValue: "✓",

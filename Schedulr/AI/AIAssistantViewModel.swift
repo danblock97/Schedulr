@@ -17,8 +17,15 @@ final class AIAssistantViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var inputText: String = ""
     
+    // Conversation persistence
+    @Published var currentConversationId: UUID?
+    @Published var conversations: [DBAIConversation] = []
+    @Published var isLoadingConversations: Bool = false
+    @Published var showConversationHistory: Bool = false
+    
     private let aiService = AIService.shared
     private let calendarAnalysisService = CalendarAnalysisService.shared
+    private let persistenceService = AIChatPersistenceService.shared
     private let dashboardViewModel: DashboardViewModel
     private let calendarManager: CalendarSyncManager
     
@@ -29,6 +36,11 @@ final class AIAssistantViewModel: ObservableObject {
         // Add welcome message if no messages exist
         if messages.isEmpty {
             addWelcomeMessage()
+        }
+        
+        // Load conversation history in background
+        Task {
+            await loadConversations()
         }
     }
     
@@ -45,6 +57,12 @@ final class AIAssistantViewModel: ObservableObject {
         // Add user message
         let userMsg = ChatMessage(role: .user, content: userMessage)
         messages.append(userMsg)
+        
+        // Ensure we have a conversation (create on first user message)
+        _ = await ensureConversation(firstMessage: userMessage)
+        
+        // Persist the user message
+        await persistMessage(userMsg)
         
         // Show loading state
         isLoading = true
@@ -63,6 +81,7 @@ final class AIAssistantViewModel: ObservableObject {
                 content: "⚠️ You've reached your AI usage limit for this month. Upgrade to Pro to get 300 AI requests per month!"
             )
             messages.append(limitMsg)
+            await persistMessage(limitMsg)
             
             // Notify that limit check is needed
             NotificationCenter.default.post(
@@ -77,8 +96,10 @@ final class AIAssistantViewModel: ObservableObject {
             let lowercasedQuery = userMessage.lowercased()
             
             // PRIORITY 1: Check if query asks "what times work?" or similar availability questions
-            // This takes priority even if "schedule" is mentioned
-            let availabilityQuestionKeywords = ["what times work", "when are", "when can", "find times", "available times", "what times are", "when would", "times work"]
+            // Note: We exclude "what's on" and "my schedule" as these are ambiguous - they could mean
+            // "show my schedule" (listEvents) or "find free times" (availability)
+            // Let the AI parsing handle the distinction
+            let availabilityQuestionKeywords = ["what times work", "when are", "when can", "find times", "available times", "what times are", "when would", "times work", "find free", "free time", "available slots"]
             let isAvailabilityQuestion = availabilityQuestionKeywords.contains { lowercasedQuery.contains($0) }
             
             // PRIORITY 2: Check if this is a combined query (find slots then create event)
@@ -90,7 +111,7 @@ final class AIAssistantViewModel: ObservableObject {
             if isAvailabilityQuestion {
                 // Handle as availability query (even if "schedule" is mentioned)
                 let groupNames = dashboardViewModel.memberships.map { (id: $0.id, name: $0.name) }
-                let availabilityQuery = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers(), groupNames: groupNames)
+                let availabilityQuery = try await aiService.parseAvailabilityQuery(messages, groupMembers: getGroupMembers(), groupNames: groupNames)
                 
                 // Handle group name references (e.g., "all team members from Work Team")
                 var finalQuery = availabilityQuery
@@ -104,6 +125,8 @@ final class AIAssistantViewModel: ObservableObject {
                 if finalQuery.type == .availability && !finalQuery.users.isEmpty {
                     // Handle availability query with the correct group ID
                     await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
+                } else if finalQuery.type == .listEvents {
+                    await handleListEventsQuery(query: finalQuery)
                 } else {
                     // Handle general question
                     await handleGeneralQuestion(question: userMessage)
@@ -114,7 +137,14 @@ final class AIAssistantViewModel: ObservableObject {
             } else {
                 // Try to parse as event creation
                 let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
-                let isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
+                var isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
+                
+                // Refine "schedule" keyword - if it's "my schedule" or "the schedule", it's likely NOT creation
+                if isEventCreation && lowercasedQuery.contains("schedule") {
+                    if lowercasedQuery.contains("my schedule") || lowercasedQuery.contains("the schedule") || lowercasedQuery.contains("on schedule") {
+                        isEventCreation = false
+                    }
+                }
                 
                 if isEventCreation {
                     // Event creation requires a selected group
@@ -124,12 +154,13 @@ final class AIAssistantViewModel: ObservableObject {
                             content: "Please select a group first to create an event. Go to the Groups tab and select a group."
                         )
                         messages.append(response)
+                        await persistMessage(response)
                         return
                     }
                     
                     let selectedGroupName = dashboardViewModel.memberships.first(where: { $0.id == groupId })?.name
                     let eventQuery = try await aiService.parseEventCreationQuery(
-                        userMessage,
+                        messages,
                         groupMembers: getGroupMembers(),
                         groupName: selectedGroupName
                     )
@@ -138,7 +169,7 @@ final class AIAssistantViewModel: ObservableObject {
                     // Check if query is about availability
                     // Get available group names for better parsing
                     let groupNames = dashboardViewModel.memberships.map { (id: $0.id, name: $0.name) }
-                    let availabilityQuery = try await aiService.parseAvailabilityQuery(userMessage, groupMembers: getGroupMembers(), groupNames: groupNames)
+                    let availabilityQuery = try await aiService.parseAvailabilityQuery(messages, groupMembers: getGroupMembers(), groupNames: groupNames)
                     
                     // Handle group name references (e.g., "all team members from Work Team")
                     var finalQuery = availabilityQuery
@@ -152,6 +183,8 @@ final class AIAssistantViewModel: ObservableObject {
                     if finalQuery.type == .availability && !finalQuery.users.isEmpty {
                         // Handle availability query with the correct group ID
                         await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
+                    } else if finalQuery.type == .listEvents {
+                        await handleListEventsQuery(query: finalQuery)
                     } else {
                         // Handle general question
                         await handleGeneralQuestion(question: userMessage)
@@ -161,6 +194,11 @@ final class AIAssistantViewModel: ObservableObject {
             
             // Track AI usage after successful request
             await AIUsageTracker.shared.trackRequest()
+            
+            // Persist the last assistant message (the response)
+            if let lastMessage = messages.last, lastMessage.role == .assistant {
+                await persistMessage(lastMessage)
+            }
             
         } catch {
             // Show user-friendly error messages
@@ -177,6 +215,7 @@ final class AIAssistantViewModel: ObservableObject {
                 content: "⚠️ \(friendlyError)"
             )
             messages.append(errorMsg)
+            await persistMessage(errorMsg)
         }
     }
     
@@ -267,6 +306,185 @@ final class AIAssistantViewModel: ObservableObject {
                 content: "I encountered an error while checking availability: \(error.localizedDescription). Please try again."
             )
             messages.append(response)
+        }
+    }
+    
+    private func handleListEventsQuery(query: AvailabilityQuery) async {
+        // Get current user ID
+        let currentUserId: UUID?
+        do {
+            if let client = SupabaseManager.shared.client {
+                let session = try await client.auth.session
+                currentUserId = session.user.id
+            } else {
+                currentUserId = nil
+            }
+        } catch {
+            currentUserId = nil
+        }
+        
+        // Check if this is a "next event" query by looking at recent conversation
+        let lastUserMessage = messages.last(where: { $0.role == .user })?.content.lowercased() ?? ""
+        let isNextEventQuery = lastUserMessage.contains("next event") || 
+                               lastUserMessage.contains("next meeting") || 
+                               lastUserMessage.contains("what's next") ||
+                               lastUserMessage.contains("upcoming") ||
+                               (lastUserMessage.contains("next") && lastUserMessage.contains("event"))
+        
+        // Parse date range
+        let dateFormatter = ISO8601DateFormatter()
+        dateFormatter.formatOptions = [.withFullDate]
+        
+        let startDate: Date
+        let endDate: Date
+        
+        if let range = query.dateRange,
+           let start = dateFormatter.date(from: range.start),
+           let end = dateFormatter.date(from: range.end) {
+            startDate = start
+            // If end date is same as start, make it end of day
+            if start == end {
+                endDate = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
+            } else {
+                endDate = Calendar.current.date(byAdding: .day, value: 1, to: end) ?? end
+            }
+        } else if isNextEventQuery {
+            // For "next event" queries, look forward from tomorrow
+            let calendar = Calendar.current
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            startDate = calendar.startOfDay(for: tomorrow)
+            endDate = calendar.date(byAdding: .day, value: 30, to: startDate) ?? startDate
+        } else {
+            // Default to today
+            startDate = Calendar.current.startOfDay(for: Date())
+            endDate = Calendar.current.date(byAdding: .day, value: 1, to: startDate) ?? startDate
+        }
+        
+        // Filter events
+        let events = calendarManager.groupEvents.filter { event in
+            // Check date overlap
+            let eventStart = event.start_date
+            let eventEnd = event.end_date
+            return eventStart < endDate && eventEnd > startDate
+        }
+        
+        // Filter by users if specified
+        let memberMap = getMemberNameToIdMap()
+        var targetUserIds: Set<UUID> = []
+        
+        if !query.users.isEmpty {
+            for userName in query.users {
+                if let userId = memberMap[userName.lowercased()] {
+                    targetUserIds.insert(userId)
+                }
+            }
+        } else {
+            // If no users specified, assume current user ("my schedule")
+            if let currentUserId = currentUserId {
+                targetUserIds.insert(currentUserId)
+            }
+        }
+        
+        let filteredEvents = events.filter { event in
+            if targetUserIds.isEmpty { return true } // Should not happen if logic above is correct
+            
+            // Check if event belongs to target user or they are attending
+            if targetUserIds.contains(event.user_id) { return true }
+            
+            // Check attendees (if we had access to attendee list on event object easily)
+            // For now, rely on user_id (owner) or if it's a group event visible to them
+            // Ideally we check attendees, but CalendarEventWithUser doesn't expose raw attendee IDs list directly in a convenient way for this check without iterating
+            // But wait, CalendarEventWithUser has `isCurrentUserAttendee`.
+            
+            if let currentUserId = currentUserId, targetUserIds.contains(currentUserId) {
+                if event.isCurrentUserAttendee == true { return true }
+            }
+            
+            return false
+        }
+        
+        if filteredEvents.isEmpty {
+            // Provide a more helpful message based on the query type
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = .none
+            
+            let rangeDescription: String
+            if isNextEventQuery {
+                rangeDescription = "the next 30 days"
+            } else if let range = query.dateRange,
+               let start = ISO8601DateFormatter().date(from: range.start) {
+                let calendar = Calendar.current
+                if calendar.isDateInToday(start) {
+                    rangeDescription = "today"
+                } else if calendar.isDateInTomorrow(start) {
+                    rangeDescription = "tomorrow"
+                } else {
+                    rangeDescription = dateFormatter.string(from: start)
+                }
+            } else {
+                rangeDescription = "today"
+            }
+            
+            let responseText = isNextEventQuery 
+                ? "You don't have any upcoming events scheduled in \(rangeDescription)."
+                : "You don't have any events scheduled for \(rangeDescription)."
+            
+            let response = ChatMessage(
+                role: .assistant,
+                content: responseText
+            )
+            messages.append(response)
+            await persistMessage(response)
+        } else {
+            let sortedEvents = filteredEvents.sorted { $0.start_date < $1.start_date }
+            
+            // Build a more conversational response
+            let timeFormatter = DateFormatter()
+            timeFormatter.timeStyle = .short
+            let dayFormatter = DateFormatter()
+            dayFormatter.dateFormat = "EEEE, MMM d"
+            
+            var responseText = ""
+            var currentDay = ""
+            var eventCount = 0
+            
+            for event in sortedEvents {
+                let dayStr = dayFormatter.string(from: event.start_date)
+                if dayStr != currentDay {
+                    if !currentDay.isEmpty {
+                        responseText += "\n"
+                    }
+                    responseText += "**\(dayStr)**\n"
+                    currentDay = dayStr
+                }
+                
+                let startStr = timeFormatter.string(from: event.start_date)
+                let endStr = timeFormatter.string(from: event.end_date)
+                let title = event.title
+                
+                responseText += "• \(startStr) - \(endStr): \(title)\n"
+                eventCount += 1
+            }
+            
+            // Add a summary at the beginning
+            if isNextEventQuery {
+                if eventCount == 1 {
+                    responseText = "Your next event is:\n\n" + responseText
+                } else {
+                    responseText = "Here are your next \(eventCount) events:\n\n" + responseText
+                }
+            } else {
+                if eventCount > 1 {
+                    responseText = "You have \(eventCount) events scheduled:\n\n" + responseText
+                } else if eventCount == 1 {
+                    responseText = "You have 1 event scheduled:\n\n" + responseText
+                }
+            }
+            
+            let response = ChatMessage(role: .assistant, content: responseText)
+            messages.append(response)
+            await persistMessage(response)
         }
     }
     
@@ -869,7 +1087,128 @@ Be concise and friendly in your responses. If asked about availability, remind u
     
     func clearMessages() {
         messages.removeAll()
+        currentConversationId = nil
         addWelcomeMessage()
+    }
+    
+    // MARK: - Conversation Persistence
+    
+    /// Load all conversations for the current user
+    func loadConversations() async {
+        guard !isLoadingConversations else { return }
+        
+        do {
+            guard let client = SupabaseManager.shared.client else { return }
+            let userId = try await client.auth.session.user.id
+            
+            isLoadingConversations = true
+            defer { isLoadingConversations = false }
+            
+            conversations = try await persistenceService.fetchConversations(userId: userId)
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to load conversations: \(error)")
+            #endif
+        }
+    }
+    
+    /// Load a specific conversation and its messages
+    func loadConversation(_ conversation: DBAIConversation) async {
+        do {
+            // Fetch messages for this conversation
+            let dbMessages = try await persistenceService.fetchMessages(conversationId: conversation.id)
+            
+            // Clear current messages and set conversation ID
+            messages.removeAll()
+            currentConversationId = conversation.id
+            
+            // Convert DB messages to ChatMessages
+            messages = dbMessages.map { $0.toChatMessage() }
+            
+            // Add welcome message if empty
+            if messages.isEmpty {
+                addWelcomeMessage()
+            }
+            
+            // Close history sheet
+            showConversationHistory = false
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to load conversation: \(error)")
+            #endif
+            errorMessage = "Failed to load conversation"
+        }
+    }
+    
+    /// Start a new conversation (clears current and resets)
+    func startNewConversation() {
+        clearMessages()
+        showConversationHistory = false
+    }
+    
+    /// Delete a conversation
+    func deleteConversation(_ conversation: DBAIConversation) async {
+        do {
+            try await persistenceService.deleteConversation(conversationId: conversation.id)
+            
+            // Remove from local list
+            conversations.removeAll { $0.id == conversation.id }
+            
+            // If we deleted the current conversation, start fresh
+            if currentConversationId == conversation.id {
+                clearMessages()
+            }
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to delete conversation: \(error)")
+            #endif
+            errorMessage = "Failed to delete conversation"
+        }
+    }
+    
+    /// Save current message to persistence (called after message is added)
+    private func persistMessage(_ message: ChatMessage) async {
+        // Only persist if we have a conversation
+        guard let conversationId = currentConversationId else { return }
+        
+        do {
+            try await persistenceService.saveMessage(conversationId: conversationId, message: message)
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to persist message: \(error)")
+            #endif
+            // Don't show error to user - persistence failure shouldn't block chat
+        }
+    }
+    
+    /// Ensure a conversation exists, creating one if needed
+    private func ensureConversation(firstMessage: String) async -> UUID? {
+        // Already have a conversation
+        if let conversationId = currentConversationId {
+            return conversationId
+        }
+        
+        do {
+            guard let client = SupabaseManager.shared.client else { return nil }
+            let userId = try await client.auth.session.user.id
+            
+            // Generate title from first message
+            let title = persistenceService.generateTitle(from: firstMessage)
+            
+            // Create new conversation
+            let conversation = try await persistenceService.createConversation(userId: userId, title: title)
+            currentConversationId = conversation.id
+            
+            // Add to local list
+            conversations.insert(conversation, at: 0)
+            
+            return conversation.id
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to create conversation: \(error)")
+            #endif
+            return nil
+        }
     }
 }
 

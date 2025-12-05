@@ -40,6 +40,7 @@ struct CalendarRootView: View {
     @State private var showingEventDetail = false
     @StateObject private var notificationViewModel = NotificationViewModel()
     @State private var pendingEventId: UUID?
+    @State private var showingProposeTimes = false
 
     @State private var isViewReady = false
     
@@ -181,6 +182,15 @@ struct CalendarRootView: View {
                     
                     if let gid = viewModel.selectedGroupID {
                         Button {
+                            showingProposeTimes = true
+                        } label: {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                        .disabled(calendarSync.isRefreshing)
+                        
+                        Button {
                             showingEditor = true
                         } label: {
                             Image(systemName: "plus")
@@ -218,6 +228,11 @@ struct CalendarRootView: View {
                 if let gid = viewModel.selectedGroupID {
                     EventEditorView(groupId: gid, members: viewModel.members, initialDate: selectedDate)
                 }
+            }
+            .sheet(isPresented: $showingProposeTimes) {
+                ProposeTimesView(dashboardViewModel: viewModel)
+                    .environmentObject(calendarSync)
+                    .environmentObject(themeManager)
             }
             .sheet(isPresented: $showingMonthModePicker) {
                 MonthViewModePicker(selectedMode: $monthViewMode)

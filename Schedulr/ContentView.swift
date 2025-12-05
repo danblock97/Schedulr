@@ -31,7 +31,7 @@ struct ContentView: View {
                 case 1:
                     CalendarRootView(viewModel: viewModel)
                 case 2:
-                    AIAssistantView(dashboardViewModel: viewModel, calendarManager: calendarManager, startWithVoice: startAIWithVoice)
+                    AIAssistantView(dashboardViewModel: viewModel, calendarManager: calendarManager, startWithVoice: startAIWithVoice, userAvatarURL: profileViewModel.avatarURL)
                         .onAppear {
                             // Reset voice flag after use
                             if startAIWithVoice {

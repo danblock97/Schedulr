@@ -114,34 +114,49 @@ final class AIService {
     // MARK: - Query Parsing
     
     /// Uses AI to parse a natural language query and determine if it's an availability query or event creation query
-    /// - Parameter query: The user's natural language query
+    /// - Parameter messages: The chat history including the current query
     /// - Returns: A structured query (AvailabilityQuery or EventCreationQuery)
-    func parseQuery(_ query: String, groupMembers: [(id: UUID, name: String)], groupName: String?) async throws -> Any {
-        // Check if query asks "what times work?" or similar availability questions first
-        // This takes priority over event creation keywords
+    func parseQuery(_ messages: [ChatMessage], groupMembers: [(id: UUID, name: String)], groupName: String?) async throws -> Any {
+        guard let lastMessage = messages.last else {
+            return AvailabilityQuery(type: .general)
+        }
+        
+        let query = lastMessage.content
         let lowercasedQuery = query.lowercased()
-        let availabilityQuestionKeywords = ["what times work", "when are", "when can", "find times", "available times", "what times are", "when would"]
+        
+        // Check if query asks "what times work?" or similar availability questions first
+        // Note: We exclude "what's on" and "my schedule" as these are ambiguous - they could mean
+        // "show my schedule" (listEvents) or "find free times" (availability)
+        // Let the AI parsing handle the distinction
+        let availabilityQuestionKeywords = ["what times work", "when are", "when can", "find times", "available times", "what times are", "when would", "find free", "free time", "available slots"]
         let isAvailabilityQuestion = availabilityQuestionKeywords.contains { lowercasedQuery.contains($0) }
         
         if isAvailabilityQuestion {
-            return try await parseAvailabilityQuery(query, groupMembers: groupMembers)
+            return try await parseAvailabilityQuery(messages, groupMembers: groupMembers)
         }
         
         // Then check if it's an event creation query
         let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
-        let isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
+        var isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
+        
+        // Refine "schedule" keyword - if it's "my schedule" or "the schedule", it's likely NOT creation
+        if isEventCreation && lowercasedQuery.contains("schedule") {
+            if lowercasedQuery.contains("my schedule") || lowercasedQuery.contains("the schedule") || lowercasedQuery.contains("on schedule") {
+                isEventCreation = false
+            }
+        }
         
         if isEventCreation {
-            return try await parseEventCreationQuery(query, groupMembers: groupMembers, groupName: groupName)
+            return try await parseEventCreationQuery(messages, groupMembers: groupMembers, groupName: groupName)
         } else {
-            return try await parseAvailabilityQuery(query, groupMembers: groupMembers)
+            return try await parseAvailabilityQuery(messages, groupMembers: groupMembers)
         }
     }
     
     /// Uses AI to parse a natural language query into a structured EventCreationQuery
-    /// - Parameter query: The user's natural language query
+    /// - Parameter messages: The chat history including the current query
     /// - Returns: A structured EventCreationQuery
-    func parseEventCreationQuery(_ query: String, groupMembers: [(id: UUID, name: String)], groupName: String?) async throws -> EventCreationQuery {
+    func parseEventCreationQuery(_ messages: [ChatMessage], groupMembers: [(id: UUID, name: String)], groupName: String?) async throws -> EventCreationQuery {
         guard let apiKey = apiKey, !apiKey.isEmpty else {
             throw AIServiceError.missingAPIKey
         }
@@ -189,12 +204,15 @@ Return ONLY valid JSON in this exact format:
 Omit fields that are not mentioned or can't be determined. If the query is not about creating an event, return {"type": "general"}.
 """
         
-        let messages = [
-            ChatMessage(role: .system, content: systemPrompt),
-            ChatMessage(role: .user, content: query)
+        var chatMessages = [
+            ChatMessage(role: .system, content: systemPrompt)
         ]
         
-        let response = try await chatCompletion(messages: messages)
+        // Add recent history (last 10 messages) to provide context for follow-up questions
+        let recentHistory = messages.suffix(10)
+        chatMessages.append(contentsOf: recentHistory)
+        
+        let response = try await chatCompletion(messages: chatMessages)
         
         // Extract JSON from response
         var jsonString = response.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -223,9 +241,9 @@ Omit fields that are not mentioned or can't be determined. If the query is not a
     }
     
     /// Uses AI to parse a natural language query into a structured AvailabilityQuery
-    /// - Parameter query: The user's natural language query
+    /// - Parameter messages: The chat history including the current query
     /// - Returns: A structured AvailabilityQuery
-    func parseAvailabilityQuery(_ query: String, groupMembers: [(id: UUID, name: String)], groupNames: [(id: UUID, name: String)] = []) async throws -> AvailabilityQuery {
+    func parseAvailabilityQuery(_ messages: [ChatMessage], groupMembers: [(id: UUID, name: String)], groupNames: [(id: UUID, name: String)] = []) async throws -> AvailabilityQuery {
         guard let apiKey = apiKey, !apiKey.isEmpty else {
             throw AIServiceError.missingAPIKey
         }
@@ -256,7 +274,30 @@ Available group members: \(membersList)\(groupsList)
 Today's date: \(todayString)
 Next week dates: \(nextWeekStartString) to \(nextWeekEndString)
 
-Parse the user's query and extract:
+CRITICAL: First determine the query intent:
+- If the user wants to SEE/LIST/VIEW their schedule or events (e.g., "what's on my schedule", "show my events", "what do I have today", "what meetings do I have", "what's my next event", "when is my next meeting", "upcoming events"), return type: "listEvents"
+- If the user wants to FIND FREE TIME SLOTS or AVAILABILITY (e.g., "when am I free", "find a time when", "what times work"), return type: "availability"
+
+IMPORTANT: Pay attention to conversation context! If the user asks follow-up questions like:
+- "what's my next event" or "what's next" → look forward in time (next 30 days or until first event found)
+- "what about tomorrow" → tomorrow's date
+- "when is my next meeting" → look forward from today
+- "upcoming events" → look forward in time
+
+For "listEvents" type queries:
+- Return {"type": "listEvents", "users": [], "dateRange": {"start": "...", "end": "..."}}
+- Extract date range if specified:
+  * "today" → start and end both = today's date (\(todayString))
+  * "tomorrow" → start and end both = tomorrow's date
+  * "this week" → start = Monday of this week, end = Sunday of this week
+  * "next week" → start = \(nextWeekStartString), end = \(nextWeekEndString)
+  * "next event", "upcoming", "next meeting" → start = tomorrow's date, end = 30 days from now (to find the next event)
+  * If previous message mentioned a date (e.g., "nothing today"), and user asks "what's next" → start = tomorrow, end = 30 days from now
+  * If no date specified, default to today
+- Extract user names if query mentions specific people (e.g., "show John's schedule")
+- If no users specified and query says "my schedule" or "my events", leave users empty (will default to current user)
+
+For "availability" type queries, extract:
 1. User names mentioned (match them to the available members list)
    - If query says "all team members" or "all members" from a group, include ALL members from the members list
    - If query mentions a group name, include ALL members from that group (you'll see group names in the query, match them)
@@ -275,7 +316,7 @@ IMPORTANT: If the query mentions days of the week (Monday, Tuesday, etc.) or "pr
 
 Return ONLY valid JSON in this exact format (no markdown, no code blocks, just raw JSON):
 {
-  "type": "availability",
+  "type": "availability", // or "listEvents" if user asks to see schedule/events
   "users": ["User1", "User2"],
   "durationHours": 2.0,
   "timeWindow": {
@@ -289,20 +330,26 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just r
 }
 
 CRITICAL RULES:
+- "what's on my schedule", "show my schedule", "what do I have", "my events", "what meetings" → type: "listEvents"
+- "when am I free", "find free time", "what times work", "available times" → type: "availability"
 - If "all team members" or "all members" is mentioned, include ALL members from the members list
 - Match user/group names exactly (case-insensitive)
 - If a field is not mentioned, omit it from the JSON
 - Always return valid JSON, never return text explanations
-- If the query is not about availability, return {"type": "general"}
+- If the query is not about availability or schedule, return {"type": "general"}
 """
         
-        let messages = [
-            ChatMessage(role: .system, content: systemPrompt),
-            ChatMessage(role: .user, content: query)
+        var chatMessages = [
+            ChatMessage(role: .system, content: systemPrompt)
         ]
         
+        // Add recent history (last 10 messages) to provide context for follow-up questions
+        // This helps understand references like "next event", "what about tomorrow", etc.
+        let recentHistory = messages.suffix(10)
+        chatMessages.append(contentsOf: recentHistory)
+        
         // Don't pass temperature - let API use default (1.0 for GPT-5 nano)
-        let response = try await chatCompletion(messages: messages)
+        let response = try await chatCompletion(messages: chatMessages)
         
         // Extract JSON from response (might have markdown code blocks)
         var jsonString = response.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -349,7 +396,8 @@ CRITICAL RULES:
             }
             
             // Fallback: try keyword-based parsing
-            return parseQueryFallback(query: query, groupMembers: groupMembers)
+            guard let lastQuery = messages.last?.content else { return AvailabilityQuery(type: .general) }
+            return parseQueryFallback(query: lastQuery, groupMembers: groupMembers)
         }
     }
     

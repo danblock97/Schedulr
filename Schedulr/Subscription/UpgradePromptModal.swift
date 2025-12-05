@@ -32,7 +32,7 @@ struct UpgradePromptModal: View {
             case .members:
                 return "You've reached your member limit. Upgrade to Pro to add up to 10 members per group!"
             case .ai:
-                return "You've used up your AI requests this month. Upgrade to Pro for 300 requests per month!"
+                return "You've used up your AI requests this month. Upgrade to Pro for AI-assisted propose times, Scheduly, and 300 requests per month!"
             }
         }
         
