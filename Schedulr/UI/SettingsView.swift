@@ -224,6 +224,43 @@ struct SettingsView: View {
                         )
                     )
                 }
+
+                Divider().opacity(0.5)
+
+                // Engagement Nudges
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Engagement Nudges")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .textCase(.uppercase)
+
+                    SettingsToggleRow(
+                        title: "Empty Week Nudge",
+                        subtitle: "Sunday prompt if next 7 days are empty",
+                        isOn: Binding(
+                            get: { viewModel.notificationPrefs.notifyEmptyWeekNudges },
+                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyEmptyWeekNudges, value: $0) }
+                        )
+                    )
+
+                    SettingsToggleRow(
+                        title: "Group Quiet Ping",
+                        subtitle: "If a group is quiet for 14 days",
+                        isOn: Binding(
+                            get: { viewModel.notificationPrefs.notifyGroupQuietPings },
+                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyGroupQuietPings, value: $0) }
+                        )
+                    )
+
+                    SettingsToggleRow(
+                        title: "AI Assist Follow-up",
+                        subtitle: "If you asked availability but didn’t schedule",
+                        isOn: Binding(
+                            get: { viewModel.notificationPrefs.notifyAIAssistFollowups },
+                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyAIAssistFollowups, value: $0) }
+                        )
+                    )
+                }
             }
         }
     }

@@ -16,6 +16,10 @@ struct NotificationPreferences: Codable, Equatable {
     var notifyGroupDeleted: Bool
     var notifySubscriptionChanges: Bool
     var notifyFeatureLimitWarnings: Bool
+    // Engagement nudges
+    var notifyEmptyWeekNudges: Bool
+    var notifyGroupQuietPings: Bool
+    var notifyAIAssistFollowups: Bool
     
     // Default preferences
     static let `default` = NotificationPreferences(
@@ -30,7 +34,10 @@ struct NotificationPreferences: Codable, Equatable {
         notifyGroupRenamed: true,
         notifyGroupDeleted: true,
         notifySubscriptionChanges: true,
-        notifyFeatureLimitWarnings: true
+        notifyFeatureLimitWarnings: true,
+        notifyEmptyWeekNudges: true,
+        notifyGroupQuietPings: true,
+        notifyAIAssistFollowups: true
     )
 }
 
@@ -123,6 +130,9 @@ final class NotificationPreferencesManager {
             let notify_group_deleted: Bool?
             let notify_subscription_changes: Bool?
             let notify_feature_limit_warnings: Bool?
+            let notify_empty_week_nudges: Bool?
+            let notify_group_quiet_pings: Bool?
+            let notify_ai_assist_followups: Bool?
         }
         
         let rows: [Row] = try await client
@@ -146,7 +156,10 @@ final class NotificationPreferencesManager {
                 notifyGroupRenamed: row.notify_group_renamed ?? true,
                 notifyGroupDeleted: row.notify_group_deleted ?? true,
                 notifySubscriptionChanges: row.notify_subscription_changes ?? true,
-                notifyFeatureLimitWarnings: row.notify_feature_limit_warnings ?? true
+                notifyFeatureLimitWarnings: row.notify_feature_limit_warnings ?? true,
+                notifyEmptyWeekNudges: row.notify_empty_week_nudges ?? true,
+                notifyGroupQuietPings: row.notify_group_quiet_pings ?? true,
+                notifyAIAssistFollowups: row.notify_ai_assist_followups ?? true
             )
         }
         
@@ -181,6 +194,9 @@ final class NotificationPreferencesManager {
             let notify_group_deleted: Bool
             let notify_subscription_changes: Bool
             let notify_feature_limit_warnings: Bool
+            let notify_empty_week_nudges: Bool
+            let notify_group_quiet_pings: Bool
+            let notify_ai_assist_followups: Bool
         }
         
         let row = UpsertRow(
@@ -196,7 +212,10 @@ final class NotificationPreferencesManager {
             notify_group_renamed: prefs.notifyGroupRenamed,
             notify_group_deleted: prefs.notifyGroupDeleted,
             notify_subscription_changes: prefs.notifySubscriptionChanges,
-            notify_feature_limit_warnings: prefs.notifyFeatureLimitWarnings
+            notify_feature_limit_warnings: prefs.notifyFeatureLimitWarnings,
+            notify_empty_week_nudges: prefs.notifyEmptyWeekNudges,
+            notify_group_quiet_pings: prefs.notifyGroupQuietPings,
+            notify_ai_assist_followups: prefs.notifyAIAssistFollowups
         )
         
         _ = try await client

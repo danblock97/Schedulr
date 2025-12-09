@@ -32,6 +32,9 @@ struct EventEditorView: View {
     @State private var selectedGroupId: UUID
     @State private var availableGroups: [DashboardViewModel.GroupSummary] = []
     @State private var isLoadingGroups = false
+    @State private var loadedDraftFollowupId: UUID?
+    @State private var didSave: Bool = false
+    @State private var availableDraftPayload: [String: String]?
     
     init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil) {
         self.groupId = groupId
@@ -50,6 +53,25 @@ struct EventEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let _ = availableDraftPayload {
+                    Section {
+                        HStack {
+                            Label("Draft available", systemImage: "doc.text")
+                            Spacer()
+                            Button("Discard") {
+                                Task {
+                                    await discardAvailableDraft()
+                                }
+                            }
+                            .buttonStyle(.borderless)
+                            Button("Resume") {
+                                applyAvailableDraft()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundColor(.accentColor)
+                        }
+                    }
+                }
                 Section("Details") {
                     TextField("Title", text: $title)
                     Toggle("All day", isOn: $isAllDay)
@@ -220,6 +242,8 @@ struct EventEditorView: View {
             prefillIfEditing()
             if existingEvent != nil {
                 await loadCurrentAttendees()
+            } else {
+                await loadLatestDraftIfAvailable()
             }
         }
         .sheet(isPresented: $showingCategoryCreator) {
@@ -227,6 +251,9 @@ struct EventEditorView: View {
                 categories.append(category)
                 selectedCategoryId = category.id
             }
+        }
+        .onDisappear {
+            Task { await saveDraftIfNeeded() }
         }
     }
     
@@ -407,6 +434,14 @@ struct EventEditorView: View {
                     // Check if we should show rating prompt
                     _ = RatingManager.shared.requestReviewIfAppropriate()
                 }
+
+                didSave = true
+                // Clear drafts upon successful save
+                if let draftId = loadedDraftFollowupId {
+                    await resolveSpecificDraftFollowUp(id: draftId)
+                } else {
+                    await resolveAllDraftFollowUps()
+                }
                 
                 dismiss()
             } catch {
@@ -448,6 +483,198 @@ struct EventEditorView: View {
         } catch {
             // Silently fail - attendees list is informational only
             currentAttendees = []
+        }
+    }
+
+    // MARK: - Draft handling
+    private func saveDraftIfNeeded() async {
+        guard existingEvent == nil, !didSave else { return }
+        let hasContent = !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !location.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !selectedMemberIds.isEmpty
+            || !guestNamesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard hasContent else { return }
+        await recordDraftFollowUp()
+    }
+    
+    private func recordDraftFollowUp(expiresInHours: Double = 24) async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            let session = try await client.auth.session
+            let userId = session.user.id
+            let expiresAt = Date().addingTimeInterval(expiresInHours * 3600)
+            
+            struct InsertRow: Encodable {
+                let user_id: UUID
+                let conversation_id: UUID?
+                let expires_at: Date
+                let reason: String
+                let draft_payload: [String: String]
+            }
+            
+            let payload = buildDraftPayload()
+            let row = InsertRow(
+                user_id: userId,
+                conversation_id: nil,
+                expires_at: expiresAt,
+                reason: "event_editor_draft",
+                draft_payload: payload
+            )
+            
+            // Upsert latest draft for this user/reason to avoid multiple entries
+            struct DraftParams: Encodable {
+                let p_user_id: UUID
+                let p_reason: String
+                let p_expires_at: Date
+                let p_draft_payload: [String: String]
+            }
+            let params = DraftParams(
+                p_user_id: userId,
+                p_reason: "event_editor_draft",
+                p_expires_at: expiresAt,
+                p_draft_payload: payload
+            )
+            
+            _ = try await client
+                .database
+                .rpc("upsert_ai_followup_draft", params: params)
+        } catch {
+            #if DEBUG
+            print("[EventEditorView] Failed to record draft follow-up: \(error)")
+            #endif
+        }
+    }
+    
+    private func loadLatestDraftIfAvailable() async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            let session = try await client.auth.session
+            let userId = session.user.id
+            let now = Date()
+            
+            struct Row: Decodable {
+                let id: UUID
+                let draft_payload: [String: String]?
+                let expires_at: Date
+                let resolved_at: Date?
+                let sent_at: Date?
+                let created_at: Date?
+            }
+            
+            let rows: [Row] = try await client.database
+                .from("ai_followups")
+                .select("id,draft_payload,expires_at,resolved_at,sent_at,created_at")
+                .eq("user_id", value: userId)
+                .eq("reason", value: "event_editor_draft")
+                .is("resolved_at", value: nil)
+                .gt("expires_at", value: now)
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            
+            guard let row = rows.first, let payload = row.draft_payload else { return }
+            availableDraftPayload = payload
+            loadedDraftFollowupId = row.id
+        } catch {
+            #if DEBUG
+            print("[EventEditorView] Failed to load draft follow-up: \(error)")
+            #endif
+        }
+    }
+    
+    private func resolveSpecificDraftFollowUp(id: UUID) async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            struct UpdateRow: Encodable { let resolved_at: Date }
+            let update = UpdateRow(resolved_at: Date())
+            _ = try await client
+                .database
+                .from("ai_followups")
+                .update(update)
+                .eq("id", value: id)
+                .execute()
+        } catch {
+            #if DEBUG
+            print("[EventEditorView] Failed to resolve draft follow-up: \(error)")
+            #endif
+        }
+    }
+    
+    private func resolveAllDraftFollowUps() async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            let session = try await client.auth.session
+            let userId = session.user.id
+            struct UpdateRow: Encodable { let resolved_at: Date }
+            let update = UpdateRow(resolved_at: Date())
+            _ = try await client
+                .database
+                .from("ai_followups")
+                .update(update)
+                .eq("user_id", value: userId)
+                .eq("reason", value: "event_editor_draft")
+                .is("resolved_at", value: nil)
+                .execute()
+        } catch {
+            #if DEBUG
+            print("[EventEditorView] Failed to resolve all draft follow-ups: \(error)")
+            #endif
+        }
+    }
+    
+    private func buildDraftPayload() -> [String: String] {
+        let iso = ISO8601DateFormatter()
+        return [
+            "title": title,
+            "start": iso.string(from: date),
+            "end": iso.string(from: endDate),
+            "is_all_day": isAllDay ? "true" : "false",
+            "event_type": eventType,
+            "location": location,
+            "notes": notes,
+            "group_id": selectedGroupId.uuidString,
+            "member_ids": selectedMemberIds.map { $0.uuidString }.joined(separator: ","),
+            "guest_names": guestNamesText,
+            "category_id": selectedCategoryId?.uuidString ?? ""
+        ]
+    }
+    
+    private func applyDraftPayload(_ payload: [String: String]) {
+        let iso = ISO8601DateFormatter()
+        if let t = payload["title"] { title = t }
+        if let startStr = payload["start"], let d = iso.date(from: startStr) { date = d }
+        if let endStr = payload["end"], let d = iso.date(from: endStr) { endDate = d }
+        if let allDay = payload["is_all_day"] { isAllDay = (allDay == "true") }
+        if let et = payload["event_type"] { eventType = et }
+        if let loc = payload["location"] { location = loc }
+        if let n = payload["notes"] { notes = n }
+        if let gid = payload["group_id"], let uuid = UUID(uuidString: gid) { selectedGroupId = uuid }
+        if let mids = payload["member_ids"] {
+            let ids = mids.split(separator: ",").compactMap { UUID(uuidString: String($0)) }
+            selectedMemberIds = Set(ids)
+        }
+        if let guests = payload["guest_names"] { guestNamesText = guests }
+        if let cat = payload["category_id"], let uuid = UUID(uuidString: cat) { selectedCategoryId = uuid }
+    }
+
+    private func applyAvailableDraft() {
+        guard let payload = availableDraftPayload else { return }
+        applyDraftPayload(payload)
+        if let draftId = loadedDraftFollowupId {
+            Task { await resolveSpecificDraftFollowUp(id: draftId) }
+            loadedDraftFollowupId = nil
+        }
+        availableDraftPayload = nil
+    }
+    
+    private func discardAvailableDraft() async {
+        guard let draftId = loadedDraftFollowupId else { return }
+        await resolveSpecificDraftFollowUp(id: draftId)
+        await MainActor.run {
+            availableDraftPayload = nil
+            loadedDraftFollowupId = nil
         }
     }
 }

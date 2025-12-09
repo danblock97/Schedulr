@@ -16,12 +16,17 @@ final class AIAssistantViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var inputText: String = ""
+    @Published var availableDraftPrompt: String?
     
     // Conversation persistence
     @Published var currentConversationId: UUID?
     @Published var conversations: [DBAIConversation] = []
     @Published var isLoadingConversations: Bool = false
     @Published var showConversationHistory: Bool = false
+    
+    // Track loaded draft follow-up (if any) to resolve when user resumes
+    private var availableDraftFollowupId: UUID?
+    private var activeDraftFollowupId: UUID?
     
     private let aiService = AIService.shared
     private let calendarAnalysisService = CalendarAnalysisService.shared
@@ -41,6 +46,11 @@ final class AIAssistantViewModel: ObservableObject {
         // Load conversation history in background
         Task {
             await loadConversations()
+        }
+        
+        // Attempt to load an open draft/follow-up for quick resume
+        Task {
+            await loadDraftIfAvailable()
         }
     }
     
@@ -63,6 +73,12 @@ final class AIAssistantViewModel: ObservableObject {
         let userMessage = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !userMessage.isEmpty else { return }
         var assistantPersisted = false
+        
+        // If user resumed a draft, resolve that follow-up
+        if let draftId = activeDraftFollowupId {
+            await resolveSpecificAIFollowUp(id: draftId)
+            activeDraftFollowupId = nil
+        }
         
         // Clear input immediately
         inputText = ""
@@ -318,6 +334,8 @@ final class AIAssistantViewModel: ObservableObject {
                 let response = ChatMessage(role: .assistant, content: responseText, followUpOptions: followUps)
                 messages.append(response)
                 await persistMessage(response)
+                // Track for AI follow-up since the user asked for availability
+                Task { await recordPendingAIFollowUp(reason: "availability_slots_found") }
             }
         } catch {
             let response = ChatMessage(
@@ -754,6 +772,8 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
             
             // Refresh calendar data
             await dashboardViewModel.refreshCalendarIfNeeded()
+            // Clear pending AI follow-ups now that an event was created
+            await resolvePendingAIFollowUps()
             
             // Format confirmation message
             let dateFormatter = DateFormatter()
@@ -912,6 +932,8 @@ What should I call it? You can also add a location, attendees, or notes if you l
 """
             let response = ChatMessage(role: .assistant, content: responseText)
             messages.append(response)
+            // Track for AI follow-up since the user started an event but hasn't finished
+            Task { await recordPendingAIFollowUp(reason: "event_creation_missing_title") }
             return
         }
         
@@ -972,6 +994,8 @@ What should I call it? You can also add a location, attendees, or notes if you l
             
             // Refresh calendar data
             await dashboardViewModel.refreshCalendarIfNeeded()
+            // Clear pending AI follow-ups now that an event was created
+            await resolvePendingAIFollowUps()
             
             // Format confirmation message
             let dateFormatter = DateFormatter()
@@ -1281,6 +1305,165 @@ Be concise and friendly in your responses. If asked about availability, remind u
             print("[AIAssistantViewModel] Failed to create conversation: \(error)")
             #endif
             return nil
+        }
+    }
+
+    // MARK: - AI Follow-up Tracking
+    
+    /// Record a pending AI follow-up for engagement nudges (e.g., availability provided but no event yet).
+    private func recordPendingAIFollowUp(reason: String, expiresInHours: Double = 24) async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            let session = try await client.auth.session
+            let userId = session.user.id
+            let expiresAt = Date().addingTimeInterval(expiresInHours * 3600)
+            
+            struct InsertRow: Encodable {
+                let user_id: UUID
+                let conversation_id: UUID?
+                let expires_at: Date
+                let reason: String
+                let draft_payload: [String: String]?
+            }
+            
+            let row = InsertRow(
+                user_id: userId,
+                conversation_id: currentConversationId,
+                expires_at: expiresAt,
+                reason: reason,
+                draft_payload: draftPayloadForCurrentContext(reason: reason)
+            )
+            
+            _ = try await client
+                .database
+                .from("ai_followups")
+                .insert(row)
+                .execute()
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to record AI follow-up: \(error)")
+            #endif
+        }
+    }
+    
+    /// Resolve any pending AI follow-ups for the current user (e.g., after an event is created).
+    private func resolvePendingAIFollowUps() async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            let session = try await client.auth.session
+            let userId = session.user.id
+            
+            struct UpdateRow: Encodable { let resolved_at: Date }
+            let update = UpdateRow(resolved_at: Date())
+            
+            _ = try await client
+                .database
+                .from("ai_followups")
+                .update(update)
+                .eq("user_id", value: userId)
+                .is("resolved_at", value: nil)
+                .execute()
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to resolve AI follow-ups: \(error)")
+            #endif
+        }
+    }
+    
+    /// Resolve a specific follow-up by id (used when loading/resuming a draft).
+    private func resolveSpecificAIFollowUp(id: UUID) async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            struct UpdateRow: Encodable { let resolved_at: Date }
+            let update = UpdateRow(resolved_at: Date())
+            _ = try await client
+                .database
+                .from("ai_followups")
+                .update(update)
+                .eq("id", value: id)
+                .execute()
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to resolve specific follow-up: \(error)")
+            #endif
+        }
+    }
+    
+    /// Load the most recent, not-expired, unresolved follow-up draft and prefill input for quick resume.
+    private func loadDraftIfAvailable() async {
+        guard let client = SupabaseManager.shared.client else { return }
+        do {
+            let session = try await client.auth.session
+            let userId = session.user.id
+            let now = Date()
+            
+            struct Row: Decodable {
+                let id: UUID
+                let draft_payload: [String: String]?
+                let expires_at: Date
+                let resolved_at: Date?
+                let sent_at: Date?
+            }
+            
+            let rows: [Row] = try await client.database
+                .from("ai_followups")
+                .select("id,draft_payload,expires_at,resolved_at,sent_at")
+                .eq("user_id", value: userId)
+                .is("resolved_at", value: nil)
+                .gt("expires_at", value: now)
+                .order("created_at", ascending: false)
+                .limit(1)
+                .execute()
+                .value
+            
+            guard let row = rows.first,
+                  let payload = row.draft_payload,
+                  let prompt = payload["prompt"] else { return }
+            
+            await MainActor.run {
+                availableDraftPrompt = prompt
+            }
+            availableDraftFollowupId = row.id
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to load draft follow-up: \(error)")
+            #endif
+        }
+    }
+    
+    /// Build a simple draft payload to allow resuming.
+    private func draftPayloadForCurrentContext(reason: String) -> [String: String]? {
+        switch reason {
+        case "availability_slots_found":
+            if let firstFollowUp = messages.last?.followUpOptions.first?.prompt {
+                return ["prompt": firstFollowUp]
+            }
+            return nil
+        case "event_creation_missing_title":
+            // Suggest a prompt to finish creating the event
+            return ["prompt": "Add a title and create the event I just outlined."]
+        default:
+            return nil
+        }
+    }
+    
+    // MARK: - Draft resume controls
+    func resumeAvailableDraft() {
+        guard let prompt = availableDraftPrompt, let id = availableDraftFollowupId else { return }
+        inputText = prompt
+        activeDraftFollowupId = id
+        availableDraftPrompt = nil
+        availableDraftFollowupId = nil
+    }
+    
+    func discardAvailableDraft() {
+        guard let id = availableDraftFollowupId else { return }
+        Task {
+            await resolveSpecificAIFollowUp(id: id)
+            await MainActor.run {
+                availableDraftPrompt = nil
+                availableDraftFollowupId = nil
+            }
         }
     }
 }

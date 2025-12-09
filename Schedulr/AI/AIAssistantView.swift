@@ -142,6 +142,33 @@ struct AIAssistantView: View {
                         
                         // Input area
                         VStack(spacing: 0) {
+                            if let draftPrompt = viewModel.availableDraftPrompt {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "doc.text.fill")
+                                        .foregroundStyle(themeManager.primaryColor)
+                                    Text("Draft available")
+                                        .font(.system(size: isPad ? 15 : 14, weight: .semibold, design: .rounded))
+                                    Spacer()
+                                    Button("Discard") {
+                                        viewModel.discardAvailableDraft()
+                                    }
+                                    .font(.system(size: isPad ? 14 : 13, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    
+                                    Button("Resume") {
+                                        viewModel.resumeAvailableDraft()
+                                        isInputFocused = true
+                                    }
+                                    .font(.system(size: isPad ? 14 : 13, weight: .bold, design: .rounded))
+                                    .foregroundStyle(themeManager.secondaryColor)
+                                }
+                                .padding(.horizontal, isPad ? 24 : 16)
+                                .padding(.vertical, 10)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .padding(.horizontal, isPad ? 24 : 16)
+                                .padding(.top, 10)
+                            }
+                            
                             // Quick prompts - only show when input is empty and no messages yet
                             if viewModel.inputText.isEmpty && viewModel.messages.count <= 1 {
                                 QuickPromptsView(isPad: isPad) { prompt in
