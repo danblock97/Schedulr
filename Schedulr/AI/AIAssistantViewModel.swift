@@ -46,9 +46,23 @@ final class AIAssistantViewModel: ObservableObject {
     
     // MARK: - Message Handling
     
+    func sendFollowUp(option: FollowUpOption, sourceMessageId: UUID) async {
+        guard !isLoading else { return }
+        
+        if let index = messages.firstIndex(where: { $0.id == sourceMessageId }) {
+            var updated = messages[index]
+            updated.followUpOptions = []
+            messages[index] = updated
+        }
+        
+        inputText = option.prompt
+        await sendMessage()
+    }
+    
     func sendMessage() async {
         let userMessage = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !userMessage.isEmpty else { return }
+        var assistantPersisted = false
         
         // Clear input immediately
         inputText = ""
@@ -124,7 +138,7 @@ final class AIAssistantViewModel: ObservableObject {
                 
                 if finalQuery.type == .availability && !finalQuery.users.isEmpty {
                     // Handle availability query with the correct group ID
-                    await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
+                    assistantPersisted = await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
                 } else if finalQuery.type == .listEvents {
                     await handleListEventsQuery(query: finalQuery)
                 } else {
@@ -182,7 +196,7 @@ final class AIAssistantViewModel: ObservableObject {
                     
                     if finalQuery.type == .availability && !finalQuery.users.isEmpty {
                         // Handle availability query with the correct group ID
-                        await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
+                        assistantPersisted = await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
                     } else if finalQuery.type == .listEvents {
                         await handleListEventsQuery(query: finalQuery)
                     } else {
@@ -196,7 +210,7 @@ final class AIAssistantViewModel: ObservableObject {
             await AIUsageTracker.shared.trackRequest()
             
             // Persist the last assistant message (the response)
-            if let lastMessage = messages.last, lastMessage.role == .assistant {
+            if !assistantPersisted, let lastMessage = messages.last, lastMessage.role == .assistant {
                 await persistMessage(lastMessage)
             }
             
@@ -221,7 +235,7 @@ final class AIAssistantViewModel: ObservableObject {
     
     // MARK: - Query Handling
     
-    private func handleAvailabilityQuery(query: AvailabilityQuery, groupId: UUID? = nil) async {
+    private func handleAvailabilityQuery(query: AvailabilityQuery, groupId: UUID? = nil) async -> Bool {
         let groupIdToUse = groupId ?? dashboardViewModel.selectedGroupID
         guard let groupId = groupIdToUse else {
             let response = ChatMessage(
@@ -229,7 +243,8 @@ final class AIAssistantViewModel: ObservableObject {
                 content: "Please select a group first to check member availability. Go to the Groups tab and select a group."
             )
             messages.append(response)
-            return
+            await persistMessage(response)
+            return true
         }
         
         // Map user names to user IDs
@@ -250,7 +265,8 @@ final class AIAssistantViewModel: ObservableObject {
                 content: "I couldn't find those members in your current group. Please make sure you're using their exact names as they appear in the group members list."
             )
             messages.append(response)
-            return
+            await persistMessage(response)
+            return true
         }
         
         // Default duration to 1 hour if not specified
@@ -272,6 +288,7 @@ final class AIAssistantViewModel: ObservableObject {
                     content: "I couldn't find any free \(duration > 1 ? String(format: "%.1f", duration) : "1") hour time slots for \(foundNames.joined(separator: ", ")) in the requested time period. Try adjusting the duration or time window."
                 )
                 messages.append(response)
+                await persistMessage(response)
             } else {
                 // Format response with available slots
                 let slotCount = min(slots.count, 5) // Show top 5 slots
@@ -297,8 +314,10 @@ final class AIAssistantViewModel: ObservableObject {
                     responseText += "\n...and \(slots.count - slotCount) more options."
                 }
                 
-                let response = ChatMessage(role: .assistant, content: responseText)
+                let followUps = buildFollowUpOptions(for: Array(slots.prefix(slotCount)), durationHours: duration)
+                let response = ChatMessage(role: .assistant, content: responseText, followUpOptions: followUps)
                 messages.append(response)
+                await persistMessage(response)
             }
         } catch {
             let response = ChatMessage(
@@ -306,7 +325,10 @@ final class AIAssistantViewModel: ObservableObject {
                 content: "I encountered an error while checking availability: \(error.localizedDescription). Please try again."
             )
             messages.append(response)
+            await persistMessage(response)
         }
+        
+        return true
     }
     
     private func handleListEventsQuery(query: AvailabilityQuery) async {
@@ -787,16 +809,6 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
             return
         }
         
-        // Validate required fields
-        guard let title = query.title, !title.isEmpty else {
-            let response = ChatMessage(
-                role: .assistant,
-                content: "I couldn't determine the event title from your request. Please specify what event you'd like to create."
-            )
-            messages.append(response)
-            return
-        }
-        
         // Get current user ID
         guard let client = SupabaseManager.shared.client else {
             let response = ChatMessage(
@@ -825,6 +837,7 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
         let now = Date()
         var startDate: Date
         var endDate: Date
+        var durationMinutesResolved: Int?
         
         // Parse date
         if let dateString = query.date {
@@ -861,8 +874,48 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
             
             // Calculate end date based on duration
             let durationMinutes = query.durationMinutes ?? 60 // Default to 1 hour
+            durationMinutesResolved = durationMinutes
             endDate = calendar.date(byAdding: .minute, value: durationMinutes, to: startDate) ?? startDate
         }
+        
+        // Validate required fields (title). If missing, ask for details using known time window.
+        if (query.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = query.isAllDay ? .none : .short
+            let startString = dateFormatter.string(from: startDate)
+            var details: [String] = ["date/time: \(startString)"]
+            if !query.isAllDay {
+                let timeFormatter = DateFormatter()
+                timeFormatter.timeStyle = .short
+                let endString = timeFormatter.string(from: endDate)
+                details.append("until \(endString)")
+                if let durationMinutesResolved {
+                    details.append("duration \(durationMinutesResolved) min")
+                }
+            }
+            if let location = query.location, !location.isEmpty {
+                details.append("location \"\(location)\"")
+            }
+            if !query.attendeeNames.isEmpty || !query.guestNames.isEmpty {
+                let names = (query.attendeeNames + query.guestNames).joined(separator: ", ")
+                if !names.isEmpty {
+                    details.append("attendees: \(names)")
+                }
+            }
+            
+            let responseText = """
+I can create this event, but I need a title. Here’s what I have so far:
+- \(details.joined(separator: "\n- "))
+
+What should I call it? You can also add a location, attendees, or notes if you like.
+"""
+            let response = ChatMessage(role: .assistant, content: responseText)
+            messages.append(response)
+            return
+        }
+        
+        let title = query.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         
         // Map attendee names to user IDs
         let memberMap = getMemberNameToIdMap()
@@ -1018,6 +1071,26 @@ Be concise and friendly in your responses. If asked about availability, remind u
             map[member.displayName.lowercased()] = member.id
         }
         return map
+    }
+    
+    private func buildFollowUpOptions(for slots: [FreeTimeSlot], durationHours: Double) -> [FollowUpOption] {
+        guard !slots.isEmpty else { return [] }
+        
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "EEE, MMM d"
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.timeStyle = .short
+        
+        return slots.prefix(3).enumerated().map { index, slot in
+            let day = dayFormatter.string(from: slot.startDate)
+            let start = timeFormatter.string(from: slot.startDate)
+            let end = timeFormatter.string(from: slot.endDate)
+            let label = "#\(index + 1) \(day) · \(start)–\(end)"
+            let durationText = durationHours > 1 ? String(format: "%.1f", durationHours) : "1"
+            let prompt = "Create an event on \(day) from \(start) to \(end) for \(durationText) hour\(durationHours > 1 ? "s" : "")."
+            return FollowUpOption(label: label, prompt: prompt)
+        }
     }
     
     /// Resolves group name references in availability queries (e.g., "all team members from Work Team")

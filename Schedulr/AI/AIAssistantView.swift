@@ -57,7 +57,16 @@ struct AIAssistantView: View {
                             ScrollView {
                                 LazyVStack(spacing: isPad ? 16 : 20) {
                                     ForEach(viewModel.messages) { message in
-                                        MessageBubble(message: message, isPad: isPad, userAvatarURL: userAvatarURL)
+                                        MessageBubble(
+                                            message: message,
+                                            isPad: isPad,
+                                            userAvatarURL: userAvatarURL,
+                                            onFollowUp: { option in
+                                                Task {
+                                                    await viewModel.sendFollowUp(option: option, sourceMessageId: message.id)
+                                                }
+                                            }
+                                        )
                                             .id(message.id)
                                             .transition(.asymmetric(
                                                 insertion: .scale(scale: 0.8).combined(with: .opacity),
@@ -343,6 +352,19 @@ private struct MessageBubble: View {
     let message: ChatMessage
     let isPad: Bool
     let userAvatarURL: String?
+    let onFollowUp: ((FollowUpOption) -> Void)?
+    
+    init(
+        message: ChatMessage,
+        isPad: Bool,
+        userAvatarURL: String?,
+        onFollowUp: ((FollowUpOption) -> Void)? = nil
+    ) {
+        self.message = message
+        self.isPad = isPad
+        self.userAvatarURL = userAvatarURL
+        self.onFollowUp = onFollowUp
+    }
     
     var isUser: Bool {
         message.role == .user
@@ -522,6 +544,62 @@ private struct MessageBubble: View {
                             lineWidth: 1
                         )
                 )
+            
+            if !isUser, let onFollowUp = onFollowUp, !message.followUpOptions.isEmpty {
+                FollowUpOptionsView(options: message.followUpOptions, isPad: isPad, action: onFollowUp)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+}
+
+private struct FollowUpOptionsView: View {
+    let options: [FollowUpOption]
+    let isPad: Bool
+    let action: (FollowUpOption) -> Void
+    
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            ForEach(options) { option in
+                Button {
+                    action(option)
+                } label: {
+                    Text(option.label)
+                        .font(.system(size: isPad ? 15 : 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, isPad ? 16 : 14)
+                        .padding(.vertical, isPad ? 12 : 11)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.18),
+                                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.18)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.5),
+                                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.5)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                }
+                .buttonStyle(ScaleButtonStyle())
+                .frame(maxWidth: isPad ? 360 : 300, alignment: .trailing)
+            }
         }
     }
 }

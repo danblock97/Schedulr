@@ -14,12 +14,45 @@ struct ChatMessage: Identifiable, Equatable, Codable {
     let role: MessageRole
     let content: String
     let timestamp: Date
+    var followUpOptions: [FollowUpOption]
     
-    init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date()) {
+    init(
+        id: UUID = UUID(),
+        role: MessageRole,
+        content: String,
+        timestamp: Date = Date(),
+        followUpOptions: [FollowUpOption] = []
+    ) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
+        self.followUpOptions = followUpOptions
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, role, content, timestamp, followUpOptions
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        role = try container.decode(MessageRole.self, forKey: .role)
+        content = try container.decode(String.self, forKey: .content)
+        timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp) ?? Date()
+        followUpOptions = try container.decodeIfPresent([FollowUpOption].self, forKey: .followUpOptions) ?? []
+    }
+}
+
+struct FollowUpOption: Identifiable, Equatable, Codable {
+    let id: UUID
+    let label: String
+    let prompt: String
+    
+    init(id: UUID = UUID(), label: String, prompt: String) {
+        self.id = id
+        self.label = label
+        self.prompt = prompt
     }
 }
 
