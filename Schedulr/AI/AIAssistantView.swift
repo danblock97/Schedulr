@@ -103,7 +103,7 @@ struct AIAssistantView: View {
                                 .frame(maxWidth: isPad ? 600 : .infinity, alignment: .leading)
                                 .padding(.horizontal, isPad ? 60 : 20)
                                 .padding(.vertical, isPad ? 24 : 12)
-                                .padding(.bottom, 140) // Space for input area + tab bar
+                                .padding(.bottom, isPad ? 120 : 90) // Space for input area + tab bar, avoid navbar overlap
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                             }
@@ -251,7 +251,7 @@ struct AIAssistantView: View {
                             .frame(maxWidth: isPad ? 600 : .infinity)
                             .padding(.horizontal, isPad ? 60 : 20)
                             .padding(.vertical, isPad ? 18 : 16)
-                            .padding(.bottom, 90) // Space for floating tab bar
+                            .padding(.bottom, isPad ? 70 : 60) // Space for floating tab bar while staying neat
                             .frame(maxWidth: .infinity)
                             .background(.ultraThinMaterial)
                             .background(Color(.systemGroupedBackground))

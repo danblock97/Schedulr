@@ -24,7 +24,7 @@ struct CalendarRootView: View {
     @ObservedObject var viewModel: DashboardViewModel
 
     @State private var mode: CalendarMode = .month
-    @State private var monthViewMode: MonthViewMode = .compact
+    @State private var monthViewMode: MonthViewMode = .details
     @State private var selectedDate: Date = Date()
     @State private var displayedMonth: Date = Date()
     @State private var displayedYear: Date = Date()
