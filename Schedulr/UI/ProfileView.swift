@@ -24,6 +24,7 @@ struct ProfileView: View {
     // Animation states
     @State private var headerAppeared = false
     @State private var sectionsAppeared = false
+    @State private var showingSupportTicket = false
     
     var body: some View {
         NavigationStack {
@@ -121,6 +122,10 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+                    .environmentObject(themeManager)
+            }
+            .sheet(isPresented: $showingSupportTicket) {
+                SupportTicketView()
                     .environmentObject(themeManager)
             }
             .sheet(isPresented: $viewModel.showingRenameGroupSheet) {
@@ -476,9 +481,7 @@ struct ProfileView: View {
                 icon: "questionmark.circle.fill",
                 style: .standard
             ) {
-                Task {
-                    await openURL(urlString: "https://www.schedulr.co.uk/support")
-                }
+                showingSupportTicket = true
             }
             
             // Sign Out Button

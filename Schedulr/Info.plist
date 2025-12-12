@@ -64,6 +64,8 @@
 	<string>$(SUPABASE_SERVICE_ROLE_KEY)</string>
 	<key>SUPABASE_URL</key>
 	<string>$(SUPABASE_URL)</string>
+	<key>SUPPORT_TICKETS_FUNCTION_NAME</key>
+	<string>$(SUPPORT_TICKETS_FUNCTION_NAME)</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiresFullScreen</key>

@@ -11,6 +11,8 @@
 		06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */; };
 		0EE8623E8ED0C13BEF843DF7 /* MonthViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */; };
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
+		7F1A9B0C2F1234567890ABD0 /* SupportTicketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */; };
+		7F1A9B0C2F1234567890ABD1 /* SupportTicketViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */; };
 		1B929AD62ED05562001176EF /* NotificationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD32ED05562001176EF /* NotificationListView.swift */; };
 		1B929AD72ED05562001176EF /* NotificationBellButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD22ED05562001176EF /* NotificationBellButton.swift */; };
 		1B929AD82ED05562001176EF /* NotificationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD42ED05562001176EF /* NotificationViewModel.swift */; };
@@ -151,6 +153,8 @@
 		708BA2FEE9C2C74409D909FF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		71916EFECBF323C00B0001CD /* OnboardingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingModels.swift; sourceTree = "<group>"; };
 		73092C9CD52EDBDC3709FDC9 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportTicketView.swift; sourceTree = "<group>"; };
+		7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportTicketViewModel.swift; sourceTree = "<group>"; };
 		76A9BD74CB648FB968299644 /* ThemePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePickerView.swift; sourceTree = "<group>"; };
 		788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthViewModePicker.swift; sourceTree = "<group>"; };
 		7D98302AF9470C2C50DFA823 /* YearlyCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YearlyCalendarView.swift; sourceTree = "<group>"; };
@@ -236,6 +240,7 @@
 			children = (
 				1BA1C6F42EDF5358009C25B7 /* SettingsViewModel.swift */,
 				1BA1C6F22EDF5352009C25B7 /* SettingsView.swift */,
+				7F1A9B0C2F1234567890ABCF /* Support */,
 				1B929AD52ED05562001176EF /* Notifications */,
 				E5118D921023605E2B3CEACE /* Calendar */,
 				92D2F87AFDD0AA081B70C2B1 /* CalendarBlockView.swift */,
@@ -249,6 +254,15 @@
 				76A9BD74CB648FB968299644 /* ThemePickerView.swift */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		7F1A9B0C2F1234567890ABCF /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */,
+				7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */,
+			);
+			path = Support;
 			sourceTree = "<group>";
 		};
 		1B929AD52ED05562001176EF /* Notifications */ = {
@@ -602,6 +616,8 @@
 				93F0C606CCE9F4BD1DA4CC74 /* MonthlyCalendarView.swift in Sources */,
 				16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */,
 				9D938D4F2EB9BD8035AE2F19 /* ProfileViewModel.swift in Sources */,
+				7F1A9B0C2F1234567890ABD0 /* SupportTicketView.swift in Sources */,
+				7F1A9B0C2F1234567890ABD1 /* SupportTicketViewModel.swift in Sources */,
 				1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */,
 				93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */,
 			);
@@ -640,7 +656,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 34;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -653,7 +669,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -688,7 +704,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 34;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -705,7 +721,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -727,7 +743,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 34;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -739,7 +755,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -756,7 +772,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 33;
+				CURRENT_PROJECT_VERSION = 34;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -768,7 +784,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
