@@ -24,7 +24,9 @@ struct ProfileView: View {
     // Animation states
     @State private var headerAppeared = false
     @State private var sectionsAppeared = false
-    @State private var showingSupportTicket = false
+
+    @State private var showingBugReport = false
+    @State private var showingFeatureRequest = false
     
     var body: some View {
         NavigationStack {
@@ -124,8 +126,12 @@ struct ProfileView: View {
                 SettingsView()
                     .environmentObject(themeManager)
             }
-            .sheet(isPresented: $showingSupportTicket) {
-                SupportTicketView()
+            .sheet(isPresented: $showingBugReport) {
+                SupportTicketView(ticketType: .bug)
+                    .environmentObject(themeManager)
+            }
+            .sheet(isPresented: $showingFeatureRequest) {
+                SupportTicketView(ticketType: .featureRequest)
                     .environmentObject(themeManager)
             }
             .sheet(isPresented: $viewModel.showingRenameGroupSheet) {
@@ -475,13 +481,22 @@ struct ProfileView: View {
     
     private var actionButtonsSection: some View {
         VStack(spacing: 10) {
-            // Support Button
+            // Report a Bug Button
             ProfileActionButton(
-                title: "Support",
-                icon: "questionmark.circle.fill",
+                title: "Report a bug",
+                icon: "ant.fill",
                 style: .standard
             ) {
-                showingSupportTicket = true
+                showingBugReport = true
+            }
+            
+            // Request a Feature Button
+            ProfileActionButton(
+                title: "Request a feature",
+                icon: "wand.and.stars",
+                style: .standard
+            ) {
+                showingFeatureRequest = true
             }
             
             // Sign Out Button

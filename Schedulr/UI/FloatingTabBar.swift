@@ -52,23 +52,22 @@ struct FloatingTabBar: View {
                     avatarURL: avatarURL
                 )
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .frame(height: 92)
+            .padding(.horizontal, 24)
+            .padding(.top, 10)
+            .frame(height: 60)
             .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(Color(uiColor: .systemBackground))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 32, style: .continuous)
-                            .strokeBorder(Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08), lineWidth: 0.8)
-                    )
-                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.14), radius: 22, x: 0, y: 16)
-                    .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.0 : 0.28), radius: 10, x: 0, y: -3)
+                Color(uiColor: .systemBackground)
+                    .ignoresSafeArea()
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.05), radius: 5, x: 0, y: -5)
+            )
+            .overlay(
+                Rectangle()
+                    .frame(height: 0.5)
+                    .foregroundColor(Color.primary.opacity(0.1)),
+                alignment: .top
             )
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 10)
         .ignoresSafeArea(edges: [.horizontal, .bottom])
     }
 }
@@ -103,47 +102,12 @@ struct TabBarButton: View {
         } label: {
             ZStack {
                 if isSelected {
+                    // Subtle indicator dot
                     Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    themeManager.primaryColor.opacity(0.95),
-                                    themeManager.secondaryColor.opacity(0.9)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 82, height: 82)
-                        .matchedGeometryEffect(id: "TAB_BALL", in: animation)
-                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.55 : 0.38), radius: 26, x: 0, y: 18)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.25), lineWidth: 1.2)
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [
-                                            Color.black.opacity(colorScheme == .dark ? 0.45 : 0.28),
-                                            Color.clear
-                                        ],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    ),
-                                    lineWidth: 2
-                                )
-                                .blur(radius: 0.6)
-                                .offset(y: 1)
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.08), lineWidth: 10)
-                                .blur(radius: 12)
-                                .opacity(0.5)
-                        )
-                        .offset(y: 4)
+                        .fill(themeManager.primaryColor)
+                        .frame(width: 4, height: 4)
+                        .offset(y: 24)
+                        .matchedGeometryEffect(id: "TAB_DOT", in: animation)
                 }
 
                 VStack(spacing: 6) {
@@ -183,19 +147,20 @@ struct TabBarButton: View {
                         Image(systemName: icon)
                             .symbolRenderingMode(.hierarchical)
                             .font(.system(size: isCenter ? 26 : 22, weight: isSelected ? .bold : .semibold))
-                            .foregroundStyle(isSelected ? Color.white : iconColor)
-                            .scaleEffect(isSelected ? 1.12 : 1.0)
+                            .foregroundStyle(isSelected ? themeManager.primaryColor : Color.primary.opacity(0.6))
+                            .scaleEffect(isSelected ? 1.1 : 1.0)
                     }
 
-                    Text(title)
-                        .font(.system(size: 14, weight: isSelected ? .semibold : .regular, design: .rounded))
-                        .foregroundStyle(isSelected ? Color.white : iconColor)
+                Text(title)
+                        .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
+                        .foregroundStyle(isSelected ? themeManager.primaryColor : Color.primary.opacity(0.6))
                         .opacity(isSelected ? 1.0 : 0.9)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
+                        .offset(y: isSelected ? -2 : 0)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 70)
+                .frame(height: 60)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .contentShape(Rectangle())

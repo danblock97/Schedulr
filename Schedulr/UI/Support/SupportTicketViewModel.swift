@@ -29,6 +29,33 @@ final class SupportTicketViewModel: ObservableObject {
         let url: URL?
     }
     
+    enum TicketType {
+        case bug
+        case featureRequest
+        
+        var title: String {
+            switch self {
+            case .bug: return "Report a Bug"
+            case .featureRequest: return "Request a Feature"
+            }
+        }
+        
+        var descriptionPlaceholder: String {
+            switch self {
+            case .bug: return "Describe what happened, what you expected, and steps to reproduce..."
+            case .featureRequest: return "Describe the feature you'd like to see and why it would be useful..."
+            }
+        }
+        
+        var labels: [String] {
+            switch self {
+            case .bug: return ["Bug"]
+            case .featureRequest: return ["Feature"]
+            }
+        }
+    }
+    
+    @Published var ticketType: TicketType = .bug
     @Published var title: String = ""
     @Published var description: String = ""
     @Published var priority: Priority = .none
@@ -78,12 +105,14 @@ final class SupportTicketViewModel: ObservableObject {
                 let title: String
                 let description: String
                 let priority: String
+                let labels: [String]
             }
             
             let payload = Payload(
                 title: trimmedTitle,
                 description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-                priority: priority.rawValue
+                priority: priority.rawValue,
+                labels: ticketType.labels
             )
             
             var request = URLRequest(url: url)
