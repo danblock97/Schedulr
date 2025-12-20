@@ -194,45 +194,35 @@ struct AIAssistantView: View {
                                     }
                                 }
                                 
-                                TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
-                                    .textFieldStyle(.plain)
-                                    .font(.system(size: isPad ? 17 : 16, weight: .medium, design: .rounded))
-                                    .padding(.horizontal, isPad ? 20 : 18)
-                                    .padding(.vertical, isPad ? 16 : 14)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                            .fill(.ultraThinMaterial)
-                                            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 4)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                                    .stroke(
-                                                        speechManager.isRecording
-                                                        ? LinearGradient(
-                                                            colors: [
-                                                                Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                                Color(red: 0.58, green: 0.41, blue: 0.87)
-                                                            ],
-                                                            startPoint: .topLeading,
-                                                            endPoint: .bottomTrailing
-                                                        )
-                                                        : LinearGradient(
-                                                            colors: [
-                                                                Color.white.opacity(0.3),
-                                                                Color.white.opacity(0.1)
-                                                            ],
-                                                            startPoint: .topLeading,
-                                                            endPoint: .bottomTrailing
-                                                        ),
-                                                        lineWidth: speechManager.isRecording ? 2 : 1
-                                                    )
-                                            )
-                                    )
-                                    .focused($isInputFocused)
-                                    .onSubmit {
-                                        Task {
-                                            await viewModel.sendMessage()
+                                HStack {
+                                    TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
+                                        .textFieldStyle(.plain)
+                                        .font(.system(size: isPad ? 17 : 16, weight: .medium, design: .rounded))
+                                        .focused($isInputFocused)
+                                        .onSubmit {
+                                            Task {
+                                                await viewModel.sendMessage()
+                                            }
                                         }
+                                }
+                                .padding(.horizontal, isPad ? 20 : 18)
+                                .padding(.vertical, isPad ? 12 : 10)
+                                .background(
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                            .fill(.thinMaterial)
+                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                            .stroke(
+                                                LinearGradient(
+                                                    colors: [.white.opacity(0.5), .white.opacity(0.2)],
+                                                    startPoint: .topLeading,
+                                                    endPoint: .bottomTrailing
+                                                ),
+                                                lineWidth: 1
+                                            )
                                     }
+                                )
+                                .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
                                 
                                 Button {
                                     Task {
@@ -244,24 +234,9 @@ struct AIAssistantView: View {
                                             .fill(
                                                 viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                                 ? AnyShapeStyle(Color.secondary.opacity(0.2))
-                                                : AnyShapeStyle(LinearGradient(
-                                                    colors: [
-                                                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                                                        Color(red: 0.58, green: 0.41, blue: 0.87)
-                                                    ],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ))
+                                                : AnyShapeStyle(themeManager.primaryColor)
                                             )
                                             .frame(width: isPad ? 48 : 44, height: isPad ? 48 : 44)
-                                            .shadow(
-                                                color: viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                                ? Color.clear
-                                                : Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4),
-                                                radius: 12,
-                                                x: 0,
-                                                y: 6
-                                            )
                                         
                                         Image(systemName: "arrow.up")
                                             .font(.system(size: isPad ? 19 : 18, weight: .bold))
@@ -276,12 +251,20 @@ struct AIAssistantView: View {
                                 .buttonStyle(ScaleButtonStyle())
                             }
                             .frame(maxWidth: isPad ? 600 : .infinity)
-                            .padding(.horizontal, isPad ? 60 : 20)
+                            .padding(.horizontal, isPad ? 24 : 16)
                             .padding(.vertical, isPad ? 18 : 16)
-                            .padding(.bottom, isPad ? 70 : 60) // Space for floating tab bar while staying neat
+                            .padding(.bottom, isPad ? 70 : 60)
                             .frame(maxWidth: .infinity)
-                            .background(.ultraThinMaterial)
-                            .background(Color(.systemGroupedBackground))
+                            .background {
+                                Rectangle()
+                                    .fill(.ultraThinMaterial)
+                                    .overlay(
+                                        VStack {
+                                            Divider()
+                                            Spacer()
+                                        }
+                                    )
+                            }
                         }
                     }
                     .onChange(of: speechManager.transcribedText) { _, newText in
@@ -376,6 +359,7 @@ struct AIAssistantView: View {
 // MARK: - Message Bubble
 
 private struct MessageBubble: View {
+    @EnvironmentObject var themeManager: ThemeManager
     let message: ChatMessage
     let isPad: Bool
     let userAvatarURL: String?
@@ -525,44 +509,44 @@ private struct MessageBubble: View {
     private var messageBubble: some View {
         VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
             Text(message.content)
-                .font(.system(size: isPad ? 17 : 16, weight: .regular, design: .rounded))
+                .font(.system(size: isPad ? 17 : 16, weight: .medium, design: .rounded))
                 .foregroundColor(isUser ? .white : .primary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, isPad ? 20 : 18)
-                .padding(.vertical, isPad ? 16 : 14)
+                .padding(.vertical, isPad ? 14 : 12)
                 .background(
                     Group {
                         if isUser {
                             LinearGradient(
                                 colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                    Color(red: 0.58, green: 0.41, blue: 0.87)
+                                    themeManager.primaryColor,
+                                    themeManager.secondaryColor
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         } else {
-                            Color(.systemBackground)
+                            Color(.secondarySystemGroupedBackground)
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .shadow(
                         color: isUser
-                        ? Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.25)
-                        : Color.black.opacity(0.08),
-                        radius: isUser ? 12 : 8,
+                        ? themeManager.primaryColor.opacity(0.3)
+                        : Color.black.opacity(0.05),
+                        radius: isUser ? 10 : 5,
                         x: 0,
-                        y: isUser ? 6 : 4
+                        y: isUser ? 5 : 2
                     )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(
                             isUser
                             ? AnyShapeStyle(Color.white.opacity(0.2))
                             : AnyShapeStyle(LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.3),
+                                    Color.white.opacity(0.6),
                                     Color.white.opacity(0.1)
                                 ],
                                 startPoint: .topLeading,
@@ -581,6 +565,7 @@ private struct MessageBubble: View {
 }
 
 private struct FollowUpOptionsView: View {
+    @EnvironmentObject var themeManager: ThemeManager
     let options: [FollowUpOption]
     let isPad: Bool
     let action: (FollowUpOption) -> Void
@@ -601,8 +586,8 @@ private struct FollowUpOptionsView: View {
                                 .fill(
                                     LinearGradient(
                                         colors: [
-                                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.18),
-                                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.18)
+                                            themeManager.primaryColor.opacity(0.18),
+                                            themeManager.secondaryColor.opacity(0.18)
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
@@ -614,8 +599,8 @@ private struct FollowUpOptionsView: View {
                                 .stroke(
                                     LinearGradient(
                                         colors: [
-                                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.5),
-                                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.5)
+                                            themeManager.primaryColor.opacity(0.5),
+                                            themeManager.secondaryColor.opacity(0.5)
                                         ],
                                         startPoint: .leading,
                                         endPoint: .trailing
@@ -634,6 +619,7 @@ private struct FollowUpOptionsView: View {
 // MARK: - Loading Bubble
 
 private struct LoadingBubble: View {
+    @EnvironmentObject var themeManager: ThemeManager
     @State private var animate = false
     let isPad: Bool
     
@@ -645,8 +631,8 @@ private struct LoadingBubble: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.15),
-                                Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.15)
+                                themeManager.primaryColor.opacity(0.15),
+                                themeManager.secondaryColor.opacity(0.15)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -658,8 +644,8 @@ private struct LoadingBubble: View {
                             .stroke(
                                 LinearGradient(
                                     colors: [
-                                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                                        Color(red: 0.58, green: 0.41, blue: 0.87)
+                                        themeManager.primaryColor,
+                                        themeManager.secondaryColor
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -674,7 +660,7 @@ private struct LoadingBubble: View {
                     .frame(width: isPad ? 26 : 24, height: isPad ? 26 : 24)
                     .clipShape(Circle())
             }
-            .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 8, x: 0, y: 4)
+            .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 8, x: 0, y: 4)
             
             // Loading dots
             HStack(spacing: 8) {
@@ -795,6 +781,7 @@ private struct BubblyAIBackground: View {
 // MARK: - AI Pro Paywall Modal
 
 private struct AIProPaywallModal: View {
+    @EnvironmentObject var themeManager: ThemeManager
     let onUpgrade: () -> Void
     let onDismiss: () -> Void
     
@@ -821,16 +808,7 @@ private struct AIProPaywallModal: View {
                 VStack(spacing: 20) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 60, weight: .medium))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                    Color(red: 0.58, green: 0.41, blue: 0.87)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .foregroundStyle(themeManager.gradient)
                         .symbolRenderingMode(.hierarchical)
                     
                     Text("AI Scheduling Assistant")
@@ -858,17 +836,10 @@ private struct AIProPaywallModal: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.98, green: 0.29, blue: 0.55),
-                                        Color(red: 0.58, green: 0.41, blue: 0.87)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
+                                themeManager.gradient,
                                 in: Capsule()
                             )
-                            .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.5), radius: 16, x: 0, y: 8)
+                            .shadow(color: themeManager.primaryColor.opacity(0.4), radius: 12, x: 0, y: 6)
                     }
                     .padding(.horizontal, 20)
                     
@@ -910,22 +881,14 @@ private struct AIFeatureRow: View {
 // MARK: - AI Inline Upgrade Prompt
 
 private struct AIInlineUpgradePrompt: View {
+    @EnvironmentObject var themeManager: ThemeManager
     let onUpgrade: () -> Void
     
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "sparkles")
                 .font(.system(size: 48, weight: .medium))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55),
-                            Color(red: 0.58, green: 0.41, blue: 0.87)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .foregroundStyle(themeManager.gradient)
                 .symbolRenderingMode(.hierarchical)
             
             Text("Unlock AI Scheduling Assistant")
@@ -954,17 +917,10 @@ private struct AIInlineUpgradePrompt: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.98, green: 0.29, blue: 0.55),
-                                Color(red: 0.58, green: 0.41, blue: 0.87)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
+                        themeManager.gradient,
                         in: Capsule()
                     )
-                    .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4), radius: 12, x: 0, y: 6)
+                    .shadow(color: themeManager.primaryColor.opacity(0.4), radius: 12, x: 0, y: 6)
             }
             .padding(.top, 8)
         }
@@ -976,8 +932,8 @@ private struct AIInlineUpgradePrompt: View {
                 .stroke(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
+                            themeManager.primaryColor.opacity(0.3),
+                            themeManager.secondaryColor.opacity(0.3)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -992,6 +948,7 @@ private struct AIInlineUpgradePrompt: View {
 // MARK: - Voice Input Button
 
 private struct VoiceInputButton: View {
+    @EnvironmentObject var themeManager: ThemeManager
     let isRecording: Bool
     let isPad: Bool
     let action: () -> Void
@@ -1007,8 +964,8 @@ private struct VoiceInputButton: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3),
-                                    Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.3)
+                                    themeManager.primaryColor.opacity(0.3),
+                                    themeManager.secondaryColor.opacity(0.3)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -1104,6 +1061,7 @@ private struct QuickPromptsView: View {
 // MARK: - Quick Prompt Chip
 
 private struct QuickPromptChip: View {
+    @EnvironmentObject var themeManager: ThemeManager
     let prompt: String
     let isPad: Bool
     let action: () -> Void
@@ -1125,8 +1083,8 @@ private struct QuickPromptChip: View {
                                 .stroke(
                                     LinearGradient(
                                         colors: [
-                                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.4),
-                                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.4)
+                                            themeManager.primaryColor.opacity(0.4),
+                                            themeManager.secondaryColor.opacity(0.4)
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing

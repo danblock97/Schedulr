@@ -41,127 +41,153 @@ struct EventDetailView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                HStack(alignment: .top, spacing: 12) {
-                    Circle().fill(eventColor.opacity(0.9)).frame(width: 12, height: 12)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                        if let name = member?.name {
-                            Text(name).font(.system(size: 14)).foregroundStyle(.secondary)
-                        }
-                        if !isPrivate, let catName = event.category?.name {
-                            HStack(spacing: 6) {
-                                Circle().fill(eventColor).frame(width: 8, height: 8)
-                                Text(catName)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Color(.systemGray6))
-                                    .cornerRadius(6)
+        ZStack {
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Hero Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
+                                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.primary)
+                                
+                                if let name = member?.name {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "person.circle.fill")
+                                        Text(name)
+                                    }
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                }
                             }
+                            Spacer()
+                            Circle()
+                                .fill(eventColor)
+                                .frame(width: 44, height: 44)
+                                .shadow(color: eventColor.opacity(0.3), radius: 8, x: 0, y: 4)
+                        }
+                        
+                        if !isPrivate, let catName = event.category?.name {
+                            Text(catName)
+                                .font(.caption.bold())
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(eventColor.opacity(0.1))
+                                .foregroundColor(eventColor)
+                                .clipShape(Capsule())
                         }
                     }
-                }
-            }
-
-            Section("When") {
-                Label(timeRange(event), systemImage: "clock")
-            }
-
-            if !isPrivate, let location = event.location, !location.isEmpty {
-                Section("Location") {
-                    Label(location, systemImage: "location")
-                }
-            }
-            
-            if !isPrivate, let notes = event.notes, !notes.isEmpty {
-                Section("Notes") {
-                    Text(notes)
-                        .font(.body)
-                }
-            }
-
-            if let calendar = event.calendar_name {
-                Section("Calendar") {
-                    Label(calendar, systemImage: "calendar")
-                }
-            }
-
-            if isLoading {
-                Section { ProgressView().frame(maxWidth: .infinity) }
-            } else if !attendees.isEmpty {
-                // Group by status and render in a stable order
-                ForEach(attendeeStatusOrder, id: \.self) { statusKey in
-                    let group = attendees.filter { $0.status.lowercased() == statusKey }
-                    if !group.isEmpty {
-                        Section("\(statusDisplayName(statusKey)) (\(group.count))") {
-                            ForEach(group) { a in
-                                HStack {
-                                    Circle().fill((a.color ?? .blue).opacity(0.9)).frame(width: 8, height: 8)
-                                    Text(a.displayName)
-                                    Spacer()
-                                    Text(statusDisplayName(a.status))
-                                        .foregroundStyle(.secondary)
-                                        .font(.footnote)
+                    .padding(.horizontal)
+                    .padding(.top, 20)
+                    
+                    VStack(spacing: 16) {
+                        // When Card
+                        DetailCard(title: "When", icon: "clock.fill", iconColor: .blue) {
+                            Text(timeRange(event))
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                        }
+                        
+                        // Location Card
+                        if !isPrivate, let location = event.location, !location.isEmpty {
+                            DetailCard(title: "Location", icon: "location.fill", iconColor: .red) {
+                                Text(location)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        
+                        // Notes Card
+                        if !isPrivate, let notes = event.notes, !notes.isEmpty {
+                            DetailCard(title: "Notes", icon: "note.text", iconColor: .orange) {
+                                Text(notes)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        
+                        // Calendar Card
+                        if let calendar = event.calendar_name {
+                            DetailCard(title: "Calendar", icon: "calendar", iconColor: .purple) {
+                                Text(calendar)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        
+                        // Attendees Card
+                        DetailCard(title: "Attendees", icon: "person.2.fill", iconColor: .green) {
+                            if isLoading {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                            } else if attendees.isEmpty {
+                                Text("No attendees")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    ForEach(attendeeStatusOrder, id: \.self) { statusKey in
+                                        let group = attendees.filter { $0.status.lowercased() == statusKey }
+                                        if !group.isEmpty {
+                                            VStack(alignment: .leading, spacing: 8) {
+                                                Text("\(statusDisplayName(statusKey)) (\(group.count))")
+                                                    .font(.caption.bold())
+                                                    .foregroundStyle(.secondary)
+                                                    .padding(.top, 4)
+                                                
+                                                ForEach(group) { a in
+                                                    HStack {
+                                                        Circle()
+                                                            .fill((a.color ?? .blue).opacity(0.8))
+                                                            .frame(width: 8, height: 8)
+                                                        Text(a.displayName)
+                                                            .font(.subheadline)
+                                                        Spacer()
+                                                        AttendeeStatusBadge(status: a.status)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Response Section
+                        if isCurrentUserInvited {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Your Response")
+                                    .font(.headline)
+                                    .padding(.horizontal, 4)
+                                
+                                HStack(spacing: 12) {
+                                    ForEach(["going", "maybe", "declined"], id: \.self) { status in
+                                        ResponseButton(
+                                            status: status,
+                                            isSelected: myStatus == status,
+                                            isLoading: isUpdatingResponse && myStatus == status
+                                        ) {
+                                            if !isUpdatingResponse {
+                                                let previous = myStatus
+                                                isProgrammaticStatusChange = true
+                                                myStatus = status
+                                                isProgrammaticStatusChange = false
+                                                respond(status, previousStatus: previous)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.horizontal)
+                    
+                    Spacer(minLength: 40)
                 }
-            }
-            if isCurrentUserInvited {
-                Section("Your response") {
-                Menu {
-                    // Going
-                    Button(action: {
-                        if isUpdatingResponse { return }
-                        let previous = myStatus
-                        isProgrammaticStatusChange = true
-                        myStatus = "going"
-                        isProgrammaticStatusChange = false
-                        respond("going", previousStatus: previous)
-                    }) {
-                        Label("Going", systemImage: myStatus == "going" ? "checkmark.circle.fill" : "circle")
-                    }
-
-                    // Maybe
-                    Button(action: {
-                        if isUpdatingResponse { return }
-                        let previous = myStatus
-                        isProgrammaticStatusChange = true
-                        myStatus = "maybe"
-                        isProgrammaticStatusChange = false
-                        respond("maybe", previousStatus: previous)
-                    }) {
-                        Label("Maybe", systemImage: myStatus == "maybe" ? "checkmark.circle.fill" : "circle")
-                    }
-
-                    // Decline
-                    Button(role: .destructive, action: {
-                        if isUpdatingResponse { return }
-                        let previous = myStatus
-                        isProgrammaticStatusChange = true
-                        myStatus = "declined"
-                        isProgrammaticStatusChange = false
-                        respond("declined", previousStatus: previous)
-                    }) {
-                        Label("Decline", systemImage: myStatus == "declined" ? "checkmark.circle.fill" : "circle")
-                    }
-                } label: {
-                    HStack {
-                        Text("Response")
-                        Spacer()
-                        Text(statusDisplayName(myStatus))
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(isUpdatingResponse)
-            }
             }
         }
         .navigationTitle("Event Details")
@@ -361,6 +387,126 @@ extension EventDetailView {
             }
         } catch {
             await MainActor.run { attendees = [] }
+        }
+    }
+}
+
+// MARK: - Helper UI Components
+
+private struct DetailCard<Content: View>: View {
+    let title: String
+    let icon: String
+    let iconColor: Color
+    let content: Content
+    
+    init(title: String, icon: String, iconColor: Color, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.iconColor = iconColor
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(iconColor)
+                    .imageScale(.small)
+                    .font(.subheadline.bold())
+                Text(title)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 4)
+            
+            VStack(alignment: .leading) {
+                content
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.03), radius: 10, x: 0, y: 5)
+        }
+    }
+}
+
+private struct AttendeeStatusBadge: View {
+    let status: String
+    
+    var body: some View {
+        Text(status.capitalized)
+            .font(.caption2.bold())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(statusColor.opacity(0.1))
+            .foregroundColor(statusColor)
+            .clipShape(Capsule())
+    }
+    
+    private var statusColor: Color {
+        switch status.lowercased() {
+        case "going": return .green
+        case "maybe": return .orange
+        case "declined": return .red
+        default: return .blue
+        }
+    }
+}
+
+private struct ResponseButton: View {
+    let status: String
+    let isSelected: Bool
+    let isLoading: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                if isLoading {
+                    ProgressView()
+                        .tint(isSelected ? .white : .primary)
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: iconName)
+                }
+                Text(label)
+                    .font(.subheadline.bold())
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(isSelected ? statusColor : Color(.secondarySystemGroupedBackground))
+            .foregroundColor(isSelected ? .white : .primary)
+            .cornerRadius(12)
+            .shadow(color: isSelected ? statusColor.opacity(0.3) : Color.clear, radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var label: String {
+        switch status.lowercased() {
+        case "going": return "Going"
+        case "maybe": return "Maybe"
+        case "declined": return "Decline"
+        default: return status.capitalized
+        }
+    }
+    
+    private var iconName: String {
+        switch status.lowercased() {
+        case "going": return "checkmark.circle.fill"
+        case "maybe": return "questionmark.circle.fill"
+        case "declined": return "xmark.circle.fill"
+        default: return "circle"
+        }
+    }
+    
+    private var statusColor: Color {
+        switch status.lowercased() {
+        case "going": return .green
+        case "maybe": return .orange
+        case "declined": return .red
+        default: return .blue
         }
     }
 }

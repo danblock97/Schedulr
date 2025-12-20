@@ -13,6 +13,9 @@
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
 		7F1A9B0C2F1234567890ABD0 /* SupportTicketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */; };
 		7F1A9B0C2F1234567890ABD1 /* SupportTicketViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */; };
+		7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */; };
+		7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */; };
+		7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */; };
 		1B929AD62ED05562001176EF /* NotificationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD32ED05562001176EF /* NotificationListView.swift */; };
 		1B929AD72ED05562001176EF /* NotificationBellButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD22ED05562001176EF /* NotificationBellButton.swift */; };
 		1B929AD82ED05562001176EF /* NotificationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD42ED05562001176EF /* NotificationViewModel.swift */; };
@@ -156,6 +159,9 @@
 		7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportTicketView.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportTicketViewModel.swift; sourceTree = "<group>"; };
 		76A9BD74CB648FB968299644 /* ThemePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePickerView.swift; sourceTree = "<group>"; };
+		7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveHeroView.swift; sourceTree = "<group>"; };
+		7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaHeroView.swift; sourceTree = "<group>"; };
+		7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaSpeaker.swift; sourceTree = "<group>"; };
 		788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthViewModePicker.swift; sourceTree = "<group>"; };
 		7D98302AF9470C2C50DFA823 /* YearlyCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YearlyCalendarView.swift; sourceTree = "<group>"; };
 		7DA078E691BEE2BD0A47A4A9 /* SubscriptionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionManager.swift; sourceTree = "<group>"; };
@@ -247,6 +253,9 @@
 				FD233AE9EE268C5C01B464EE /* FloatingTabBar.swift */,
 				B7A4B6AF378C254A0040E217 /* GroupDashboardView.swift */,
 				BD18ECB89864D761A210A45E /* GroupManagementView.swift */,
+				7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */,
+				7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */,
+				7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */,
 				63855F65DF252C3B537A1A38 /* MonthlyCalendarView.swift */,
 				AE1EA9474B00225EE8CA5539 /* ProfileView.swift */,
 				A9EA8BB6DC91DA2B44D9C890 /* ProfileViewModel.swift */,
@@ -618,6 +627,9 @@
 				9D938D4F2EB9BD8035AE2F19 /* ProfileViewModel.swift in Sources */,
 				7F1A9B0C2F1234567890ABD0 /* SupportTicketView.swift in Sources */,
 				7F1A9B0C2F1234567890ABD1 /* SupportTicketViewModel.swift in Sources */,
+				7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */,
+				7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */,
+				7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */,
 				1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */,
 				93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */,
 			);

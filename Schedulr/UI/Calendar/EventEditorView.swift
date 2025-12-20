@@ -50,168 +50,223 @@ struct EventEditorView: View {
         }
     }
 
+    @EnvironmentObject var themeManager: ThemeManager
+
     var body: some View {
         NavigationStack {
-            Form {
-                if let _ = availableDraftPayload {
-                    Section {
-                        HStack {
-                            Label("Draft available", systemImage: "doc.text")
-                            Spacer()
-                            Button("Discard") {
-                                Task {
-                                    await discardAvailableDraft()
+            ZStack {
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 20) {
+                        if let _ = availableDraftPayload {
+                            SectionCard(title: "Draft available", icon: "doc.text") {
+                                HStack {
+                                    Spacer()
+                                    Button("Discard") {
+                                        Task {
+                                            await discardAvailableDraft()
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(.red)
+                                    
+                                    Button("Resume") {
+                                        applyAvailableDraft()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(themeManager.primaryColor)
                                 }
                             }
-                            .buttonStyle(.borderless)
-                            Button("Resume") {
-                                applyAvailableDraft()
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundColor(.accentColor)
                         }
-                    }
-                }
-                Section("Details") {
-                    TextField("Title", text: $title)
-                    Toggle("All day", isOn: $isAllDay)
-                    
-                    Picker("Event Type", selection: $eventType) {
-                        Text("Personal").tag("personal")
-                        Text("Group").tag("group")
-                    }
-                    .onChange(of: eventType) { oldValue, newValue in
-                        if newValue == "personal" {
-                            // Clear all invites when marked as personal
-                            selectedMemberIds.removeAll()
-                            guestNamesText = ""
-                        } else if newValue == "group" {
-                            // Group events sync automatically, so disable the toggle
-                            saveToAppleCalendar = false
-                        }
-                    }
-                    
-                    DatePicker("Start", selection: $date, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
-                    DatePicker("End", selection: $endDate, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
-                    TextField("Location", text: $location)
-                    TextField("Notes (optional)", text: $notes, axis: .vertical)
-                }
-                
-                Section("Group") {
-                    if isLoadingGroups {
-                        HStack {
-                            ProgressView()
-                            Text("Loading groups...")
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if availableGroups.isEmpty {
-                        Text("No groups available")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Group", selection: $selectedGroupId) {
-                            ForEach(availableGroups) { group in
-                                Text(group.name).tag(group.id)
+                        
+                        // Details Section
+                        SectionCard(title: "Details", icon: "pencil.and.outline") {
+                            VStack(spacing: 16) {
+                                CustomTextField(label: "Title", text: $title, placeholder: "Event Title")
+                                
+                                CustomToggle(label: "All day", isOn: $isAllDay)
+                                
+                                CustomPicker(label: "Event Type", selection: $eventType) {
+                                    Text("Personal").tag("personal")
+                                    Text("Group").tag("group")
+                                }
+                                .onChange(of: eventType) { oldValue, newValue in
+                                    if newValue == "personal" {
+                                        selectedMemberIds.removeAll()
+                                        guestNamesText = ""
+                                    } else if newValue == "group" {
+                                        saveToAppleCalendar = false
+                                    }
+                                }
+                                
+                                CustomDatePicker(label: "Start", selection: $date, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                                CustomDatePicker(label: "End", selection: $endDate, displayedComponents: isAllDay ? [.date] : [.date, .hourAndMinute])
+                                
+                                CustomTextField(label: "Location", text: $location, placeholder: "Add location", icon: "location")
+                                
+                                CustomTextField(label: "Notes", text: $notes, placeholder: "Add notes (optional)", icon: "note.text", axis: .vertical)
                             }
                         }
-                        .disabled(eventType == "personal")
-                        .onChange(of: selectedGroupId) { oldValue, newValue in
-                            // Reload members and categories when group changes
-                            Task {
-                                await loadMembersForGroup(newValue)
-                                await loadCategoriesForGroup(newValue)
-                            }
-                        }
-                    }
-                }
-                
-                Section("Category") {
-                    Picker("Category", selection: $selectedCategoryId) {
-                        Text("None").tag(nil as UUID?)
-                        ForEach(categories) { category in
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color(
-                                        red: category.color.red,
-                                        green: category.color.green,
-                                        blue: category.color.blue,
-                                        opacity: category.color.alpha
-                                    ))
-                                    .frame(width: 12, height: 12)
-                                Text(category.name)
-                                if let groupId = category.group_id, groupId == selectedGroupId {
-                                    Image(systemName: "person.3.fill")
-                                        .font(.system(size: 10))
+                        
+                        // Group Section
+                        SectionCard(title: "Group", icon: "person.3") {
+                            VStack(spacing: 12) {
+                                if isLoadingGroups {
+                                    HStack {
+                                        ProgressView()
+                                        Text("Loading groups...")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else if availableGroups.isEmpty {
+                                    Text("No groups available")
                                         .foregroundStyle(.secondary)
+                                } else {
+                                    CustomPicker(label: "Select Group", selection: $selectedGroupId) {
+                                        ForEach(availableGroups) { group in
+                                            Text(group.name).tag(group.id)
+                                        }
+                                    }
+                                    .disabled(eventType == "personal")
+                                    .onChange(of: selectedGroupId) { oldValue, newValue in
+                                        Task {
+                                            await loadMembersForGroup(newValue)
+                                            await loadCategoriesForGroup(newValue)
+                                        }
+                                    }
                                 }
                             }
-                            .tag(category.id as UUID?)
                         }
-                    }
-                    
-                    Button("Create New Category") {
-                        showingCategoryCreator = true
-                    }
-                }
-
-                if eventType == "group" {
-                    Section("Invite group members") {
-                        ForEach(members) { member in
-                            Toggle(isOn: Binding(
-                                get: { selectedMemberIds.contains(member.id) },
-                                set: { newVal in
-                                    if newVal { selectedMemberIds.insert(member.id) } else { selectedMemberIds.remove(member.id) }
+                        
+                        // Category Section
+                        SectionCard(title: "Category", icon: "tag") {
+                            VStack(spacing: 16) {
+                                CustomPicker(label: "Select Category", selection: $selectedCategoryId) {
+                                    Text("None").tag(nil as UUID?)
+                                    ForEach(categories) { category in
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(Color(
+                                                    red: category.color.red,
+                                                    green: category.color.green,
+                                                    blue: category.color.blue,
+                                                    opacity: category.color.alpha
+                                                ))
+                                                .frame(width: 10, height: 10)
+                                            Text(category.name)
+                                        }
+                                        .tag(category.id as UUID?)
+                                    }
                                 }
-                            )) {
-                                Text(member.displayName)
+                                
+                                Button(action: { showingCategoryCreator = true }) {
+                                    Label("Create New Category", systemImage: "plus.circle")
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(themeManager.primaryColor)
                             }
                         }
-                    }
 
-                    Section("Guests not in group") {
-                        TextField("Add names separated by commas", text: $guestNamesText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                
-                if existingEvent != nil && !currentAttendees.isEmpty {
-                    Section("Current Attendees") {
-                        ForEach(currentAttendees.indices, id: \.self) { index in
-                            HStack {
-                                Circle().fill(Color.blue.opacity(0.9)).frame(width: 8, height: 8)
-                                Text(currentAttendees[index].displayName)
-                                Spacer()
-                                Text(currentAttendees[index].status.capitalized)
-                                    .foregroundStyle(.secondary)
-                                    .font(.footnote)
+                        if eventType == "group" {
+                            SectionCard(title: "Invite group members", icon: "person.badge.plus") {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    if members.isEmpty {
+                                        Text("No members to invite")
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            HStack(spacing: 12) {
+                                                ForEach(members) { member in
+                                                    MemberInviteChip(member: member, isSelected: selectedMemberIds.contains(member.id)) {
+                                                        if selectedMemberIds.contains(member.id) {
+                                                            selectedMemberIds.remove(member.id)
+                                                        } else {
+                                                            selectedMemberIds.insert(member.id)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            .padding(.horizontal, 2)
+                                        }
+                                    }
+                                    
+                                    Divider()
+                                        .padding(.vertical, 4)
+                                    
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Guests not in group")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(.secondary)
+                                        
+                                        TextField("Names (comma separated)", text: $guestNamesText)
+                                            .padding(12)
+                                            .background(Color(.secondarySystemGroupedBackground))
+                                            .cornerRadius(10)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                            )
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-
-                if eventType == "personal" {
-                    Section("Apple Calendar") {
-                        Toggle("Save to Apple Calendar", isOn: $saveToAppleCalendar)
-                            .accessibilityHint("Also creates/updates an Apple Calendar event")
-                    }
-                } else {
-                    Section("Apple Calendar") {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text("Group events automatically sync to Apple Calendar")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                        
+                        if existingEvent != nil && !currentAttendees.isEmpty {
+                            SectionCard(title: "Current Attendees", icon: "person.2") {
+                                VStack(spacing: 12) {
+                                    ForEach(currentAttendees.indices, id: \.self) { index in
+                                        HStack {
+                                            Circle()
+                                                .fill(themeManager.primaryColor.opacity(0.8))
+                                                .frame(width: 8, height: 8)
+                                            Text(currentAttendees[index].displayName)
+                                                .font(.subheadline)
+                                            Spacer()
+                                            ParticipantStatusBadge(status: currentAttendees[index].status)
+                                        }
+                                        if index < currentAttendees.count - 1 {
+                                            Divider()
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        .padding(.vertical, 4)
-                    }
-                }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .foregroundColor(.red)
+                        SectionCard(title: "Apple Calendar Sync", icon: "calendar.badge.plus") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                if eventType == "personal" {
+                                    CustomToggle(label: "Save to Apple Calendar", isOn: $saveToAppleCalendar)
+                                        .accessibilityHint("Also creates/updates an Apple Calendar event")
+                                } else {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                            .font(.title3)
+                                        Text("Group events automatically sync to Apple Calendar")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+                            }
+                        }
+
+                        if let errorMessage {
+                            SectionCard(title: "Error", icon: "exclamationmark.triangle", color: .red) {
+                                Text(errorMessage)
+                                    .foregroundColor(.red)
+                                    .font(.callout)
+                            }
+                        }
+                        
+                        Spacer(minLength: 40)
                     }
+                    .padding()
                 }
             }
             .navigationTitle(existingEvent == nil ? "New Event" : "Edit Event")
@@ -675,6 +730,194 @@ struct EventEditorView: View {
         await MainActor.run {
             availableDraftPayload = nil
             loadedDraftFollowupId = nil
+        }
+    }
+}
+
+// MARK: - Helper UI Components
+
+private struct SectionCard<Content: View>: View {
+    let title: String
+    let icon: String
+    var color: Color
+    let content: Content
+    
+    init(title: String, icon: String, color: Color = .accentColor, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.color = color
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .imageScale(.medium)
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 4)
+            
+            VStack(alignment: .leading) {
+                content
+            }
+            .padding(16)
+            .background(Color(.secondarySystemGroupedBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.03), radius: 10, x: 0, y: 5)
+        }
+    }
+}
+
+private struct CustomTextField: View {
+    let label: String
+    @Binding var text: String
+    let placeholder: String
+    var icon: String? = nil
+    var axis: Axis = .horizontal
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+            
+            HStack {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20)
+                }
+                
+                TextField(placeholder, text: $text, axis: axis)
+                    .textFieldStyle(.plain)
+            }
+            .padding(12)
+            .background(Color(.systemGroupedBackground).opacity(0.5))
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+            )
+        }
+    }
+}
+
+private struct CustomToggle: View {
+    let label: String
+    @Binding var isOn: Bool
+    
+    var body: some View {
+        Toggle(label, isOn: $isOn)
+            .padding(4)
+    }
+}
+
+private struct CustomPicker<Content: View, Selection: Hashable>: View {
+    let label: String
+    @Binding var selection: Selection
+    let content: Content
+    
+    init(label: String, selection: Binding<Selection>, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self._selection = selection
+        self.content = content()
+    }
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Picker(label, selection: $selection) {
+                content
+            }
+            .pickerStyle(.menu)
+        }
+    }
+}
+
+private struct CustomDatePicker: View {
+    let label: String
+    @Binding var selection: Date
+    var displayedComponents: DatePickerComponents = [.date, .hourAndMinute]
+    
+    var body: some View {
+        DatePicker(label, selection: $selection, displayedComponents: displayedComponents)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+    }
+}
+
+private struct MemberInviteChip: View {
+    let member: DashboardViewModel.MemberSummary
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack(alignment: .bottomTrailing) {
+                    if let url = member.avatarURL {
+                        AsyncImage(url: url) { image in
+                            image.resizable()
+                        } placeholder: {
+                            Color.gray.opacity(0.2)
+                        }
+                        .frame(width: 50, height: 50)
+                        .clipShape(Circle())
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 50, height: 50)
+                    }
+                    
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .background(Circle().fill(.white))
+                            .offset(x: 4, y: 4)
+                    }
+                }
+                
+                Text(member.displayName)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .frame(width: 65)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+    }
+}
+
+private struct ParticipantStatusBadge: View {
+    let status: String
+    
+    var body: some View {
+        Text(status.capitalized)
+            .font(.caption2)
+            .fontWeight(.bold)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(statusColor.opacity(0.15))
+            .foregroundColor(statusColor)
+            .clipShape(Capsule())
+    }
+    
+    private var statusColor: Color {
+        switch status.lowercased() {
+        case "going": return .green
+        case "maybe": return .orange
+        case "declined": return .red
+        default: return .blue
         }
     }
 }

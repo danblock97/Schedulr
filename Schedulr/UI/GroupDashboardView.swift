@@ -248,12 +248,18 @@ struct GroupDashboardView: View {
     @State private var showKickMemberConfirmation = false
     @State private var showDeleteGroupConfirmation = false
     @State private var showDeleteGroupInfo = false
+    @State private var showProposeTimesSheet = false
+    
+    // MARK: - Body
     @State private var memberToTransfer: DashboardViewModel.MemberSummary?
     @State private var memberToKick: DashboardViewModel.MemberSummary?
     @State private var memberCount: Int = 0
     @State private var isOwner: Bool = false
     @StateObject private var notificationViewModel = NotificationViewModel()
     @State private var animateIn = false
+    @State private var showEventEditor = false
+    @State private var showProfile = false
+    @State private var showInviteSheet = false
 
     var body: some View {
         NavigationStack {
@@ -269,12 +275,21 @@ struct GroupDashboardView: View {
                         heroSection
                         
                         // Main content sections
-                        VStack(spacing: 24) {
+                        VStack(spacing: 28) {
                             welcomeSection
+                            
+                            if viewModel.selectedGroupID != nil {
+                                QuickActionRow(
+                                    onNewEvent: { showEventEditor = true },
+                                    onProposeTime: { showProposeTimesSheet = true },
+                                    onInvite: { showInviteSheet = true }
+                                )
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                            }
+                            
                             groupSelectorSection
                             upcomingEventsSection
                             membersSection
-                            inviteSection
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 120)
@@ -428,133 +443,158 @@ struct GroupDashboardView: View {
             currentUserId = try? await viewModel.client?.auth.session.user.id
             await updateOwnerStatusAndMemberCount()
         }
+        .sheet(isPresented: $showEventEditor) {
+            if let groupId = viewModel.selectedGroupID {
+                EventEditorView(groupId: groupId, members: viewModel.members)
+            }
+        }
+        .sheet(isPresented: $showProfile) {
+            // ProfileView placeholder
+            NavigationStack {
+                Text("Profile Settings")
+                    .navigationTitle("Profile")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showProfile = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showInviteSheet) {
+            if let selected = currentGroup {
+                NavigationStack {
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            PremiumEmptyState(
+                                title: "Invite to \(selected.name)",
+                                subheadline: "Share this link with your friends to bring them into the group.",
+                                icon: "link.circle.fill"
+                            )
+                            .padding(.top, 20)
+                            
+                            InviteCard(inviteSlug: selected.inviteSlug, groupName: selected.name)
+                            
+                            Spacer()
+                        }
+                        .padding(20)
+                    }
+                    .navigationTitle("Invite")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showInviteSheet = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+        }
+        .sheet(isPresented: $showProposeTimesSheet) {
+            ProposeTimesView(dashboardViewModel: viewModel)
+        }
     }
     
     // MARK: - Hero Section
     
     private var heroSection: some View {
         ZStack(alignment: .bottom) {
-            Image("dashboard-hero")
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity)
-                .mask(
-                    VStack(spacing: 0) {
-                        Rectangle()
-                        LinearGradient(
-                            colors: [.white, .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: 60)
-                    }
-                )
-                .opacity(animateIn ? 1 : 0)
-                .offset(y: animateIn ? 0 : -20)
+            PersonaHeroView(
+                upcomingEvents: upcomingMonthEvents.map { $0.base },
+                userName: viewModel.members.first(where: { $0.id == currentUserId })?.displayName
+            )
+            .frame(maxWidth: .infinity)
         }
-        .padding(.top, 8)
+        .padding(.top, 0) // Reduced gap
     }
     
     // MARK: - Welcome Section
     
     private var welcomeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(greeting)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(greeting)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                
+                Text(currentGroupName)
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
             
-            Text("Here's what's happening with your groups")
-                .font(.system(size: 16, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
+            Spacer()
+            
+            Button {
+                showProfile = true
+            } label: {
+                if let currentUser = viewModel.members.first(where: { $0.id == currentUserId }),
+                   let avatarURL = currentUser.avatarURL {
+                    AsyncImage(url: avatarURL) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        AvatarPlaceholder(initials: initials(for: currentUser.displayName))
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 1))
+                } else {
+                    AvatarPlaceholder(initials: "??")
+                        .frame(width: 44, height: 44)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 12)
         .opacity(animateIn ? 1 : 0)
         .offset(y: animateIn ? 0 : 20)
     }
     
+    private var currentGroupName: String {
+        currentGroup?.name ?? "Groups"
+    }
+    
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
+        let timeGreet: String
         switch hour {
-        case 5..<12: return "Good Morning"
-        case 12..<17: return "Good Afternoon"
-        case 17..<22: return "Good Evening"
-        default: return "Good Night"
+        case 5..<12: timeGreet = "Good Morning"
+        case 12..<17: timeGreet = "Good Afternoon"
+        case 17..<22: timeGreet = "Good Evening"
+        default: timeGreet = "Good Night"
         }
+        return timeGreet
     }
     
     // MARK: - Group Selector Section
     
     private var groupSelectorSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            DashboardSectionHeader(title: "Your Groups", icon: "person.3.fill")
-                .opacity(animateIn ? 1 : 0)
-            
-            if viewModel.isLoadingMemberships {
-                DashboardCard {
-                    HStack {
-                        ProgressView()
-                        Text("Loading groups...")
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                }
-            } else if let error = viewModel.membershipsError {
-                DashboardCard {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Couldn't load groups")
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        Text(error)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } else if viewModel.memberships.isEmpty {
-                DashboardCard {
-                    VStack(spacing: 16) {
-                        Text("Create or join a group to start planning together")
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        
-                        Button {
-                            showGroupManagement = true
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "person.3.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text("Create or Join Group")
-                                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                            }
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                themeManager.gradient,
-                                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            )
-                        }
-                    }
-                }
-            } else {
-                Menu {
-                    ForEach(viewModel.memberships) { membership in
-                        Button {
-                            withAnimation(.spring(response: 0.3)) {
-                                viewModel.selectGroup(membership.id)
-                            }
-                        } label: {
-                            HStack {
-                                Text(membership.name)
-                                if viewModel.selectedGroupID == membership.id {
-                                    Spacer()
-                                    Image(systemName: "checkmark")
+        VStack(alignment: .leading, spacing: 16) {
+            if viewModel.memberships.count > 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(viewModel.memberships) { membership in
+                            GroupPill(
+                                name: membership.name,
+                                isSelected: viewModel.selectedGroupID == membership.id,
+                                themeManager: themeManager
+                            ) {
+                                withAnimation(.spring(response: 0.3)) {
+                                    viewModel.selectGroup(membership.id)
                                 }
                             }
                         }
                     }
-                } label: {
-                    GroupSelectorCard(groupName: currentGroup?.name ?? "Select a group")
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 4)
+                }
+            } else if viewModel.memberships.isEmpty && !viewModel.isLoadingMemberships {
+                PremiumEmptyState(
+                    title: "No groups yet",
+                    subheadline: "Create or join a group to start planning and scheduling together.",
+                    icon: "person.3.fill"
+                )
+                .onTapGesture {
+                    showGroupManagement = true
                 }
             }
         }
@@ -601,13 +641,11 @@ struct GroupDashboardView: View {
             }
             
             if viewModel.selectedGroupID == nil {
-                DashboardCard {
-                    Text("Select a group to view upcoming events")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
-                }
+                PremiumEmptyState(
+                    title: "Select a Group",
+                    subheadline: "Choose a group from the list above to see their upcoming events.",
+                    icon: "calendar.badge.plus"
+                )
             } else if !calendarSync.syncEnabled {
                 DashboardCard {
                     VStack(alignment: .leading, spacing: 12) {
@@ -653,17 +691,11 @@ struct GroupDashboardView: View {
                     .padding(.vertical, 12)
                 }
             } else if calendarSync.groupEvents.isEmpty {
-                DashboardCard {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("No events in the next couple of weeks")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Text("Tap refresh to sync your calendar")
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.vertical, 8)
-                }
+                PremiumEmptyState(
+                    title: "All Clear",
+                    subheadline: "No upcoming events scheduled for this group in the next few weeks.",
+                    icon: "sparkles"
+                )
             } else {
                 VStack(spacing: 12) {
                     ForEach(upcomingMonthEvents) { event in
@@ -703,13 +735,11 @@ struct GroupDashboardView: View {
             DashboardSectionHeader(title: "Members", icon: "person.2.fill")
             
             if viewModel.selectedGroupID == nil {
-                DashboardCard {
-                    Text("Select a group to view members")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
-                }
+                PremiumEmptyState(
+                    title: "Members",
+                    subheadline: "Select a group to see who else is part of the team.",
+                    icon: "person.2.badge.key.fill"
+                )
             } else if viewModel.isLoadingMembers {
                 DashboardCard {
                     HStack(spacing: 12) {
@@ -732,13 +762,11 @@ struct GroupDashboardView: View {
                     }
                 }
             } else if viewModel.members.isEmpty {
-                DashboardCard {
-                    Text("No members yet. Share the invite link!")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
-                }
+                PremiumEmptyState(
+                    title: "Just You",
+                    subheadline: "Invite your friends to start collaborating on your schedule.",
+                    icon: "person.badge.plus"
+                )
             } else {
                 VStack(spacing: 10) {
                     ForEach(viewModel.members) { member in
@@ -999,13 +1027,19 @@ private struct DashboardSectionHeader: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(themeManager.gradient)
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(themeManager.primaryColor.opacity(0.08))
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(themeManager.gradient)
+            }
             
             Text(title)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
         }
     }
@@ -1044,6 +1078,125 @@ private struct FilterPill: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(Color.secondary.opacity(0.1), in: Capsule())
+    }
+}
+
+// MARK: - Premium Empty State
+
+private struct PremiumEmptyState: View {
+    let title: String
+    let subheadline: String
+    let icon: String
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(themeManager.primaryColor.opacity(0.1))
+                    .frame(width: 60, height: 60)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(themeManager.gradient)
+            }
+            
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                
+                Text(subheadline)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+        }
+        .padding(.vertical, 32)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(.secondarySystemBackground).opacity(0.4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.04), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Quick Action Row
+
+private struct QuickActionRow: View {
+    let onNewEvent: () -> Void
+    let onProposeTime: () -> Void
+    let onInvite: () -> Void
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            QuickActionButton(
+                title: "New Event",
+                icon: "plus.circle.fill",
+                color: themeManager.primaryColor,
+                action: onNewEvent
+            )
+            
+            QuickActionButton(
+                title: "Propose",
+                icon: "clock.badge.checkmark.fill",
+                color: themeManager.secondaryColor,
+                action: onProposeTime
+            )
+            
+            QuickActionButton(
+                title: "Invite",
+                icon: "link.badge.plus",
+                color: Color(hex: "06b6d4"),
+                action: onInvite
+            )
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct QuickActionButton: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.12))
+                        .frame(width: 48, height: 48)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                
+                Text(title)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.03), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.02), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(ScaleButtonStyle())
     }
 }
 
@@ -1116,74 +1269,81 @@ private struct EventCard: View {
     }
     
     var body: some View {
-        HStack(spacing: 14) {
-            // Color bar
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [themeManager.primaryColor, themeManager.secondaryColor],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: 4, height: 50)
+        HStack(spacing: 16) {
+            // Time capsule
+            VStack(spacing: 4) {
+                Text(event.start_date.formatted(.dateTime.day()))
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text(event.start_date.formatted(.dateTime.month(.abbreviated)))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .textCase(.uppercase)
+            }
+            .foregroundStyle(.white)
+            .frame(width: 50, height: 50)
+            .background(themeManager.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 6, x: 0, y: 3)
             
             VStack(alignment: .leading, spacing: 6) {
                 Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Image(systemName: "clock")
-                        .font(.system(size: 11, weight: .medium))
-                    Text(formatTime(event))
+                        .font(.system(size: 10, weight: .medium))
+                    Text(formatTimeOnly(event))
                         .font(.system(size: 13, weight: .medium, design: .rounded))
+                    
+                    if let name = memberName {
+                        Text("•")
+                        Text(name)
+                            .lineLimit(1)
+                    }
                 }
                 .foregroundStyle(.secondary)
-                
-                if sharedCount > 1 && !isPrivate {
-                    HStack(spacing: 4) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 10, weight: .medium))
-                        Text("\(sharedCount) attending")
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                    }
-                    .foregroundStyle(themeManager.secondaryColor)
-                }
             }
             
             Spacer()
             
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.tertiary)
+            if sharedCount > 1 && !isPrivate {
+                HStack(spacing: -8) {
+                    ForEach(0..<min(sharedCount, 3), id: \.self) { _ in
+                        Circle()
+                            .fill(Color(.secondarySystemBackground))
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                            )
+                            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 1))
+                    }
+                }
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
         }
-        .padding(16)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.04), lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.02), radius: 10, x: 0, y: 5)
     }
     
-    private func formatTime(_ e: CalendarEventWithUser) -> String {
-        if e.is_all_day {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .none
-            return formatter.string(from: e.start_date)
-        }
-        let dayFormatter = DateFormatter()
-        dayFormatter.dateStyle = .short
-        dayFormatter.timeStyle = .none
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateStyle = .none
-        timeFormatter.timeStyle = .short
-        return "\(dayFormatter.string(from: e.start_date)) • \(timeFormatter.string(from: e.start_date))"
+    private func formatTimeOnly(_ e: CalendarEventWithUser) -> String {
+        if e.is_all_day { return "All Day" }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: e.start_date)
     }
 }
 
@@ -1198,7 +1358,7 @@ private struct MemberCard: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             // Avatar
             ZStack {
                 if let url = member.avatarURL {
@@ -1214,40 +1374,44 @@ private struct MemberCard: View {
                             AvatarPlaceholder(initials: initials)
                         }
                     }
-                    .frame(width: 44, height: 44)
+                    .frame(width: 50, height: 50)
                     .clipShape(Circle())
                 } else {
                     AvatarPlaceholder(initials: initials)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 50, height: 50)
                 }
             }
             .overlay(
                 Circle()
-                    .strokeBorder(
+                    .stroke(
                         LinearGradient(
-                            colors: [themeManager.primaryColor.opacity(0.4), themeManager.secondaryColor.opacity(0.3)],
+                            colors: [themeManager.primaryColor.opacity(0.3), themeManager.secondaryColor.opacity(0.2)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 2
+                        lineWidth: 1.5
                     )
             )
+            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 3)
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(member.displayName)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
                     
                     if member.role == "owner" {
                         Image(systemName: "crown.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(Color(hex: "f59e0b"))
+                            .padding(4)
+                            .background(Color(hex: "f59e0b").opacity(0.1))
+                            .clipShape(Circle())
                     }
                 }
                 
                 Text(member.role.capitalized)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             }
             
@@ -1270,25 +1434,58 @@ private struct MemberCard: View {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .background(Color.secondary.opacity(0.1), in: Circle())
+                        .frame(width: 36, height: 36)
+                        .background(Color.primary.opacity(0.05), in: Circle())
                 }
             }
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.03), lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.02), radius: 8, x: 0, y: 4)
     }
     
     private var initials: String {
         let parts = member.displayName.split(separator: " ")
         return parts.prefix(2).compactMap { $0.first.map(String.init) }.joined()
+    }
+}
+
+// MARK: - Group Pill
+
+private struct GroupPill: View {
+    let name: String
+    let isSelected: Bool
+    let themeManager: ThemeManager
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(name)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    isSelected ? AnyShapeStyle(themeManager.gradient) : AnyShapeStyle(Color(.secondarySystemBackground)),
+                    in: Capsule()
+                )
+                .foregroundColor(isSelected ? .white : .primary)
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            isSelected ? Color.white.opacity(0.2) : Color.primary.opacity(0.05),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: isSelected ? themeManager.primaryColor.opacity(0.3) : Color.clear, radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1303,15 +1500,15 @@ private struct AvatarPlaceholder: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [themeManager.primaryColor.opacity(0.2), themeManager.secondaryColor.opacity(0.15)],
+                        colors: [themeManager.primaryColor.opacity(0.15), themeManager.secondaryColor.opacity(0.1)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
             
             Text(initials.isEmpty ? "?" : initials.uppercased())
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(themeManager.primaryColor.opacity(0.8))
         }
     }
 }
@@ -1403,4 +1600,9 @@ private struct InviteCard: View {
                 )
         )
     }
+}
+
+private func initials(for name: String) -> String {
+    let parts = name.split(separator: " ")
+    return parts.prefix(2).compactMap { $0.first.map(String.init) }.joined()
 }
