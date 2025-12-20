@@ -130,7 +130,36 @@ final class AIAssistantViewModel: ObservableObject {
             // "show my schedule" (listEvents) or "find free times" (availability)
             // Let the AI parsing handle the distinction
             let availabilityQuestionKeywords = ["what times work", "when are", "when can", "find times", "available times", "what times are", "when would", "times work", "find free", "free time", "available slots"]
-            let isAvailabilityQuestion = availabilityQuestionKeywords.contains { lowercasedQuery.contains($0) }
+            var isAvailabilityQuestion = availabilityQuestionKeywords.contains { lowercasedQuery.contains($0) }
+            
+            // Check for recommendation intent
+            let recommendationKeywords = ["recommend", "where should", "good place", "suggestion", "what should we do", "places to", "ideas for", "where to", "start the search", "start search", "find a place", "find places"]
+            var isRecommendation = recommendationKeywords.contains { lowercasedQuery.contains($0) }
+            
+            // Regex-style check for "find ... places" or "find ... restaurant"
+            if !isRecommendation {
+                 if (lowercasedQuery.contains("find") || lowercasedQuery.contains("looking for")) && 
+                    (lowercasedQuery.contains("place") || lowercasedQuery.contains("restaurant") || lowercasedQuery.contains("bar") || lowercasedQuery.contains("spot") || lowercasedQuery.contains("option")) {
+                     isRecommendation = true
+                 }
+            }
+            
+            // CONTEXT CHECK: If the previous message from AI was asking about a recommendation (e.g. "Do you want me to start the search?"),
+            // then we should treat this new message as a recommendation flow, even if it looks like availability (e.g. "yes, 2 people").
+            if !isRecommendation, let lastMessage = messages.last, lastMessage.role == .assistant {
+                let lastContent = lastMessage.content.lowercased()
+                if lastContent.contains("start the search") || lastContent.contains("search for") || lastContent.contains("recommend") || lastContent.contains("options") {
+                    // If user says "yes" or provides details, assume recommendation refinement
+                    if lowercasedQuery.contains("yes") || lowercasedQuery.contains("people") || lowercasedQuery.contains("start") || lowercasedQuery.contains("please") || lowercasedQuery.contains("find") {
+                        isRecommendation = true
+                    }
+                }
+            }
+            
+            // Treat recommendation as availability question initially to parse time constraints
+            if isRecommendation {
+                isAvailabilityQuestion = true
+            }
             
             // PRIORITY 2: Check if this is a combined query (find slots then create event)
             let combinedKeywords = ["after finding", "after you find", "find a free slot", "find a time when", "find when"]
@@ -138,28 +167,48 @@ final class AIAssistantViewModel: ObservableObject {
             let hasCreateKeyword = ["create", "schedule", "add", "set up", "plan", "book", "make"].contains { lowercasedQuery.contains($0) }
             let isCombinedQuery = hasFindKeyword && hasCreateKeyword && !isAvailabilityQuestion
             
-            if isAvailabilityQuestion {
-                // Handle as availability query (even if "schedule" is mentioned)
-                let groupNames = dashboardViewModel.memberships.map { (id: $0.id, name: $0.name) }
+            // Define common variables needed for both recommendation and availability
+            let groupNames = dashboardViewModel.memberships.map { (id: $0.id, name: $0.name) }
+            var groupIdToUse = dashboardViewModel.selectedGroupID
+
+            if isRecommendation {
+                // OPTIMIZATION: Try to skip the first LLM call (parseAvailabilityQuery) if we can infer intent locally
+                // This reduces latency significantly (1 LLM call instead of 2)
+                let (inferredQuery, inferred) = inferRecommendationContextLocal(query: lowercasedQuery, userMessage: userMessage)
+                
+                if inferred {
+                    // Use local inference
+                    assistantPersisted = await handleRecommendationQuery(query: inferredQuery, userMessage: userMessage, groupId: groupIdToUse)
+                } else {
+                    // If too complex, fall back to LLM parsing
+                     let availabilityQuery = try await aiService.parseAvailabilityQuery(messages, groupMembers: getGroupMembers(), groupNames: groupNames)
+                     
+                     var finalQuery = availabilityQuery
+                     if availabilityQuery.type == QueryType.availability {
+                         let (resolvedQuery, groupId) = await resolveGroupNameReferences(query: availabilityQuery, userMessage: userMessage)
+                         finalQuery = resolvedQuery
+                         groupIdToUse = groupId ?? groupIdToUse
+                     }
+                    
+                     assistantPersisted = await handleRecommendationQuery(query: finalQuery, userMessage: userMessage, groupId: groupIdToUse)
+                }
+            } else if isAvailabilityQuestion {
+                // Handle availability query (LLM parsing)
                 let availabilityQuery = try await aiService.parseAvailabilityQuery(messages, groupMembers: getGroupMembers(), groupNames: groupNames)
                 
-                // Handle group name references (e.g., "all team members from Work Team")
                 var finalQuery = availabilityQuery
-                var groupIdToUse = dashboardViewModel.selectedGroupID
-                if availabilityQuery.type == .availability {
+                if availabilityQuery.type == QueryType.availability {
                     let (resolvedQuery, groupId) = await resolveGroupNameReferences(query: availabilityQuery, userMessage: userMessage)
                     finalQuery = resolvedQuery
                     groupIdToUse = groupId ?? groupIdToUse
                 }
                 
-                if finalQuery.type == .availability && !finalQuery.users.isEmpty {
-                    // Handle availability query with the correct group ID
-                    assistantPersisted = await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
-                } else if finalQuery.type == .listEvents {
-                    await handleListEventsQuery(query: finalQuery)
+                if finalQuery.type == QueryType.listEvents {
+                     await handleListEventsQuery(query: finalQuery)
+                } else if finalQuery.type == QueryType.availability && !finalQuery.users.isEmpty {
+                     assistantPersisted = await handleAvailabilityQuery(query: finalQuery, groupId: groupIdToUse)
                 } else {
-                    // Handle general question
-                    await handleGeneralQuestion(question: userMessage)
+                     await handleGeneralQuestion(question: userMessage)
                 }
             } else if isCombinedQuery {
                 // Handle combined find-and-create query
@@ -172,6 +221,15 @@ final class AIAssistantViewModel: ObservableObject {
                 // Refine "schedule" keyword - if it's "my schedule" or "the schedule", it's likely NOT creation
                 if isEventCreation && lowercasedQuery.contains("schedule") {
                     if lowercasedQuery.contains("my schedule") || lowercasedQuery.contains("the schedule") || lowercasedQuery.contains("on schedule") {
+                        isEventCreation = false
+                    }
+                }
+                
+                // NEGATION CHECK: If user says "don't create", "do not create", "don't schedule", etc.
+                if isEventCreation {
+                    let negationKeywords = ["don't", "do not", "dont", "wait", "hold off"]
+                    let hasNegation = negationKeywords.contains { lowercasedQuery.contains($0) }
+                    if hasNegation {
                         isEventCreation = false
                     }
                 }
@@ -819,6 +877,138 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
         }
     }
     
+    private func handleRecommendationQuery(query: AvailabilityQuery, userMessage: String, groupId: UUID?) async -> Bool {
+        let groupIdToUse = groupId ?? dashboardViewModel.selectedGroupID
+        guard let groupId = groupIdToUse else {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "Please select a group first so I can find a time for your recommendation. Go to the Groups tab and select a group."
+            )
+            messages.append(response)
+            await persistMessage(response)
+            return true
+        }
+        
+        // Map user names to user IDs
+        let memberMap = getMemberNameToIdMap()
+        var userIds: [UUID] = []
+        var foundNames: [String] = []
+        
+        // If users were parsed, use them. Otherwise use all group members for recommendations usually
+        if !query.users.isEmpty {
+            for userName in query.users {
+                if let userId = memberMap[userName.lowercased()] {
+                    userIds.append(userId)
+                    foundNames.append(userName)
+                }
+            }
+        } else {
+            // Default to all members of the group for recommendations like "Where should we go?"
+            // But we need to be careful if user asked "Where should I go?"
+            let lowercasedMsg = userMessage.lowercased()
+            if lowercasedMsg.contains(" i ") || lowercasedMsg.contains(" me ") || lowercasedMsg.hasPrefix("where should i") {
+                // Personal recommendation
+                if let client = SupabaseManager.shared.client, let user = try? await client.auth.session.user {
+                   userIds.append(user.id)
+                   foundNames.append("you")
+                }
+            } else {
+                // Group recommendation
+                // Fetch members if not loaded (though we usually have them if selectedGroupID is set)
+                // For now use current loaded members
+               userIds = dashboardViewModel.members.map { $0.id }
+               foundNames = dashboardViewModel.members.map { $0.displayName }
+            }
+        }
+        
+        if userIds.isEmpty {
+             let response = ChatMessage(
+                role: .assistant,
+                content: "I'm not sure who this recommendation is for. Please select a group or specify the people."
+            )
+            messages.append(response)
+            await persistMessage(response)
+            return true
+        }
+        
+        // Default duration to 1.5 hours for food/activities if not specified
+        let duration = query.durationHours ?? 1.5
+        
+        do {
+            // Find free time slots
+            let slots = try await calendarAnalysisService.findFreeTimeSlots(
+                userIds: userIds,
+                groupId: groupId,
+                durationHours: duration,
+                timeWindow: query.timeWindow,
+                dateRange: query.dateRange
+            )
+            
+            var availableTimesText = ""
+            if slots.isEmpty {
+                availableTimesText = "No specific free time slots found in the near future."
+            } else {
+                let slotCount = min(slots.count, 3)
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEEE, MMM d 'at' h:mm a"
+                let times = slots.prefix(slotCount).map { 
+                    "\(formatter.string(from: $0.startDate)) (Duration: \(duration)h)"
+                }.joined(separator: ", ")
+                availableTimesText = "Available times for the group: \(times)"
+            }
+            
+            // Ask LLM for recommendation
+            let systemPrompt = """
+            You are Scheduly. The user wants a recommendation (activity, restaurant, etc.).
+            User Query: "\(userMessage)"
+            
+            Context:
+            - Group members: \(foundNames.joined(separator: ", "))
+            - Availability: \(availableTimesText)
+            
+            Task:
+            1. Recommend 1-3 specific places or activities based on the user's query.
+            2. IMPORTANT: If the user did NOT specify a location (e.g. "dinner nearby", "good restaurant"), do NOT assume a city. Instead, give general types of places or ASK the user for their location (e.g. "Where are you looking to go?").
+            3. Suggest one of the available times for this activity.
+            4. Ask if they want to create an event for it.
+            
+            Keep it friendly and concise.
+            """
+            
+            let messagesForAI = [ChatMessage(role: .system, content: systemPrompt)]
+            let responseText = try await aiService.chatCompletion(messages: messagesForAI)
+            
+            // Create follow-up options if slots were found
+            var followUps: [FollowUpOption] = []
+            if !slots.isEmpty {
+                let slot = slots[0]
+                let formatter = DateFormatter()
+                formatter.dateFormat = "EEE, MMM d h:mm a"
+                let timeStr = formatter.string(from: slot.startDate)
+                followUps.append(FollowUpOption(
+                    label: "Create event for \(timeStr)",
+                    prompt: "Yes, create the event for \(timeStr). Title it based on your recommendation."
+                ))
+            }
+            
+            let response = ChatMessage(role: .assistant, content: responseText, followUpOptions: followUps)
+            messages.append(response)
+            await persistMessage(response)
+            // Track for AI follow-up
+            Task { await recordPendingAIFollowUp(reason: "recommendation_made") }
+            
+        } catch {
+            let response = ChatMessage(
+                role: .assistant,
+                content: "I encountered an error looking for recommendations: \(error.localizedDescription)"
+            )
+            messages.append(response)
+            await persistMessage(response)
+        }
+        
+        return true
+    }
+    
     private func handleEventCreationQuery(query: EventCreationQuery) async {
         guard let groupId = dashboardViewModel.selectedGroupID else {
             let response = ChatMessage(
@@ -1172,6 +1362,67 @@ Be concise and friendly in your responses. If asked about availability, remind u
         }
         
         return (resolvedQuery, groupIdToUse)
+    }
+
+    /// Locally infers recommendation context (time, duration) to avoid a heavy LLM call
+    private func inferRecommendationContextLocal(query: String, userMessage: String) -> (AvailabilityQuery, Bool) {
+        var q = AvailabilityQuery()
+        q.type = .recommendation
+        
+        // Duration Mapping
+        // Duration Mapping
+        var contextText = query
+        // If the current query is short/generic (e.g. "start search"), look at previous messages for context
+        if query.count < 30 {
+            let recentHistory = messages.suffix(3).map { $0.content.lowercased() }.joined(separator: " ")
+            contextText += " " + recentHistory
+        }
+        
+        if contextText.contains("dinner") {
+            q.durationHours = 2.0
+            q.timeWindow = AvailabilityQuery.TimeWindow(start: "17:00", end: "22:00")
+        } else if contextText.contains("lunch") {
+            q.durationHours = 1.5
+            q.timeWindow = AvailabilityQuery.TimeWindow(start: "11:00", end: "15:00")
+        } else if contextText.contains("breakfast") || contextText.contains("brunch") {
+            q.durationHours = 1.5
+            q.timeWindow = AvailabilityQuery.TimeWindow(start: "08:00", end: "10:00")
+        } else if contextText.contains("coffee") || contextText.contains("drink") {
+            q.durationHours = 1.0
+            q.timeWindow = AvailabilityQuery.TimeWindow(start: "08:00", end: "18:00")
+        } else {
+            // Default generic activity
+            q.durationHours = 2.0
+        }
+        
+        // Simple User Extraction (Generic "we" or "I")
+        // Note: For recommendations, "we" usually means "all group members" which handleRecommendationQuery uses by default if users is empty.
+        // So we don't strictly need to parse names here unless specific names are mentioned.
+        // If specific names are likely mentioned (capitalized words?) we might want to fallback to LLM.
+        // For optimization, let's assume if it's a simple query "where to go for dinner", it's for everyone.
+        
+        // If the query is long or likely complex, return false to trigger LLM
+        if query.split(separator: " ").count > 10 {
+            return (q, false)
+        }
+        
+        // If query mentions specific days, we might want to fallback to LLM for parsing.
+        // But we can do simple day checking:
+        let days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "tomorrow", "tonight", "weekend", "next week"]
+        let hasTimeData = days.contains { query.contains($0) }
+        
+        if hasTimeData {
+             // If date parsing is needed, let's fall back to LLM for now to ensure accuracy
+             // Writing a full date parser in Swift here is risky for bugs.
+             return (q, false)
+        }
+        
+        // If no date mentioned, default to "soon" (handled by findFreeTimeSlots default logic - usually next 30 days)
+        // Actually, findFreeTimeSlots expects a dateRange.
+        // If we leave dateRange nil, it defaults to next 30 days.
+        // So simple "dinner" queries work fine.
+        
+        return (q, true)
     }
     
     private func addWelcomeMessage() {

@@ -70,6 +70,7 @@ enum QueryType: String, Codable {
     case findAndCreate
     case general
     case listEvents
+    case recommendation
     case unknown
 }
 

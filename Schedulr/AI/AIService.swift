@@ -135,6 +135,35 @@ final class AIService {
             return try await parseAvailabilityQuery(messages, groupMembers: groupMembers)
         }
         
+        // Check for recommendation intent
+        let recommendationKeywords = ["recommend", "where should", "good place", "suggestion", "what should we do", "places to", "ideas for", "where to"]
+        let isRecommendation = recommendationKeywords.contains { lowercasedQuery.contains($0) }
+        
+        if isRecommendation {
+            // We treat recommendations as a special type of availability query first (to find when they can go)
+            // The ViewModel will handle the actual recommendation generation
+            var query = try await parseAvailabilityQuery(messages, groupMembers: groupMembers)
+            // Force type to recommendation if it came back as something else but clearly matched our keywords
+            // However, parseAvailabilityQuery might return 'recurrence' or other types in future.
+            // For now, we trust it returned a time window, but we want to tag it for the VM.
+            // Since we can't easily change the return type of `parseAvailabilityQuery` to a wrapped type without breaking things,
+            // we will let the ViewModel detect the original intent or we can rely on `parseAvailabilityQuery` being smart enough 
+            // if we updated the system prompt (which we did).
+            
+            // Actually, `parseAvailabilityQuery` returns `AvailabilityQuery` struct which has a `type` field.
+            // We should ensure that field reflects 'recommendation' if the LLM detected it, OR we force it here.
+            // The LLM prompt was updated to treat it as 'availability' to extract time slots.
+            // We will let the ViewModel handle the "Recommendation" logic branch by re-detecting strings or 
+            // we can modify AvailabilityQuery to have a 'recommendation' type.
+            
+            // Let's rely on the ViewModel re-detecting the intent string as we do for `isAvailabilityQuestion` 
+            // OR we can manually set the type here if we want to be explicit.
+            if query.type == .availability {
+                 query.type = .recommendation
+            }
+            return query
+        }
+        
         // Then check if it's an event creation query
         let eventKeywords = ["create", "schedule", "add", "set up", "plan", "book", "make"]
         var isEventCreation = eventKeywords.contains { lowercasedQuery.contains($0) }
@@ -332,10 +361,17 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just r
 CRITICAL RULES:
 - "what's on my schedule", "show my schedule", "what do I have", "my events", "what meetings" → type: "listEvents"
 - "when am I free", "find free time", "what times work", "available times" → type: "availability"
+- "recommend", "where should we", "good place for", "suggestion for" → type: "availability" (treat as availability search first to find time, but note the activity context)
 - If "all team members" or "all members" is mentioned, include ALL members from the members list
 - Match user/group names exactly (case-insensitive)
 - If a field is not mentioned, omit it from the JSON
 - Always return valid JSON, never return text explanations
+- If the query consists primarily of an activity (e.g. "dinner", "lunch") without a specific time, infer the time window:
+  * Breakfast: 08:00-10:00 (duration 1.0)
+  * Lunch: 11:00-15:00 (duration 1.0)
+  * Dinner: 17:00-22:00 (duration 2.0)
+  * Drinks/Coffee: 08:00-18:00 (duration 0.5)
+  * IMPORTANT: Even if the user says "flexible" or "any time", if the context is clearly "Dinner" (or another meal), maintain the time window for that meal (e.g. 17:00-22:00). Do not schedule dinner at 8am. Only override this if they explicitly say a time like "Dinner at 4pm".
 - If the query is not about availability or schedule, return {"type": "general"}
 """
         
