@@ -21,6 +21,10 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
         let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         Task { await upload(token: token) }
     }
+    
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        return .portrait
+    }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Sync badge count IMMEDIATELY when app becomes active

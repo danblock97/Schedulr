@@ -1011,21 +1011,22 @@ private struct GracePeriodWarningView: View {
     var body: some View {
         Group {
             if let days = daysRemaining {
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: 18))
                         .foregroundColor(.orange)
                     
                     Text("Grace period: \(days) day\(days == 1 ? "" : "s") remaining")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundColor(.orange)
+                        .multilineTextAlignment(.center)
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .background(Color.orange.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
             }

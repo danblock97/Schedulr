@@ -56,6 +56,7 @@ struct FloatingTabBar: View {
             .padding(.top, 10)
             .frame(height: 60)
             .frame(maxWidth: .infinity)
+            .padding(.bottom, 20)
             .background(
                 Color(uiColor: .systemBackground)
                     .ignoresSafeArea()

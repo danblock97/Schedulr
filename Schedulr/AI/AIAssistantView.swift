@@ -80,12 +80,12 @@ struct AIAssistantView: View {
                                        welcomeMessage.role == .assistant {
                                         VStack(spacing: isPad ? 6 : 4) {
                                             Text("I remember our conversation, so feel free to ask follow-up questions like \"what's next?\" or \"what about tomorrow?\"")
-                                                .font(.system(size: isPad ? 13 : 12, weight: .regular, design: .rounded))
+                                                .font(.system(size: isPad ? 15 : 14, weight: .medium, design: .rounded))
                                                 .foregroundColor(.secondary)
                                                 .multilineTextAlignment(.center)
                                             
                                             Text("Note: My context is limited and I may occasionally make mistakes. Please verify important information.")
-                                                .font(.system(size: isPad ? 11 : 10, weight: .regular, design: .rounded))
+                                                .font(.system(size: isPad ? 13 : 12, weight: .regular, design: .rounded))
                                                 .foregroundColor(.secondary.opacity(0.7))
                                                 .multilineTextAlignment(.center)
                                         }
@@ -103,7 +103,7 @@ struct AIAssistantView: View {
                                 .frame(maxWidth: isPad ? 600 : .infinity, alignment: .leading)
                                 .padding(.horizontal, isPad ? 60 : 20)
                                 .padding(.vertical, isPad ? 24 : 12)
-                                .padding(.bottom, isPad ? 120 : 90) // Space for input area + tab bar, avoid navbar overlap
+                                .padding(.bottom, isPad ? 80 : 60) // Space for input area + tab bar, avoid navbar overlap
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
                             }
@@ -253,7 +253,7 @@ struct AIAssistantView: View {
                             .frame(maxWidth: isPad ? 600 : .infinity)
                             .padding(.horizontal, isPad ? 24 : 16)
                             .padding(.vertical, isPad ? 18 : 16)
-                            .padding(.bottom, isPad ? 70 : 60)
+                            .padding(.bottom, isPad ? 50 : 40)
                             .frame(maxWidth: .infinity)
                             .background {
                                 Rectangle()
