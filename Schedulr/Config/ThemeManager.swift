@@ -13,6 +13,7 @@ struct ColorTheme: Codable, Equatable {
     var type: ThemeType
     var name: String? // For preset themes
     var colors: [ColorComponents]? // For custom themes (2 colors for gradient)
+
     
     struct ColorComponents: Codable, Equatable {
         var r: Double
@@ -236,6 +237,8 @@ class ThemeManager: ObservableObject {
         currentTheme = theme
         saveThemeToWidget()
     }
+    
+// isLiquidGlassEnabled removed in favor of system settings
     
     func setPresetTheme(_ preset: PresetTheme) {
         currentTheme = preset.colorTheme

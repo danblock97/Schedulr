@@ -117,5 +117,7 @@ final class SettingsViewModel: ObservableObject {
             errorMessage = "Failed to save theme"
         }
     }
+    
+    // toggleLiquidGlass removed in favor of system settings
 }
 

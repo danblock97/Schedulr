@@ -57,17 +57,12 @@ struct FloatingTabBar: View {
             .frame(height: 60)
             .frame(maxWidth: .infinity)
             .padding(.bottom, 20)
-            .background(
-                Color(uiColor: .systemBackground)
-                    .ignoresSafeArea()
-                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.05), radius: 5, x: 0, y: -5)
-            )
-            .overlay(
+            .liquidGlass()
+            .overlay(alignment: .top) {
                 Rectangle()
                     .frame(height: 0.5)
-                    .foregroundColor(Color.primary.opacity(0.1)),
-                alignment: .top
-            )
+                    .foregroundColor(Color.primary.opacity(0.1))
+            }
         }
         .ignoresSafeArea(edges: [.horizontal, .bottom])
     }
@@ -195,5 +190,39 @@ struct ScaleButtonStyle: ButtonStyle {
             FloatingTabBar(selectedTab: .constant(0), avatarURL: nil)
                 .environmentObject(ThemeManager.shared)
         }
+    }
+}
+
+// MARK: - Liquid Glass Modifier
+
+struct LiquidGlassModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) var reduceTransparency
+    
+    func body(content: Content) -> some View {
+        if !reduceTransparency {
+            // Simulate Liquid Glass for iOS 26
+            content
+                .background {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                             Color.white.opacity(0.1).blendMode(.overlay)
+                        )
+                        .shadow(color: Color.white.opacity(0.2), radius: 10, x: -5, y: -5)
+                        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 5, y: 5)
+                }
+        } else {
+            content
+                .background(
+                    Color(uiColor: .systemBackground)
+                        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: -5)
+                )
+        }
+    }
+}
+
+extension View {
+    func liquidGlass() -> some View {
+        self.modifier(LiquidGlassModifier())
     }
 }
