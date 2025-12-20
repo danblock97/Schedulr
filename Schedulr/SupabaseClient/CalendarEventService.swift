@@ -76,17 +76,24 @@ final class CalendarEventService {
             throw NSError(domain: "CalendarEventService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create event"])
         }
 
-        // Build attendee rows - exclude creator from attendees list
+        // Build attendee rows - ALWAYS include the creator so they get reminders
         struct AttRow: Encodable { let event_id: UUID; let user_id: UUID?; let display_name: String; let status: String }
-        var attendees: [AttRow] = []
-        // Filter out creator from attendeeUserIds
+        var attendeesLists: [AttRow] = []
+        
+        // Add creator
+        attendeesLists.append(AttRow(event_id: eventId, user_id: currentUserId, display_name: "", status: "going"))
+        
+        // Add other attendees
         let attendeeIdsWithoutCreator = input.attendeeUserIds.filter { $0 != currentUserId }
-        attendees.append(contentsOf: attendeeIdsWithoutCreator.map { AttRow(event_id: eventId, user_id: $0, display_name: "", status: "invited") })
-        attendees.append(contentsOf: input.guestNames.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { name in
+        attendeesLists.append(contentsOf: attendeeIdsWithoutCreator.map { AttRow(event_id: eventId, user_id: $0, display_name: "", status: "invited") })
+        
+        // Add guests
+        attendeesLists.append(contentsOf: input.guestNames.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { name in
             AttRow(event_id: eventId, user_id: nil, display_name: name.trimmingCharacters(in: .whitespacesAndNewlines), status: "invited")
         })
-        if !attendees.isEmpty {
-            _ = try await client.from("event_attendees").insert(attendees).execute()
+        
+        if !attendeesLists.isEmpty {
+            _ = try await client.from("event_attendees").insert(attendeesLists).execute()
         }
 
         // Notify attendees via push (async, don't fail if it errors)
@@ -289,9 +296,20 @@ final class CalendarEventService {
             let status: String
             let apple_calendar_event_id: String?
         }
-        var attendees: [AttRow] = []
+        var newAttendees: [AttRow] = []
         
-        attendees.append(contentsOf: input.attendeeUserIds.map { userId in
+        // Always include creator
+        newAttendees.append(AttRow(
+            event_id: eventId,
+            user_id: currentUserId,
+            display_name: "",
+            status: "going",
+            apple_calendar_event_id: userIdToAppleId[currentUserId]
+        ))
+        
+        // Add others
+        let otherUserIds = input.attendeeUserIds.filter { $0 != currentUserId }
+        newAttendees.append(contentsOf: otherUserIds.map { userId in
             AttRow(
                 event_id: eventId, 
                 user_id: userId, 
@@ -301,7 +319,7 @@ final class CalendarEventService {
             )
         })
         
-        attendees.append(contentsOf: input.guestNames.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { name in
+        newAttendees.append(contentsOf: input.guestNames.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { name in
             let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
             return AttRow(
                 event_id: eventId, 
@@ -312,8 +330,8 @@ final class CalendarEventService {
             )
         })
         
-        if !attendees.isEmpty {
-            _ = try await client.from("event_attendees").insert(attendees).execute()
+        if !newAttendees.isEmpty {
+            _ = try await client.from("event_attendees").insert(newAttendees).execute()
         }
         
         // Sync group events to Apple Calendar for all invited users (including the creator)
@@ -595,19 +613,7 @@ final class CalendarEventService {
                 // Store the Apple Calendar event ID
                 // If user has an attendee record, update it; otherwise create one
                 if let attendeeId = currentUserAttendee?.id {
-                    // Check if attendee already has an apple_calendar_event_id
-                    struct AttendeeCheck: Decodable {
-                        let apple_calendar_event_id: String?
-                    }
-                    let attendeeCheck: [AttendeeCheck] = try await client
-                        .from("event_attendees")
-                        .select("apple_calendar_event_id")
-                        .eq("id", value: attendeeId)
-                        .execute()
-                        .value
-                    
-                    // Only update if apple_calendar_event_id is not already set
-                    if attendeeCheck.first?.apple_calendar_event_id == nil {
+                    // Update existing record (which we now guarantee exists)
                     struct UpdateAttendee: Encodable {
                         let apple_calendar_event_id: String
                     }
@@ -617,11 +623,8 @@ final class CalendarEventService {
                         .update(update)
                         .eq("id", value: attendeeId)
                         .execute()
-                    } else {
-                        print("[CalendarEventService] Attendee already has apple_calendar_event_id, skipping update")
-                    }
                 } else {
-                    // Create attendee record for creator if they don't have one
+                    // Fallback (should not be needed now as we insert creator in createEvent/updateEvent)
                     struct AttRow: Encodable {
                         let event_id: UUID
                         let user_id: UUID
@@ -633,7 +636,7 @@ final class CalendarEventService {
                         event_id: eventId,
                         user_id: currentUserId,
                         display_name: "",
-                        status: "going", // Creator is automatically going
+                        status: "going",
                         apple_calendar_event_id: appleEventId
                     )
                     try await client.from("event_attendees").insert(attendeeRow).execute()
