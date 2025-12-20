@@ -101,41 +101,42 @@ private struct SmallWidgetView: View {
             // Header
             HStack {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 10))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(theme.secondary)
-                Text("SCHEDULY")
-                    .font(.system(size: 10, weight: .bold))
+                Text("AI ASSISTANT") // More descriptive than "Schedulr AI"
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                 Spacer()
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, 12)
             
             // Main content
-            Text("Ask Scheduly")
-                .font(.system(size: 15, weight: .semibold))
+            Text("How can I help you today?") // More descriptive prompt
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 .lineLimit(2)
-                .padding(.bottom, 4)
+                .foregroundStyle(.primary)
             
             Spacer()
             
-            // AI indicator
-            HStack(spacing: 4) {
-                Image(systemName: "bubble.left.fill")
-                    .font(.caption2)
-                    .foregroundStyle(theme.secondary)
-                Text("AI Assistant")
-                    .font(.caption)
-                    .fontWeight(.medium)
+            // Action button-like indicator
+            HStack {
+                Text("Ask Schedulr")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.8))
             }
-            .padding(.bottom, 2)
-            
-            // Tap hint
-            Text("Tap to chat")
-                .font(.caption2)
-                .foregroundStyle(theme.primary)
-                .padding(.top, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                LinearGradient(colors: [theme.primary, theme.secondary], startPoint: .leading, endPoint: .trailing)
+            )
+            .cornerRadius(12)
         }
+        .padding(12)
         .widgetURL(URL(string: "schedulr://ai-chat"))
     }
 }
@@ -146,84 +147,82 @@ private struct MediumWidgetView: View {
     let theme: AIWidgetTheme
     
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 16) {
             // Left side: Branding & Info
             VStack(alignment: .leading, spacing: 4) {
-                Text("Scheduly")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(theme.secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(theme.primary)
+                    Text("AI ASSISTANT")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
                 
-                Text("AI Assistant")
-                    .font(.system(size: 24, weight: .bold))
+                Text("How can I help you today?")
+                    .font(.system(size: 22, weight: .bold, design: .rounded)) // Increased size
                     .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 Spacer()
                 
-                HStack {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(theme.primary)
-                    Text("Tap to ask anything")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Select a mode")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.trailing, 12)
-            
-            // Divider
-            Rectangle()
-                .fill(LinearGradient(colors: [theme.primary.opacity(0.5), theme.secondary.opacity(0.5)], startPoint: .top, endPoint: .bottom))
-                .frame(width: 2)
-                .padding(.vertical, 8)
             
             // Right side: Actions
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 // Chat action
                 Link(destination: URL(string: "schedulr://ai-chat")!) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "bubble.left.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(theme.primary)
-                        VStack(alignment: .leading) {
-                            Text("Chat")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text("Type your question")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Text Chat")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text("Type your question") // Restored context
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.8))
                         }
                         Spacer()
                     }
-                    .padding(8)
-                    .background(Color.secondary.opacity(0.05))
-                    .cornerRadius(10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(theme.primary)
+                    .cornerRadius(14)
                 }
                 
                 // Voice action
                 Link(destination: URL(string: "schedulr://ai-chat?voice=true")!) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 12) {
                         Image(systemName: "mic.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(theme.secondary)
-                        VStack(alignment: .leading) {
-                            Text("Voice")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text("Speak your question")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Voice Mode")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text("Speak your question") // Restored context
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.8))
                         }
                         Spacer()
                     }
-                    .padding(8)
-                    .background(Color.secondary.opacity(0.05))
-                    .cornerRadius(10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(theme.secondary)
+                    .cornerRadius(14)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 12)
         }
+        .padding(16)
     }
 }
 
