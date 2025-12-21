@@ -49,6 +49,7 @@ struct ProfileView: View {
                             subscriptionSection
                             groupsSection
                             settingsButtonSection
+                            feedbackSection
                             actionButtonsSection
                             errorMessageView
                             versionInfoView
@@ -477,28 +478,52 @@ struct ProfileView: View {
         }
     }
     
+    // MARK: - Feedback Section
+    
+    private var feedbackSection: some View {
+        ProfileSectionCard(title: "Feedback & Support", icon: "message.fill") {
+            VStack(spacing: 12) {
+                // Tracked Issues link
+                SupportRow(
+                    title: "Tracked Issues",
+                    subtitle: "View our public roadmap & bugs",
+                    icon: "list.bullet.rectangle.portrait",
+                    action: {
+                        Task {
+                            await openURL(urlString: "https://schedulr.co.uk/issues")
+                        }
+                    }
+                )
+                
+                Divider()
+                    .opacity(0.5)
+                
+                // Report a Bug button
+                SupportRow(
+                    title: "Report a bug",
+                    subtitle: "Something not working correctly?",
+                    icon: "ant.fill",
+                    action: { showingBugReport = true }
+                )
+                
+                Divider()
+                    .opacity(0.5)
+                
+                // Request a Feature button
+                SupportRow(
+                    title: "Request a feature",
+                    subtitle: "Have an idea to improve Schedulr?",
+                    icon: "wand.and.stars",
+                    action: { showingFeatureRequest = true }
+                )
+            }
+        }
+    }
+    
     // MARK: - Action Buttons Section
     
     private var actionButtonsSection: some View {
         VStack(spacing: 10) {
-            // Report a Bug Button
-            ProfileActionButton(
-                title: "Report a bug",
-                icon: "ant.fill",
-                style: .standard
-            ) {
-                showingBugReport = true
-            }
-            
-            // Request a Feature Button
-            ProfileActionButton(
-                title: "Request a feature",
-                icon: "wand.and.stars",
-                style: .standard
-            ) {
-                showingFeatureRequest = true
-            }
-            
             // Sign Out Button
             ProfileActionButton(
                 title: "Sign Out",
@@ -831,6 +856,48 @@ private struct ProfileGroupRow: View {
         .padding(12)
         .background(Color.primary.opacity(0.03))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// MARK: - Support Row
+
+private struct SupportRow: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let action: () -> Void
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(themeManager.gradient.opacity(0.1))
+                        .frame(width: 44, height: 44)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(themeManager.gradient)
+                }
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+                    
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
     }
 }
 
