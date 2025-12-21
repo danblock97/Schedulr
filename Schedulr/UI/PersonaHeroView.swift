@@ -125,7 +125,7 @@ struct PersonaHeroView: View {
                             if speaker.isSpeaking {
                                 TextBubbleView(text: speaker.currentPhrase)
                                     .transition(.scale(scale: 0.2, anchor: .bottomLeading).combined(with: .opacity))
-                                    .offset(x: -20, y: -90) // Slightly left of anchor, overlapping character
+                                    .offset(x: -20, y: -50) // Slightly left of anchor, overlapping character
                                     .zIndex(20)
                             }
                         }
