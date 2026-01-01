@@ -124,7 +124,18 @@ struct EventCreationQuery: Codable, Equatable {
     var guestNames: [String] = []
     var categoryName: String?
     var eventType: String? // "personal" or "group", defaults to "group" if attendees
-    
+    var recurrence: RecurrenceQueryInfo? // Recurrence pattern for recurring events
+
+    // Nested struct for recurrence info parsed from AI
+    struct RecurrenceQueryInfo: Codable, Equatable {
+        var frequency: String? // "daily", "weekly", "monthly", "yearly"
+        var interval: Int? // e.g., "every 2 weeks" = 2
+        var daysOfWeek: [String]? // ["Monday", "Wednesday", "Friday"]
+        var dayOfMonth: Int? // For monthly: 1-31
+        var count: Int? // Number of occurrences
+        var endDate: String? // ISO 8601 date string (YYYY-MM-DD)
+    }
+
     // Custom decoder to handle missing keys with default values
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -141,9 +152,25 @@ struct EventCreationQuery: Codable, Equatable {
         guestNames = try container.decodeIfPresent([String].self, forKey: .guestNames) ?? []
         categoryName = try container.decodeIfPresent(String.self, forKey: .categoryName)
         eventType = try container.decodeIfPresent(String.self, forKey: .eventType)
+        recurrence = try container.decodeIfPresent(RecurrenceQueryInfo.self, forKey: .recurrence)
     }
-    
-    init(type: QueryType = .createEvent, title: String? = nil, date: String? = nil, time: String? = nil, durationMinutes: Int? = nil, isAllDay: Bool = false, location: String? = nil, notes: String? = nil, groupName: String? = nil, attendeeNames: [String] = [], guestNames: [String] = [], categoryName: String? = nil, eventType: String? = nil) {
+
+    init(
+        type: QueryType = .createEvent,
+        title: String? = nil,
+        date: String? = nil,
+        time: String? = nil,
+        durationMinutes: Int? = nil,
+        isAllDay: Bool = false,
+        location: String? = nil,
+        notes: String? = nil,
+        groupName: String? = nil,
+        attendeeNames: [String] = [],
+        guestNames: [String] = [],
+        categoryName: String? = nil,
+        eventType: String? = nil,
+        recurrence: RecurrenceQueryInfo? = nil
+    ) {
         self.type = type
         self.title = title
         self.date = date
@@ -157,6 +184,7 @@ struct EventCreationQuery: Codable, Equatable {
         self.guestNames = guestNames
         self.categoryName = categoryName
         self.eventType = eventType
+        self.recurrence = recurrence
     }
 }
 

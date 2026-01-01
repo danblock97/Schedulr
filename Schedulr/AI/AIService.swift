@@ -212,6 +212,13 @@ Extract from the user's query:
 9. Guest names (names not in member list)
 10. Category name (if mentioned like "Meetings", "Personal Development", etc.)
 11. Event type: "personal" or "group" (default to "group" if attendees are mentioned, "personal" otherwise)
+12. Recurrence pattern (if this should repeat):
+    - frequency: "daily", "weekly", "monthly", or "yearly"
+    - interval: number (e.g., "every 2 weeks" = 2, default 1)
+    - daysOfWeek: array of day names ["Monday", "Wednesday"] for weekly recurrence
+    - dayOfMonth: for monthly (e.g., "15th of every month" = 15)
+    - count: number of occurrences (e.g., "for 8 weeks" = 8)
+    - endDate: when to stop (YYYY-MM-DD format)
 
 Return ONLY valid JSON in this exact format:
 {
@@ -227,10 +234,26 @@ Return ONLY valid JSON in this exact format:
   "attendeeNames": ["Member Name 1", "Member Name 2"],
   "guestNames": ["Guest Name"],
   "categoryName": "Category Name",
-  "eventType": "group"
+  "eventType": "group",
+  "recurrence": {
+    "frequency": "weekly",
+    "interval": 1,
+    "daysOfWeek": ["Monday", "Wednesday", "Friday"],
+    "count": null,
+    "endDate": null
+  }
 }
 
-Omit fields that are not mentioned or can't be determined. If the query is not about creating an event, return {"type": "general"}.
+Recurrence examples:
+- "daily standup" → {"frequency": "daily", "interval": 1}
+- "weekly on Tuesday" → {"frequency": "weekly", "daysOfWeek": ["Tuesday"]}
+- "every 2 weeks on Mon and Thu" → {"frequency": "weekly", "interval": 2, "daysOfWeek": ["Monday", "Thursday"]}
+- "monthly on the 1st" → {"frequency": "monthly", "dayOfMonth": 1}
+- "yearly" → {"frequency": "yearly"}
+- "daily for 30 days" → {"frequency": "daily", "count": 30}
+- "weekly until March" → {"frequency": "weekly", "endDate": "2025-03-31"}
+
+Omit the recurrence field if no repeating pattern is mentioned. Omit other fields that are not mentioned or can't be determined. If the query is not about creating an event, return {"type": "general"}.
 """
         
         var chatMessages = [

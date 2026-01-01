@@ -90,6 +90,9 @@
 		F9DDE071C108F5F4D4DAEF29 /* SchedulrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FF2AE12E51471171101FFC /* SchedulrApp.swift */; };
 		FDC5FDA134ED7FAEA94EA5E0 /* CalendarPreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DDFC75DC791E0281E3FC26C /* CalendarPreferencesManager.swift */; };
 		F7E2C4B6C0D94544B6A9C1E3 /* ProposeTimesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E2C4B6C0D94544B6A9C1E2 /* ProposeTimesView.swift */; };
+		RECUR001BUILDFILE001001AB /* RecurrenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = RECUR001FILEREF0001001AB /* RecurrenceService.swift */; };
+		RECUR002BUILDFILE002002AB /* RecurrencePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = RECUR002FILEREF0002002AB /* RecurrencePickerView.swift */; };
+		RECUR003BUILDFILE003003AB /* RecurringEventEditSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = RECUR003FILEREF0003003AB /* RecurringEventEditSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -196,6 +199,9 @@
 		FA1B2C3D4E5F67890ABCDEF1 /* AIChatPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIChatPersistenceService.swift; sourceTree = "<group>"; };
 		FD233AE9EE268C5C01B464EE /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
 		F7E2C4B6C0D94544B6A9C1E2 /* ProposeTimesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposeTimesView.swift; sourceTree = "<group>"; };
+		RECUR001FILEREF0001001AB /* RecurrenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceService.swift; sourceTree = "<group>"; };
+		RECUR002FILEREF0002002AB /* RecurrencePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrencePickerView.swift; sourceTree = "<group>"; };
+		RECUR003FILEREF0003003AB /* RecurringEventEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurringEventEditSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -383,6 +389,7 @@
 				8A0750AF84C002E2A58CF33A /* EventKitEventManager.swift */,
 				29BC076B4D7B7EEC355DD8C0 /* GroupService.swift */,
 				F118A9DAF05612253B0DCD3C /* PushManager.swift */,
+				RECUR001FILEREF0001001AB /* RecurrenceService.swift */,
 				54EEA7587094A03A7E02AD1D /* SupabaseManager.swift */,
 				95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */,
 			);
@@ -423,8 +430,10 @@
 				91AE6827B8B48B526FE6C3C8 /* EventEditorView.swift */,
 				C1FD319B7697CD41C7E7063E /* MonthGridView.swift */,
 				788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */,
-				7D98302AF9470C2C50DFA823 /* YearlyCalendarView.swift */,
 				F7E2C4B6C0D94544B6A9C1E2 /* ProposeTimesView.swift */,
+				RECUR002FILEREF0002002AB /* RecurrencePickerView.swift */,
+				RECUR003FILEREF0003003AB /* RecurringEventEditSheet.swift */,
+				7D98302AF9470C2C50DFA823 /* YearlyCalendarView.swift */,
 			);
 			path = Calendar;
 			sourceTree = "<group>";
@@ -632,6 +641,9 @@
 				7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */,
 				1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */,
 				93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */,
+				RECUR001BUILDFILE001001AB /* RecurrenceService.swift in Sources */,
+				RECUR002BUILDFILE002002AB /* RecurrencePickerView.swift in Sources */,
+				RECUR003BUILDFILE003003AB /* RecurringEventEditSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

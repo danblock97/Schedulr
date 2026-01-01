@@ -687,6 +687,16 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
                     let attendeeNames: [String]?
                     let guestNames: [String]?
                     let notes: String?
+                    let recurrence: RecurrencePart?
+                }
+
+                struct RecurrencePart: Decodable {
+                    let frequency: String?
+                    let interval: Int?
+                    let daysOfWeek: [String]?
+                    let dayOfMonth: Int?
+                    let count: Int?
+                    let endDate: String?
                 }
             }
             
@@ -810,6 +820,19 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
             // Determine event type
             let eventType = (attendeeUserIds.isEmpty && guestNames.isEmpty ? "personal" : "group")
             
+            // Convert recurrence if present
+            let recurrenceRule: RecurrenceRule? = eventPart.recurrence.flatMap { recurrencePart in
+                let recurrenceInfo = EventCreationQuery.RecurrenceQueryInfo(
+                    frequency: recurrencePart.frequency,
+                    interval: recurrencePart.interval,
+                    daysOfWeek: recurrencePart.daysOfWeek,
+                    dayOfMonth: recurrencePart.dayOfMonth,
+                    count: recurrencePart.count,
+                    endDate: recurrencePart.endDate
+                )
+                return convertAIRecurrenceToRule(recurrenceInfo)
+            }
+
             // Create the event
             let eventInput = NewEventInput(
                 groupId: groupId,
@@ -823,9 +846,11 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
                 guestNames: guestNames,
                 originalEventId: nil,
                 categoryId: categoryId,
-                eventType: eventType
+                eventType: eventType,
+                recurrenceRule: recurrenceRule,
+                recurrenceEndDate: recurrenceRule?.endDate
             )
-            
+
             let eventId = try await CalendarEventService.shared.createEvent(input: eventInput, currentUserId: currentUserId)
             
             // Refresh calendar data
@@ -1162,7 +1187,10 @@ What should I call it? You can also add a location, attendees, or notes if you l
         
         // Determine event type
         let eventType = query.eventType ?? (attendeeUserIds.isEmpty && guestNames.isEmpty ? "personal" : "group")
-        
+
+        // Convert recurrence if present
+        let recurrenceRule = query.recurrence.flatMap { convertAIRecurrenceToRule($0) }
+
         // Create the event
         let eventInput = NewEventInput(
             groupId: groupId,
@@ -1176,9 +1204,11 @@ What should I call it? You can also add a location, attendees, or notes if you l
             guestNames: guestNames,
             originalEventId: nil,
             categoryId: categoryId,
-            eventType: eventType
+            eventType: eventType,
+            recurrenceRule: recurrenceRule,
+            recurrenceEndDate: recurrenceRule?.endDate
         )
-        
+
         do {
             let eventId = try await CalendarEventService.shared.createEvent(input: eventInput, currentUserId: currentUserId)
             
@@ -1706,7 +1736,7 @@ Be concise and friendly in your responses. If asked about availability, remind u
         availableDraftPrompt = nil
         availableDraftFollowupId = nil
     }
-    
+
     func discardAvailableDraft() {
         guard let id = availableDraftFollowupId else { return }
         Task {
@@ -1716,6 +1746,44 @@ Be concise and friendly in your responses. If asked about availability, remind u
                 availableDraftFollowupId = nil
             }
         }
+    }
+
+    // MARK: - Recurrence Conversion
+
+    /// Converts AI-parsed recurrence info to a RecurrenceRule
+    private func convertAIRecurrenceToRule(_ aiRecurrence: EventCreationQuery.RecurrenceQueryInfo) -> RecurrenceRule? {
+        guard let frequencyStr = aiRecurrence.frequency,
+              let frequency = RecurrenceFrequency(rawValue: frequencyStr.lowercased()) else {
+            return nil
+        }
+
+        // Convert day names to indices (0 = Sunday)
+        var daysOfWeek: [Int]? = nil
+        if let dayNames = aiRecurrence.daysOfWeek {
+            let dayMap = ["sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3,
+                          "thursday": 4, "friday": 5, "saturday": 6]
+            daysOfWeek = dayNames.compactMap { dayMap[$0.lowercased()] }
+            if daysOfWeek?.isEmpty == true {
+                daysOfWeek = nil
+            }
+        }
+
+        // Parse end date
+        var endDate: Date? = nil
+        if let endDateStr = aiRecurrence.endDate {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate]
+            endDate = formatter.date(from: endDateStr)
+        }
+
+        return RecurrenceRule(
+            frequency: frequency,
+            interval: aiRecurrence.interval ?? 1,
+            daysOfWeek: daysOfWeek,
+            dayOfMonth: aiRecurrence.dayOfMonth,
+            count: aiRecurrence.count,
+            endDate: endDate
+        )
     }
 }
 

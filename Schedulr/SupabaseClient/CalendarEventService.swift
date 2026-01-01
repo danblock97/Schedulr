@@ -15,6 +15,41 @@ struct NewEventInput {
     let originalEventId: String?
     let categoryId: UUID?
     let eventType: String
+    // Recurrence fields
+    let recurrenceRule: RecurrenceRule?
+    let recurrenceEndDate: Date?
+
+    init(
+        groupId: UUID,
+        title: String,
+        start: Date,
+        end: Date,
+        isAllDay: Bool,
+        location: String?,
+        notes: String?,
+        attendeeUserIds: [UUID],
+        guestNames: [String],
+        originalEventId: String?,
+        categoryId: UUID?,
+        eventType: String,
+        recurrenceRule: RecurrenceRule? = nil,
+        recurrenceEndDate: Date? = nil
+    ) {
+        self.groupId = groupId
+        self.title = title
+        self.start = start
+        self.end = end
+        self.isAllDay = isAllDay
+        self.location = location
+        self.notes = notes
+        self.attendeeUserIds = attendeeUserIds
+        self.guestNames = guestNames
+        self.originalEventId = originalEventId
+        self.categoryId = categoryId
+        self.eventType = eventType
+        self.recurrenceRule = recurrenceRule
+        self.recurrenceEndDate = recurrenceEndDate
+    }
 }
 
 final class CalendarEventService {
@@ -45,6 +80,9 @@ final class CalendarEventService {
             let original_event_id: String?
             let category_id: UUID?
             let event_type: String
+            // Recurrence fields
+            let recurrence_rule: RecurrenceRule?
+            let recurrence_end_date: Date?
         }
 
         let row = InsertRow(
@@ -61,7 +99,9 @@ final class CalendarEventService {
             notes: input.notes,
             original_event_id: input.originalEventId,
             category_id: input.categoryId,
-            event_type: input.eventType
+            event_type: input.eventType,
+            recurrence_rule: input.recurrenceRule,
+            recurrence_end_date: input.recurrenceEndDate
         )
 
         struct Returned: Decodable { let id: UUID }
@@ -450,23 +490,45 @@ final class CalendarEventService {
             .eq("event_id", value: eventId)
             .execute()
             .value
-        
+
         // Notify attendees about cancellation BEFORE deleting (async, don't fail if it errors)
         let attendeeUserIds = attendeeRows.compactMap { $0.user_id }
         NotificationService.shared.notifyEventCancellation(eventId: eventId, creatorUserId: currentUserId, attendeeUserIds: attendeeUserIds)
-        
-        // Delete Apple Calendar events for all attendees
-        for attendee in attendeeRows {
+
+        // Collect apple_calendar_event_ids that need to be cleaned up by other users
+        // Store them in a "pending_deletions" table so other users can clean up on sync
+        let appleEventIdsToDelete = attendeeRows.compactMap { $0.apple_calendar_event_id }
+        if !appleEventIdsToDelete.isEmpty {
+            // Store pending deletions for other users to pick up during sync
+            struct PendingDeletion: Encodable {
+                let user_id: UUID
+                let apple_calendar_event_id: String
+                let event_id: UUID
+            }
+            let pendingDeletions = attendeeRows.compactMap { row -> PendingDeletion? in
+                guard let userId = row.user_id, let appleId = row.apple_calendar_event_id else { return nil }
+                return PendingDeletion(user_id: userId, apple_calendar_event_id: appleId, event_id: eventId)
+            }
+            // Try to insert pending deletions, but don't fail if table doesn't exist
+            _ = try? await client
+                .from("pending_apple_calendar_deletions")
+                .insert(pendingDeletions)
+                .execute()
+        }
+
+        // Delete Apple Calendar events for the CURRENT user only
+        // (we can only delete events on this device)
+        for attendee in attendeeRows where attendee.user_id == currentUserId {
             if let appleEventId = attendee.apple_calendar_event_id {
                 try? await EventKitEventManager.shared.deleteEvent(identifier: appleEventId)
             }
         }
-        
+
         // Delete from EventKit if original_event_id is provided (for personal events)
         if let ekId = originalEventId {
             try? await EventKitEventManager.shared.deleteEvent(identifier: ekId)
         }
-        
+
         // RLS on calendar_events ensures only the owner can delete
         _ = try await client
             .from("calendar_events")
@@ -491,7 +553,7 @@ final class CalendarEventService {
     /// Syncs a group event to Apple Calendar for all invited users
     /// Each user gets their own copy of the event in their Apple Calendar
     private func syncGroupEventToAppleCalendar(eventId: UUID, input: NewEventInput, creatorUserId: UUID) async throws {
-        // Fetch event details including category
+        // Fetch event details including category and recurrence rule
         struct EventRow: Decodable {
             let id: UUID
             let title: String
@@ -502,15 +564,16 @@ final class CalendarEventService {
             let notes: String?
             let category_id: UUID?
             let event_categories: CategoryInfo?
-            
+            let recurrence_rule: RecurrenceRule?
+
             struct CategoryInfo: Decodable {
                 let color: ColorComponents
             }
         }
-        
+
         let event: EventRow = try await client
             .from("calendar_events")
-            .select("id, title, start_date, end_date, is_all_day, location, notes, category_id, event_categories(color)")
+            .select("id, title, start_date, end_date, is_all_day, location, notes, category_id, event_categories(color), recurrence_rule")
             .eq("id", value: eventId)
             .single()
             .execute()
@@ -605,7 +668,8 @@ final class CalendarEventService {
                     isAllDay: event.is_all_day,
                     location: event.location,
                     notes: event.notes,
-                    categoryColor: categoryColor
+                    categoryColor: categoryColor,
+                    recurrenceRule: event.recurrence_rule
                 )
                     print("[CalendarEventService] Created new Apple Calendar event for \(event.title), ID: \(appleEventId)")
                 }
@@ -750,8 +814,226 @@ final class CalendarEventService {
             .eq("id", value: categoryId)
             .execute()
             .value
-        
+
         return categories.first
+    }
+
+    // MARK: - Recurring Event Exception Handling
+
+    enum RecurrenceExceptionType {
+        case cancelled
+        case modified(NewEventInput)
+    }
+
+    /// Create an exception for a single occurrence of a recurring event
+    func createRecurrenceException(
+        parentEventId: UUID,
+        originalOccurrenceDate: Date,
+        exception: RecurrenceExceptionType,
+        currentUserId: UUID
+    ) async throws -> UUID? {
+        // Fetch parent event
+        guard let parentEvent = try await fetchEventById(eventId: parentEventId) else {
+            throw NSError(domain: "CalendarEventService", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Parent event not found"])
+        }
+
+        switch exception {
+        case .cancelled:
+            // Create a cancelled exception (marks this occurrence as skipped)
+            struct ExceptionRow: Encodable {
+                let user_id: UUID
+                let group_id: UUID
+                let title: String
+                let start_date: Date
+                let end_date: Date
+                let is_all_day: Bool
+                let is_public: Bool
+                let event_type: String
+                let parent_event_id: UUID
+                let is_recurrence_exception: Bool
+                let original_occurrence_date: Date
+            }
+
+            let eventDuration = parentEvent.end_date.timeIntervalSince(parentEvent.start_date)
+            let row = ExceptionRow(
+                user_id: currentUserId,
+                group_id: parentEvent.group_id,
+                title: parentEvent.title,
+                start_date: originalOccurrenceDate,
+                end_date: originalOccurrenceDate.addingTimeInterval(eventDuration),
+                is_all_day: parentEvent.is_all_day,
+                is_public: false, // Hidden - cancelled
+                event_type: parentEvent.event_type,
+                parent_event_id: parentEventId,
+                is_recurrence_exception: true,
+                original_occurrence_date: originalOccurrenceDate
+            )
+
+            struct Returned: Decodable { let id: UUID }
+            let created: [Returned] = try await client
+                .from("calendar_events")
+                .insert(row)
+                .select("id")
+                .execute()
+                .value
+
+            return created.first?.id
+
+        case .modified(let input):
+            // Create a modified instance with new details
+            struct ModifiedRow: Encodable {
+                let user_id: UUID
+                let group_id: UUID
+                let title: String
+                let start_date: Date
+                let end_date: Date
+                let is_all_day: Bool
+                let location: String?
+                let notes: String?
+                let is_public: Bool
+                let category_id: UUID?
+                let event_type: String
+                let parent_event_id: UUID
+                let is_recurrence_exception: Bool
+                let original_occurrence_date: Date
+            }
+
+            let row = ModifiedRow(
+                user_id: currentUserId,
+                group_id: input.groupId,
+                title: input.title,
+                start_date: input.start,
+                end_date: input.end,
+                is_all_day: input.isAllDay,
+                location: input.location,
+                notes: input.notes,
+                is_public: true,
+                category_id: input.categoryId,
+                event_type: input.eventType,
+                parent_event_id: parentEventId,
+                is_recurrence_exception: true,
+                original_occurrence_date: originalOccurrenceDate
+            )
+
+            struct Returned: Decodable { let id: UUID }
+            let created: [Returned] = try await client
+                .from("calendar_events")
+                .insert(row)
+                .select("id")
+                .execute()
+                .value
+
+            guard let exceptionId = created.first?.id else {
+                throw NSError(domain: "CalendarEventService", code: -1,
+                              userInfo: [NSLocalizedDescriptionKey: "Failed to create exception"])
+            }
+
+            // Add attendees if this is a group event
+            if input.eventType == "group" {
+                struct AttRow: Encodable {
+                    let event_id: UUID
+                    let user_id: UUID?
+                    let display_name: String
+                    let status: String
+                }
+                var attendeesLists: [AttRow] = []
+
+                // Add creator
+                attendeesLists.append(AttRow(event_id: exceptionId, user_id: currentUserId, display_name: "", status: "going"))
+
+                // Add other attendees
+                let attendeeIdsWithoutCreator = input.attendeeUserIds.filter { $0 != currentUserId }
+                attendeesLists.append(contentsOf: attendeeIdsWithoutCreator.map {
+                    AttRow(event_id: exceptionId, user_id: $0, display_name: "", status: "invited")
+                })
+
+                // Add guests
+                attendeesLists.append(contentsOf: input.guestNames
+                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    .map { name in
+                        AttRow(event_id: exceptionId, user_id: nil,
+                               display_name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                               status: "invited")
+                    })
+
+                if !attendeesLists.isEmpty {
+                    _ = try await client.from("event_attendees").insert(attendeesLists).execute()
+                }
+            }
+
+            return exceptionId
+        }
+    }
+
+    /// Fetch all exceptions for a recurring event
+    func fetchRecurrenceExceptions(parentEventId: UUID) async throws -> [CalendarEventWithUser] {
+        let exceptions: [CalendarEventWithUser] = try await client
+            .from("calendar_events")
+            .select("*, users(id, display_name, avatar_url), event_categories(*)")
+            .eq("parent_event_id", value: parentEventId)
+            .eq("is_recurrence_exception", value: true)
+            .execute()
+            .value
+
+        return exceptions
+    }
+
+    /// Delete a single occurrence of a recurring event (creates a cancelled exception)
+    func deleteRecurrenceOccurrence(
+        parentEventId: UUID,
+        occurrenceDate: Date,
+        currentUserId: UUID
+    ) async throws {
+        _ = try await createRecurrenceException(
+            parentEventId: parentEventId,
+            originalOccurrenceDate: occurrenceDate,
+            exception: .cancelled,
+            currentUserId: currentUserId
+        )
+    }
+
+    /// Delete the entire recurring series
+    func deleteRecurringSeries(parentEventId: UUID, currentUserId: UUID) async throws {
+        // First delete all exceptions
+        _ = try await client
+            .from("calendar_events")
+            .delete()
+            .eq("parent_event_id", value: parentEventId)
+            .execute()
+
+        // Then delete the parent event
+        _ = try await client
+            .from("calendar_events")
+            .delete()
+            .eq("id", value: parentEventId)
+            .eq("user_id", value: currentUserId)
+            .execute()
+    }
+
+    /// Update this and all future occurrences by ending the current series and creating a new one
+    func updateFutureOccurrences(
+        parentEventId: UUID,
+        fromDate: Date,
+        newInput: NewEventInput,
+        currentUserId: UUID
+    ) async throws -> UUID {
+        // First, update the parent event's recurrence end date to just before this occurrence
+        let calendar = Calendar.current
+        let dayBefore = calendar.date(byAdding: .day, value: -1, to: fromDate) ?? fromDate
+
+        struct UpdateEndDate: Encodable {
+            let recurrence_end_date: Date
+        }
+
+        _ = try await client
+            .from("calendar_events")
+            .update(UpdateEndDate(recurrence_end_date: dayBefore))
+            .eq("id", value: parentEventId)
+            .execute()
+
+        // Create a new recurring event starting from this date
+        return try await createEvent(input: newInput, currentUserId: currentUserId)
     }
 }
 

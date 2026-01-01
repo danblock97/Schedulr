@@ -607,26 +607,34 @@ struct CalendarRootView: View {
     }
 
     private var displayEvents: [DisplayEvent] {
-        // Deduplicate events: group by event ID first (same ID = same event, show once)
+        // Deduplicate events: group by unique occurrence key (ID + start_date for recurring event instances)
         // Then group remaining by title+time, but only show as "shared" if multiple different users have them
         var result: [DisplayEvent] = []
         let calendar = Calendar.current
-        
-        // First pass: Group by event ID to handle true duplicates - each event ID appears once
-        let idGroups = Dictionary(grouping: filteredEvents) { $0.id }
-        
-        for (_, events) in idGroups {
-            // All events with same ID are the same event - show once with count 1
+
+        // Helper to create a unique key for each occurrence
+        // For recurring events (same ID but different start times), each occurrence is unique
+        func occurrenceKey(for event: CalendarEventWithUser) -> String {
+            // Use ID + start_date timestamp to uniquely identify each occurrence
+            return "\(event.id.uuidString)_\(event.start_date.timeIntervalSince1970)"
+        }
+
+        // First pass: Group by occurrence key to handle true duplicates
+        // Recurring event instances with same ID but different start dates will be kept separate
+        let occurrenceGroups = Dictionary(grouping: filteredEvents) { occurrenceKey(for: $0) }
+
+        for (_, events) in occurrenceGroups {
+            // All events with same occurrence key are the same occurrence - show once with count 1
             if let first = events.first {
                 result.append(DisplayEvent(base: first, sharedCount: 1))
             }
         }
-        
+
         // Second pass: For events not already in result, group by title+time
         // Only show as "shared" if multiple different users have different events with same title/time
-        let alreadyIncludedIds = Set(result.map { $0.base.id })
-        let remainingEvents = filteredEvents.filter { !alreadyIncludedIds.contains($0.id) }
-        
+        let alreadyIncludedKeys = Set(result.map { occurrenceKey(for: $0.base) })
+        let remainingEvents = filteredEvents.filter { !alreadyIncludedKeys.contains(occurrenceKey(for: $0)) }
+
         let groups = Dictionary(grouping: remainingEvents) { ev -> String in
             let title = ev.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if ev.is_all_day {
@@ -640,14 +648,14 @@ struct CalendarRootView: View {
                 return "timed:\(startRounded):\(endRounded):\(title)"
             }
         }
-        
+
         for (_, arr) in groups {
             if let first = arr.first {
                 // Only show as "shared" if there are multiple unique event IDs AND multiple unique users
                 // This ensures personal events from same user don't show as shared
                 let uniqueIds = Set(arr.map { $0.id })
                 let uniqueUsers = Set(arr.map { $0.user_id })
-                
+
                 if uniqueIds.count > 1 && uniqueUsers.count > 1 {
                     // Multiple different events from different users with same title/time = shared
                     result.append(DisplayEvent(base: first, sharedCount: uniqueIds.count))
@@ -657,7 +665,7 @@ struct CalendarRootView: View {
                 }
             }
         }
-        
+
         // Sort by start date
         return result.sorted { a, b in
             if a.base.start_date == b.base.start_date { return a.base.end_date < b.base.end_date }

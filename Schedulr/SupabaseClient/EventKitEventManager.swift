@@ -64,7 +64,16 @@ final class EventKitEventManager {
         return calendar
     }
 
-    func createEvent(title: String, start: Date, end: Date, isAllDay: Bool, location: String?, notes: String?, categoryColor: ColorComponents? = nil) async throws -> String {
+    func createEvent(
+        title: String,
+        start: Date,
+        end: Date,
+        isAllDay: Bool,
+        location: String?,
+        notes: String?,
+        categoryColor: ColorComponents? = nil,
+        recurrenceRule: RecurrenceRule? = nil
+    ) async throws -> String {
         try await ensureAccess()
         let event = EKEvent(eventStore: store)
         event.title = title
@@ -73,12 +82,19 @@ final class EventKitEventManager {
         event.isAllDay = isAllDay
         event.location = location
         event.notes = notes
-        
+
         // Get calendar with category color if provided
         let calendar = getOrCreateCalendarForCategory(color: categoryColor)
         event.calendar = calendar
-        
-        try store.save(event, span: .thisEvent)
+
+        // Add recurrence rule if provided
+        if let rule = recurrenceRule {
+            if let ekRule = convertToEKRecurrenceRule(rule) {
+                event.recurrenceRules = [ekRule]
+            }
+        }
+
+        try store.save(event, span: recurrenceRule != nil ? .futureEvents : .thisEvent)
         guard let eventId = event.eventIdentifier, !eventId.isEmpty else {
             throw NSError(domain: "EventKitEventManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get event identifier after saving"])
         }
@@ -104,10 +120,13 @@ final class EventKitEventManager {
         try store.save(event, span: .thisEvent)
     }
 
-    func deleteEvent(identifier: String) async throws {
+    func deleteEvent(identifier: String, deleteAllOccurrences: Bool = true) async throws {
         try await ensureAccess()
         guard let event = store.event(withIdentifier: identifier) else { return }
-        try store.remove(event, span: .thisEvent, commit: true)
+        // Use .futureEvents for recurring events to delete all occurrences
+        // Use .thisEvent for single events or when only deleting one occurrence
+        let span: EKSpan = (deleteAllOccurrences && event.hasRecurrenceRules) ? .futureEvents : .thisEvent
+        try store.remove(event, span: span, commit: true)
     }
 
     func findMatchingEvent(title: String, start: Date, end: Date, isAllDay: Bool, tolerance: TimeInterval = 60) async throws -> EKEvent? {
@@ -126,6 +145,64 @@ final class EventKitEventManager {
             let isAllDayMatch = event.isAllDay == isAllDay
             return titleMatch && startMatch && endMatch && isAllDayMatch
         })
+    }
+
+    // MARK: - Recurrence Conversion
+
+    /// Converts a RecurrenceRule to an EKRecurrenceRule for Apple Calendar
+    private func convertToEKRecurrenceRule(_ rule: RecurrenceRule) -> EKRecurrenceRule? {
+        let frequency: EKRecurrenceFrequency
+        switch rule.frequency {
+        case .daily: frequency = .daily
+        case .weekly: frequency = .weekly
+        case .monthly: frequency = .monthly
+        case .yearly: frequency = .yearly
+        }
+
+        // Convert days of week
+        var daysOfWeek: [EKRecurrenceDayOfWeek]? = nil
+        if let days = rule.daysOfWeek {
+            daysOfWeek = days.compactMap { dayIndex -> EKRecurrenceDayOfWeek? in
+                // EKWeekday is 1-indexed (Sunday = 1)
+                guard let weekday = EKWeekday(rawValue: dayIndex + 1) else { return nil }
+                return EKRecurrenceDayOfWeek(weekday)
+            }
+            if daysOfWeek?.isEmpty == true {
+                daysOfWeek = nil
+            }
+        }
+
+        // Convert day of month
+        var daysOfMonth: [NSNumber]? = nil
+        if let day = rule.dayOfMonth {
+            daysOfMonth = [NSNumber(value: day)]
+        }
+
+        // Convert month of year
+        var monthsOfYear: [NSNumber]? = nil
+        if let month = rule.monthOfYear {
+            monthsOfYear = [NSNumber(value: month)]
+        }
+
+        // Recurrence end
+        var recurrenceEnd: EKRecurrenceEnd? = nil
+        if let count = rule.count {
+            recurrenceEnd = EKRecurrenceEnd(occurrenceCount: count)
+        } else if let endDate = rule.endDate {
+            recurrenceEnd = EKRecurrenceEnd(end: endDate)
+        }
+
+        return EKRecurrenceRule(
+            recurrenceWith: frequency,
+            interval: rule.interval,
+            daysOfTheWeek: daysOfWeek,
+            daysOfTheMonth: daysOfMonth,
+            monthsOfTheYear: monthsOfYear,
+            weeksOfTheYear: nil,
+            daysOfTheYear: nil,
+            setPositions: nil,
+            end: recurrenceEnd
+        )
     }
 }
 

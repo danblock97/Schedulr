@@ -32,9 +32,41 @@ final class CalendarSyncManager: ObservableObject {
     private var storeChangeObserver: NSObjectProtocol?
     private let defaults = UserDefaults.standard
     private static let syncPreferenceKey = "CalendarSyncEnabled"
+    private static let syncedGroupEventsKey = "SyncedGroupEventsMapping"
 
     // Track if syncPendingGroupEventsToAppleCalendar is currently running to prevent concurrent execution
     private var isSyncingPendingEvents: Bool = false
+
+    // MARK: - Local Storage for Synced Group Events
+
+    /// Stores the mapping of event_id -> apple_calendar_event_id locally
+    /// This allows cleanup even after attendee records are cascade-deleted
+    private func storeSyncedGroupEvent(eventId: UUID, appleCalendarEventId: String) {
+        var mapping = getSyncedGroupEventsMapping()
+        mapping[eventId.uuidString] = appleCalendarEventId
+        defaults.set(mapping, forKey: Self.syncedGroupEventsKey)
+    }
+
+    /// Gets the mapping of event_id -> apple_calendar_event_id from local storage
+    private func getSyncedGroupEventsMapping() -> [String: String] {
+        return defaults.dictionary(forKey: Self.syncedGroupEventsKey) as? [String: String] ?? [:]
+    }
+
+    /// Removes an event from the local synced events mapping
+    private func removeSyncedGroupEvent(eventId: UUID) {
+        var mapping = getSyncedGroupEventsMapping()
+        mapping.removeValue(forKey: eventId.uuidString)
+        defaults.set(mapping, forKey: Self.syncedGroupEventsKey)
+    }
+
+    /// Removes an Apple Calendar event ID from the local synced events mapping
+    private func removeSyncedGroupEventByAppleId(_ appleCalendarEventId: String) {
+        var mapping = getSyncedGroupEventsMapping()
+        if let key = mapping.first(where: { $0.value == appleCalendarEventId })?.key {
+            mapping.removeValue(forKey: key)
+            defaults.set(mapping, forKey: Self.syncedGroupEventsKey)
+        }
+    }
 
     // Computed property to lazily access Supabase client
     private var client: SupabaseClient? {
@@ -364,11 +396,23 @@ final class CalendarSyncManager: ObservableObject {
                 }
             }
             
+            // Deduplicate events by (user_id, group_id, original_event_id) before upserting
+            // This prevents "ON CONFLICT DO UPDATE command cannot affect row a second time" error
+            var seenKeys = Set<String>()
+            let deduplicatedEvents = eventsToUpsert.filter { event in
+                let key = "\(event.user_id)|\(event.group_id)|\(event.original_event_id ?? "")"
+                if seenKeys.contains(key) {
+                    return false
+                }
+                seenKeys.insert(key)
+                return true
+            }
+
             // Now upsert the filtered events
-            if !eventsToUpsert.isEmpty {
+            if !deduplicatedEvents.isEmpty {
                 try await client
                     .from("calendar_events")
-                    .upsert(eventsToUpsert, onConflict: "user_id,group_id,original_event_id")
+                    .upsert(deduplicatedEvents, onConflict: "user_id,group_id,original_event_id")
                     .execute()
             }
         }
@@ -408,13 +452,19 @@ final class CalendarSyncManager: ObservableObject {
             let event_type: String
             let users: UserInfo?
             let event_categories: CategoryInfo?
+            // Recurrence fields
+            let recurrence_rule: RecurrenceRule?
+            let recurrence_end_date: Date?
+            let parent_event_id: UUID?
+            let is_recurrence_exception: Bool?
+            let original_occurrence_date: Date?
 
             struct UserInfo: Decodable {
                 let id: UUID
                 let display_name: String?
                 let avatar_url: String?
             }
-            
+
             struct CategoryInfo: Decodable {
                 let id: UUID
                 let user_id: UUID
@@ -775,22 +825,73 @@ final class CalendarSyncManager: ObservableObject {
                 user: user,
                 category: category,
                 hasAttendees: hasAttendees,
-                isCurrentUserAttendee: isCurrentUserAttendee
+                isCurrentUserAttendee: isCurrentUserAttendee,
+                recurrenceRule: row.recurrence_rule,
+                recurrenceEndDate: row.recurrence_end_date,
+                parentEventId: row.parent_event_id,
+                isRecurrenceException: row.is_recurrence_exception ?? false,
+                originalOccurrenceDate: row.original_occurrence_date
             )
         }
         
+        // Expand recurring events within the date range
+        let dateRange = start...end
+        var expandedEvents: [CalendarEventWithUser] = []
+
+        // Separate recurring parents, exceptions, and regular events
+        var recurringParents: [CalendarEventWithUser] = []
+        var exceptions: [UUID: [CalendarEventWithUser]] = [:] // parent_event_id -> exceptions
+        var regularEvents: [CalendarEventWithUser] = []
+
+        for event in mappedEvents {
+            if event.isRecurrenceException, let parentId = event.parentEventId {
+                // This is an exception (modified or cancelled occurrence)
+                exceptions[parentId, default: []].append(event)
+            } else if event.recurrenceRule != nil && event.parentEventId == nil {
+                // This is a recurring parent event
+                recurringParents.append(event)
+            } else if event.parentEventId == nil {
+                // Regular non-recurring event
+                regularEvents.append(event)
+            }
+            // Skip orphaned exceptions (parentEventId != nil but no recurrence rule and not an exception)
+        }
+
+        // Expand recurring events
+        for parent in recurringParents {
+            let parentExceptions = exceptions[parent.id] ?? []
+            let expanded = RecurrenceService.shared.expandRecurringEvent(
+                parent,
+                inRange: dateRange,
+                exceptions: parentExceptions
+            )
+            expandedEvents.append(contentsOf: expanded)
+
+            // Add modified exceptions (not cancelled ones) to the list
+            for exception in parentExceptions {
+                if exception.is_public { // is_public = false means cancelled
+                    if let occDate = exception.originalOccurrenceDate, dateRange.contains(occDate) {
+                        expandedEvents.append(exception)
+                    }
+                }
+            }
+        }
+
+        // Add regular events
+        expandedEvents.append(contentsOf: regularEvents)
+
         // Update on main thread to trigger UI refresh
         await MainActor.run {
             // Sort events by start date to ensure chronological order
-            let sortedEvents = mappedEvents.sorted { lhs, rhs in
+            let sortedEvents = expandedEvents.sorted { lhs, rhs in
                 if lhs.start_date == rhs.start_date {
                     return lhs.end_date < rhs.end_date
                 }
                 return lhs.start_date < rhs.start_date
             }
-            
+
             groupEvents = sortedEvents
-            
+
             // Save to shared container for Widget (Embedded logic to avoid file issues)
             saveEventsToWidget(sortedEvents, currentGroupId: groupId)
         }
@@ -891,11 +992,15 @@ final class CalendarSyncManager: ObservableObject {
             // First refresh local events
             await refreshEvents()
 
+            // Clean up deleted group events from Apple Calendar
+            // This handles events that were deleted by another user (e.g., event creator)
+            try await cleanupDeletedGroupEventsFromAppleCalendar(userId: userId)
+
             // IMPORTANT: Sync group events to Apple Calendar FIRST, before uploading personal events
             // This ensures that group events synced to Apple Calendar are marked with apple_calendar_event_id
             // so they won't be uploaded back as personal events
             try await syncPendingGroupEventsToAppleCalendar(userId: userId)
-            
+
             // Refresh Apple Calendar events after syncing group events to get the latest state
             await refreshEvents()
 
@@ -934,7 +1039,8 @@ final class CalendarSyncManager: ObservableObject {
             let notes: String?
             let category_id: UUID?
             let event_categories: CategoryInfo?
-            
+            let recurrence_rule: RecurrenceRule?
+
             struct CategoryInfo: Decodable {
                 let color: ColorComponents
             }
@@ -944,7 +1050,7 @@ final class CalendarSyncManager: ObservableObject {
             let event_id: UUID
             let id: UUID
             let calendar_events: EventInfo?
-            
+
             struct EventInfo: Decodable {
                 let title: String
                 let start_date: Date
@@ -955,7 +1061,8 @@ final class CalendarSyncManager: ObservableObject {
                 let category_id: UUID?
                 let event_type: String
                 let event_categories: CategoryInfo?
-                
+                let recurrence_rule: RecurrenceRule?
+
                 struct CategoryInfo: Decodable {
                     let color: ColorComponents
                 }
@@ -964,7 +1071,7 @@ final class CalendarSyncManager: ObservableObject {
         
         let attendeeRows: [AttendeeRow] = try await client
             .from("event_attendees")
-            .select("event_id, id, calendar_events(title, start_date, end_date, is_all_day, location, notes, category_id, event_type, event_categories(color))")
+            .select("event_id, id, calendar_events(title, start_date, end_date, is_all_day, location, notes, category_id, event_type, event_categories(color), recurrence_rule)")
             .eq("user_id", value: userId)
             .is("apple_calendar_event_id", value: nil)
             .execute()
@@ -985,7 +1092,8 @@ final class CalendarSyncManager: ObservableObject {
                 category_id: event.category_id,
                 event_categories: event.event_categories.map { cat in
                     PendingEventRow.CategoryInfo(color: cat.color)
-                }
+                },
+                recurrence_rule: event.recurrence_rule
             )
         }
         
@@ -1084,7 +1192,8 @@ final class CalendarSyncManager: ObservableObject {
                             isAllDay: pendingEvent.is_all_day,
                             location: pendingEvent.location,
                             notes: pendingEvent.notes,
-                            categoryColor: categoryColor
+                            categoryColor: categoryColor,
+                            recurrenceRule: pendingEvent.recurrence_rule
                         )
                         
                         // Track this newly created ID and signature immediately to prevent duplicates
@@ -1097,6 +1206,10 @@ final class CalendarSyncManager: ObservableObject {
                     }
                 }
                 
+                // Store the mapping locally for cleanup purposes
+                // This survives even if attendee records are cascade-deleted
+                storeSyncedGroupEvent(eventId: pendingEvent.event_id, appleCalendarEventId: appleEventId)
+
                 // Store the Apple Calendar event ID for ALL attendee records for this event and user
                 // Update all attendee records that don't have an apple_calendar_event_id yet
                 struct UpdateAttendee: Encodable {
@@ -1126,6 +1239,147 @@ final class CalendarSyncManager: ObservableObject {
                 // Log error but continue with other events
                 print("[CalendarSyncManager] Failed to sync pending event to Apple Calendar: \(error)")
             }
+        }
+    }
+
+    /// Cleans up Apple Calendar events for group events that have been deleted from the database
+    /// This handles the case where another user (e.g., event creator) deleted a group event
+    private func cleanupDeletedGroupEventsFromAppleCalendar(userId: UUID) async throws {
+        guard let client = client else { return }
+        guard authorizationStatus == .authorized else { return }
+
+        // APPROACH 1: Check local storage for synced group events and verify they still exist
+        // This is the most reliable method as it doesn't depend on server-side records
+        let localMapping = getSyncedGroupEventsMapping()
+        if !localMapping.isEmpty {
+            let localEventIds = localMapping.keys.compactMap { UUID(uuidString: $0) }
+
+            if !localEventIds.isEmpty {
+                struct ExistingEvent: Decodable {
+                    let id: UUID
+                }
+                let existingEvents: [ExistingEvent] = try await client
+                    .from("calendar_events")
+                    .select("id")
+                    .in("id", values: localEventIds)
+                    .execute()
+                    .value
+
+                let existingEventIds = Set(existingEvents.map { $0.id })
+
+                // Find events in local storage that no longer exist in database
+                for (eventIdString, appleCalendarEventId) in localMapping {
+                    guard let eventId = UUID(uuidString: eventIdString) else { continue }
+
+                    if !existingEventIds.contains(eventId) {
+                        // Event was deleted from database, delete from Apple Calendar
+                        do {
+                            try await EventKitEventManager.shared.deleteEvent(identifier: appleCalendarEventId)
+                            print("[CalendarSyncManager] Deleted Apple Calendar event for deleted group event: \(appleCalendarEventId)")
+                        } catch {
+                            print("[CalendarSyncManager] Failed to delete Apple Calendar event (may already be deleted): \(error)")
+                        }
+                        // Remove from local storage
+                        removeSyncedGroupEvent(eventId: eventId)
+                    }
+                }
+            }
+        }
+
+        // APPROACH 2: Check for pending deletions table (if it exists)
+        struct PendingDeletion: Decodable {
+            let id: UUID
+            let apple_calendar_event_id: String
+        }
+        let pendingDeletions: [PendingDeletion] = (try? await client
+            .from("pending_apple_calendar_deletions")
+            .select("id, apple_calendar_event_id")
+            .eq("user_id", value: userId)
+            .execute()
+            .value) ?? []
+
+        // Delete Apple Calendar events from pending deletions
+        var deletedPendingIds: [UUID] = []
+        for pending in pendingDeletions {
+            do {
+                try await EventKitEventManager.shared.deleteEvent(identifier: pending.apple_calendar_event_id)
+                deletedPendingIds.append(pending.id)
+                print("[CalendarSyncManager] Deleted Apple Calendar event from pending deletion: \(pending.apple_calendar_event_id)")
+            } catch {
+                // Still mark as processed even if delete fails (event might already be gone)
+                deletedPendingIds.append(pending.id)
+                print("[CalendarSyncManager] Failed to delete pending Apple Calendar event (may already be deleted): \(error)")
+            }
+            // Also remove from local storage if present
+            removeSyncedGroupEventByAppleId(pending.apple_calendar_event_id)
+        }
+
+        // Remove processed pending deletions
+        if !deletedPendingIds.isEmpty {
+            _ = try? await client
+                .from("pending_apple_calendar_deletions")
+                .delete()
+                .in("id", values: deletedPendingIds)
+                .execute()
+        }
+
+        // APPROACH 3: Check for orphaned attendee records (fallback for older events)
+        struct AttendeeAppleEventId: Decodable {
+            let event_id: UUID
+            let apple_calendar_event_id: String?
+        }
+        let attendeeRows: [AttendeeAppleEventId] = try await client
+            .from("event_attendees")
+            .select("event_id, apple_calendar_event_id")
+            .eq("user_id", value: userId)
+            .execute()
+            .value
+
+        // Filter to only rows that have an apple_calendar_event_id
+        let syncedAttendees = attendeeRows.filter { $0.apple_calendar_event_id != nil }
+        guard !syncedAttendees.isEmpty else { return }
+
+        // Get the event IDs and check which ones still exist in calendar_events
+        let eventIds = syncedAttendees.map { $0.event_id }
+
+        struct ExistingEventCheck: Decodable {
+            let id: UUID
+        }
+        let existingEventsCheck: [ExistingEventCheck] = try await client
+            .from("calendar_events")
+            .select("id")
+            .in("id", values: eventIds)
+            .execute()
+            .value
+
+        let existingEventIdsCheck = Set(existingEventsCheck.map { $0.id })
+
+        // Find attendee records where the event no longer exists
+        let deletedAttendees = syncedAttendees.filter { !existingEventIdsCheck.contains($0.event_id) }
+
+        // Delete the Apple Calendar events for deleted group events
+        for attendee in deletedAttendees {
+            if let appleEventId = attendee.apple_calendar_event_id {
+                do {
+                    try await EventKitEventManager.shared.deleteEvent(identifier: appleEventId)
+                    print("[CalendarSyncManager] Deleted orphaned Apple Calendar event: \(appleEventId)")
+                } catch {
+                    print("[CalendarSyncManager] Failed to delete orphaned Apple Calendar event: \(error)")
+                }
+                // Also remove from local storage if present
+                removeSyncedGroupEventByAppleId(appleEventId)
+            }
+        }
+
+        // Clean up the orphaned attendee records
+        let deletedEventIds = deletedAttendees.map { $0.event_id }
+        if !deletedEventIds.isEmpty {
+            _ = try? await client
+                .from("event_attendees")
+                .delete()
+                .eq("user_id", value: userId)
+                .in("event_id", values: deletedEventIds)
+                .execute()
         }
     }
 

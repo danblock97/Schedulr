@@ -35,7 +35,10 @@ struct EventEditorView: View {
     @State private var loadedDraftFollowupId: UUID?
     @State private var didSave: Bool = false
     @State private var availableDraftPayload: [String: String]?
-    
+    // Recurrence state
+    @State private var isRecurring: Bool = false
+    @State private var recurrenceRule: RecurrenceRule? = nil
+
     init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil) {
         self.groupId = groupId
         self.members = members
@@ -168,6 +171,15 @@ struct EventEditorView: View {
                                 .buttonStyle(.bordered)
                                 .tint(themeManager.primaryColor)
                             }
+                        }
+
+                        // Recurrence Section
+                        SectionCard(title: "Repeat", icon: "repeat") {
+                            RecurrencePickerView(
+                                recurrenceRule: $recurrenceRule,
+                                isRecurring: $isRecurring,
+                                eventStartDate: date
+                            )
                         }
 
                         if eventType == "group" {
@@ -445,7 +457,7 @@ struct EventEditorView: View {
                     if let existingId = ekId {
                         try await EventKitEventManager.shared.updateEvent(identifier: existingId, title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes, categoryColor: categoryColor)
                     } else {
-                        ekId = try? await EventKitEventManager.shared.createEvent(title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes, categoryColor: categoryColor)
+                        ekId = try? await EventKitEventManager.shared.createEvent(title: title.trimmingCharacters(in: .whitespacesAndNewlines), start: date, end: endDate, isAllDay: isAllDay, location: location.isEmpty ? nil : location, notes: notes.isEmpty ? nil : notes, categoryColor: categoryColor, recurrenceRule: recurrenceRule)
                     }
                 } else if eventType == "group" {
                     // Don't save group events to Apple Calendar directly - they're synced via CalendarEventService
@@ -472,7 +484,9 @@ struct EventEditorView: View {
                     guestNames: guestNames,
                     originalEventId: ekId,
                     categoryId: selectedCategoryId,
-                    eventType: eventType
+                    eventType: eventType,
+                    recurrenceRule: isRecurring ? recurrenceRule : nil,
+                    recurrenceEndDate: isRecurring ? recurrenceRule?.endDate : nil
                 )
                 if let existingEvent {
                     try await CalendarEventService.shared.updateEvent(eventId: existingEvent.id, input: input, currentUserId: uid)
@@ -515,6 +529,11 @@ struct EventEditorView: View {
         notes = ev.notes ?? ""
         selectedCategoryId = ev.category_id
         eventType = ev.event_type
+        // Load recurrence if present
+        if let rule = ev.recurrenceRule {
+            isRecurring = true
+            recurrenceRule = rule
+        }
         // Load attendees preselection
         Task {
             if let rows = try? await CalendarEventService.shared.loadAttendees(eventId: ev.id) {
@@ -772,7 +791,7 @@ private struct SectionCard<Content: View>: View {
     }
 }
 
-private struct CustomTextField: View {
+struct CustomTextField: View {
     let label: String
     @Binding var text: String
     let placeholder: String
@@ -807,7 +826,7 @@ private struct CustomTextField: View {
     }
 }
 
-private struct CustomToggle: View {
+struct CustomToggle: View {
     let label: String
     @Binding var isOn: Bool
     
@@ -817,7 +836,7 @@ private struct CustomToggle: View {
     }
 }
 
-private struct CustomPicker<Content: View, Selection: Hashable>: View {
+struct CustomPicker<Content: View, Selection: Hashable>: View {
     let label: String
     @Binding var selection: Selection
     let content: Content
@@ -842,7 +861,7 @@ private struct CustomPicker<Content: View, Selection: Hashable>: View {
     }
 }
 
-private struct CustomDatePicker: View {
+struct CustomDatePicker: View {
     let label: String
     @Binding var selection: Date
     var displayedComponents: DatePickerComponents = [.date, .hourAndMinute]
