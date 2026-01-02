@@ -159,14 +159,29 @@ async function handleEventInvite(supabase: any, payload: NotificationPayload) {
   const creatorName = event.users?.display_name || 'Someone'
   const eventTitle = event.title || 'New Event'
   const startDate = new Date(event.start_date)
-  const dateStr = startDate.toLocaleDateString()
-
-  return await sendNotificationsToUsers(supabase, userIds, {
-    title: `Invitation: ${eventTitle}`,
-    body: `${creatorName} invited you to an event on ${dateStr}`,
-    notification_type: 'event_invite',
-    event_id: event_id
-  }, 'notify_event_updates')
+  
+  // Fetch user locales for proper date formatting
+  const userLocales = await getUserLocales(supabase, userIds)
+  
+  // Format date per user with their locale
+  const notifications: Array<{ userId: string, content: NotificationContent }> = []
+  for (const userId of userIds) {
+    const userLocale = userLocales.get(userId)
+    const dateStr = formatDateForLocale(startDate, userLocale)
+    
+    notifications.push({
+      userId,
+      content: {
+        title: `Invitation: ${eventTitle}`,
+        body: `${creatorName} invited you to an event on ${dateStr}`,
+        notification_type: 'event_invite',
+        event_id: event_id
+      }
+    })
+  }
+  
+  // Send notifications individually with per-user formatted dates
+  return await sendNotificationsToUsersWithContent(supabase, notifications, 'notify_event_updates')
 }
 
 async function handleEventUpdate(supabase: any, payload: NotificationPayload) {
@@ -371,15 +386,30 @@ async function handleEventReminder(supabase: any, payload: NotificationPayload) 
   const userIds = attendees.map((a: any) => a.user_id).filter(Boolean)
   const eventTitle = event.title || 'Event'
   const startDate = new Date(event.start_date)
-  const timeStr = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const dateStr = startDate.toLocaleDateString()
-
-  const result = await sendNotificationsToUsers(supabase, userIds, {
-    title: `Reminder: ${eventTitle}`,
-    body: `Starting ${dateStr} at ${timeStr}${event.location ? ` at ${event.location}` : ''}`,
-    notification_type: 'event_reminder',
-    event_id: event_id
-  }, 'notify_event_reminders')
+  
+  // Fetch user locales for proper date formatting
+  const userLocales = await getUserLocales(supabase, userIds)
+  
+  // Format date and time per user with their locale
+  const notifications: Array<{ userId: string, content: NotificationContent }> = []
+  for (const userId of userIds) {
+    const userLocale = userLocales.get(userId)
+    const dateStr = formatDateForLocale(startDate, userLocale)
+    const timeStr = formatTimeForLocale(startDate, userLocale)
+    
+    notifications.push({
+      userId,
+      content: {
+        title: `Reminder: ${eventTitle}`,
+        body: `Starting ${dateStr} at ${timeStr}${event.location ? ` at ${event.location}` : ''}`,
+        notification_type: 'event_reminder',
+        event_id: event_id
+      }
+    })
+  }
+  
+  // Send notifications individually with per-user formatted dates
+  const result = await sendNotificationsToUsersWithContent(supabase, notifications, 'notify_event_reminders')
 
   // Mark reminders as sent
   await supabase
@@ -707,6 +737,196 @@ interface NotificationContent {
   notification_type: NotificationType
   event_id?: string
   group_id?: string
+}
+
+/**
+ * Fetches user locales from user_settings
+ * Returns a map of user_id -> locale identifier
+ */
+async function getUserLocales(supabase: any, userIds: string[]): Promise<Map<string, string>> {
+  const localeMap = new Map<string, string>()
+  
+  if (!userIds || userIds.length === 0) {
+    return localeMap
+  }
+  
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('user_id, locale')
+    .in('user_id', userIds)
+  
+  if (settings && settings.length > 0) {
+    for (const setting of settings) {
+      if (setting.locale) {
+        localeMap.set(setting.user_id, setting.locale)
+      }
+    }
+  }
+  
+  return localeMap
+}
+
+/**
+ * Formats a date using the user's locale, or falls back to en_US
+ */
+function formatDateForLocale(date: Date, locale?: string): string {
+  try {
+    // Convert locale identifier (e.g., "en_GB") to format expected by toLocaleDateString
+    // toLocaleDateString expects format like "en-GB" (hyphen, not underscore)
+    const normalizedLocale = locale ? locale.replace('_', '-') : 'en-US'
+    return date.toLocaleDateString(normalizedLocale)
+  } catch (error) {
+    // Fallback to en-US if locale is invalid
+    return date.toLocaleDateString('en-US')
+  }
+}
+
+/**
+ * Formats a time using the user's locale, or falls back to en_US
+ */
+function formatTimeForLocale(date: Date, locale?: string): string {
+  try {
+    const normalizedLocale = locale ? locale.replace('_', '-') : 'en-US'
+    return date.toLocaleTimeString(normalizedLocale, { hour: '2-digit', minute: '2-digit' })
+  } catch (error) {
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  }
+}
+
+/**
+ * Sends notifications with per-user content (for date formatting per locale)
+ */
+async function sendNotificationsToUsersWithContent(
+  supabase: any,
+  notifications: Array<{ userId: string, content: NotificationContent }>,
+  preferenceKey?: string
+): Promise<Response> {
+  if (!notifications || notifications.length === 0) {
+    return new Response(JSON.stringify({ message: 'No notifications to send' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  const userIds = notifications.map(n => n.userId)
+  
+  // Filter users based on their notification preferences
+  let filteredNotifications = notifications
+  if (preferenceKey) {
+    const { data: settings } = await supabase
+      .from('user_settings')
+      .select(`user_id, ${preferenceKey}`)
+      .in('user_id', userIds)
+
+    if (settings && settings.length > 0) {
+      const usersWithPreferenceOff = settings
+        .filter((s: any) => s[preferenceKey] === false)
+        .map((s: any) => s.user_id)
+      
+      filteredNotifications = notifications.filter(n => !usersWithPreferenceOff.includes(n.userId))
+    }
+  }
+
+  if (filteredNotifications.length === 0) {
+    return new Response(JSON.stringify({ message: 'All users have this notification disabled' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  // Fetch device tokens for filtered users
+  const filteredUserIds = filteredNotifications.map(n => n.userId)
+  const { data: devices, error: devicesError } = await supabase
+    .from('user_devices')
+    .select('user_id, apns_token')
+    .in('user_id', filteredUserIds)
+
+  if (devicesError) {
+    console.error('Error fetching device tokens:', devicesError)
+    return new Response(JSON.stringify({ error: 'Failed to fetch device tokens' }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  if (!devices || devices.length === 0) {
+    return new Response(JSON.stringify({ message: 'No device tokens found', tokens: 0 }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  // Create a map of userId -> content for quick lookup
+  const contentByUser = new Map<string, NotificationContent>()
+  for (const notif of filteredNotifications) {
+    contentByUser.set(notif.userId, notif.content)
+  }
+
+  // Group devices by user
+  const devicesByUser = new Map<string, any[]>()
+  for (const device of devices) {
+    if (!device.apns_token) continue
+    const userId = device.user_id
+    if (!devicesByUser.has(userId)) {
+      devicesByUser.set(userId, [])
+    }
+    devicesByUser.get(userId)!.push(device)
+  }
+
+  const results: any[] = []
+
+  // Send notifications with per-user content
+  for (const [userId, userDevices] of devicesByUser) {
+    const content = contentByUser.get(userId)
+    if (!content) continue // Skip if no content for this user
+    
+    for (const device of userDevices) {
+      const notification: any = {
+        aps: {
+          alert: {
+            title: content.title,
+            body: content.body,
+          },
+          sound: 'default',
+          'content-available': 1,
+          badge: 1,
+        },
+        notification_type: content.notification_type,
+      }
+
+      // Add optional fields
+      if (content.event_id) notification.event_id = content.event_id
+      if (content.group_id) notification.group_id = content.group_id
+
+      try {
+        const jwtToken = await getApnsToken()
+
+        const response = await fetch(`${apnsUrl}/3/device/${device.apns_token}`, {
+          method: 'POST',
+          headers: {
+            'apns-topic': Deno.env.get('APNS_BUNDLE_ID') || 'uk.co.schedulr.Schedulr',
+            'apns-push-type': 'alert',
+            'apns-priority': '10',
+            'authorization': `bearer ${jwtToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(notification),
+        })
+
+        results.push({ token: device.apns_token.substring(0, 8) + '...', status: response.status })
+      } catch (err: any) {
+        results.push({ token: device.apns_token.substring(0, 8) + '...', error: err.message })
+      }
+    }
+  }
+
+  return new Response(JSON.stringify({ 
+    message: `Sent ${results.length} notifications`,
+    results 
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  })
 }
 
 async function sendNotificationsToUsers(

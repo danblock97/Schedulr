@@ -151,6 +151,7 @@ struct NotificationRow: View {
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         formatter.doesRelativeDateFormatting = true
+        formatter.locale = Locale.current // Use device locale for proper formatting
         return formatter
     }
     

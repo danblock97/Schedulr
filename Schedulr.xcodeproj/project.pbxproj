@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0296202C2606B10F4765B6D5 /* ThemePreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */; };
+		LOCALE001BUILDFILE001001AB /* LocalePreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = LOCALE001FILEREF0001001AB /* LocalePreferencesManager.swift */; };
 		06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */; };
 		0EE8623E8ED0C13BEF843DF7 /* MonthViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */; };
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
@@ -174,6 +175,7 @@
 		91AE6827B8B48B526FE6C3C8 /* EventEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventEditorView.swift; sourceTree = "<group>"; };
 		92D2F87AFDD0AA081B70C2B1 /* CalendarBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarBlockView.swift; sourceTree = "<group>"; };
 		95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePreferencesManager.swift; sourceTree = "<group>"; };
+		LOCALE001FILEREF0001001AB /* LocalePreferencesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalePreferencesManager.swift; sourceTree = "<group>"; };
 		9B6EFB1D6E28C387238D3607 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
 		9BACE572F7D2FDEE2AAFA15C /* GracePeriodManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GracePeriodManager.swift; sourceTree = "<group>"; };
 		A3B4C5D6E7F8A9B0C1D2E3F4 /* RatingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingManager.swift; sourceTree = "<group>"; };
@@ -392,6 +394,7 @@
 				RECUR001FILEREF0001001AB /* RecurrenceService.swift */,
 				54EEA7587094A03A7E02AD1D /* SupabaseManager.swift */,
 				95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */,
+				LOCALE001FILEREF0001001AB /* LocalePreferencesManager.swift */,
 			);
 			path = SupabaseClient;
 			sourceTree = "<group>";
@@ -605,6 +608,7 @@
 				A7D565C6E31A606563158CB6 /* CalendarEventService.swift in Sources */,
 				FDC5FDA134ED7FAEA94EA5E0 /* CalendarPreferencesManager.swift in Sources */,
 				0296202C2606B10F4765B6D5 /* ThemePreferencesManager.swift in Sources */,
+				LOCALE001BUILDFILE001001AB /* LocalePreferencesManager.swift in Sources */,
 				CE5A1C16EC7D369E38DAC49B /* ThemeManager.swift in Sources */,
 				63FB703050854B79FAF6A2BB /* RatingManager.swift in Sources */,
 				46086C1A64AC8FDE36AE6906 /* ThemePickerView.swift in Sources */,

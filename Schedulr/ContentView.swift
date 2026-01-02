@@ -59,6 +59,8 @@ struct ContentView: View {
         }
         .task {
             await loadTheme()
+            // Initialize locale for date formatting in notifications
+            await initializeLocale()
             // Load user profile to get avatar
             await profileViewModel.loadUserProfile()
         }
@@ -106,6 +108,21 @@ struct ContentView: View {
         } catch {
             print("⚠️ Could not load theme: \(error)")
             // Use default theme (already set in ThemeManager.shared)
+        }
+    }
+    
+    private func initializeLocale() async {
+        do {
+            if let session = try? await SupabaseManager.shared.client.auth.session {
+                let uid = session.user.id
+                // Update locale if device locale has changed
+                try await LocalePreferencesManager.shared.updateIfNeeded(for: uid)
+            }
+        } catch {
+            #if DEBUG
+            print("⚠️ Could not initialize locale: \(error)")
+            #endif
+            // Non-critical error, continue without locale update
         }
     }
 }
