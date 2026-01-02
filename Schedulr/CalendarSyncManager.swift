@@ -1303,6 +1303,7 @@ final class CalendarSyncManager: ObservableObject {
                 let category_id: UUID?
                 let event_categories: CategoryInfo?
                 let recurrence_rule: RecurrenceRule?
+                let recurrence_end_date: Date?  // Added for "this and future" delete sync
                 // Exception fields for debugging
                 let is_recurrence_exception: Bool?
                 let parent_event_id: UUID?
@@ -1315,17 +1316,28 @@ final class CalendarSyncManager: ObservableObject {
 
         let syncedRows: [SyncedEventRow] = try await client
             .from("event_attendees")
-            .select("event_id, apple_calendar_event_id, calendar_events(id, title, start_date, end_date, is_all_day, location, notes, updated_at, event_type, category_id, event_categories(color), recurrence_rule, is_recurrence_exception, parent_event_id)")
+            .select("event_id, apple_calendar_event_id, calendar_events(id, title, start_date, end_date, is_all_day, location, notes, updated_at, event_type, category_id, event_categories(color), recurrence_rule, recurrence_end_date, is_recurrence_exception, parent_event_id)")
             .eq("user_id", value: userId)
             .not("apple_calendar_event_id", operator: .is, value: "null")
             .execute()
             .value
         // Get local sync timestamps
         let localSyncTimestamps = getLocalSyncTimestamps()
+        let localRecurrenceEndDates = getLocalRecurrenceEndDates()
 
         // Filter to only group events that have been updated since last sync
         let eventsToUpdate = syncedRows.filter { row in
             guard let event = row.calendar_events, event.event_type == "group" else { return false }
+            
+            // Check if recurrence_end_date has changed (for "this and future" deletes)
+            if let currentEndDate = event.recurrence_end_date {
+                let storedEndDateTimestamp = localRecurrenceEndDates[row.event_id.uuidString]
+                if storedEndDateTimestamp == nil || abs(currentEndDate.timeIntervalSince1970 - storedEndDateTimestamp!) > 1.0 {
+                    // recurrence_end_date is new or changed - needs sync
+                    return true
+                }
+            }
+            
             guard let updatedAt = event.updated_at else { return false }
 
             // Check local storage for last sync timestamp
@@ -1347,18 +1359,32 @@ final class CalendarSyncManager: ObservableObject {
             do {
                 let categoryColor = event.event_categories?.color
 
-                // Update the Apple Calendar event
-                try await EventKitEventManager.shared.updateEvent(
-                    identifier: row.apple_calendar_event_id,
-                    title: event.title,
-                    start: event.start_date,
-                    end: event.end_date,
-                    isAllDay: event.is_all_day,
-                    location: event.location,
-                    notes: event.notes,
-                    categoryColor: categoryColor,
-                    updateAllOccurrences: event.recurrence_rule != nil
-                )
+                // Handle "this and future" delete: if recurrence_end_date is set and event has a recurrence rule,
+                // update the Apple Calendar event's recurrence to end at that date
+                if let recurrenceEndDate = event.recurrence_end_date, event.recurrence_rule != nil {
+                    // End the recurrence at the specified date (adds 1 day because endRecurrenceAt subtracts 1)
+                    let calendar = Calendar.current
+                    let dayAfter = calendar.date(byAdding: .day, value: 1, to: recurrenceEndDate) ?? recurrenceEndDate
+                    try await EventKitEventManager.shared.endRecurrenceAt(identifier: row.apple_calendar_event_id, date: dayAfter)
+                    
+                    // Store the recurrence end date locally to avoid re-syncing
+                    storeLocalRecurrenceEndDate(eventId: row.event_id, endDate: recurrenceEndDate)
+                    
+                    print("[CalendarSyncManager] Updated recurrence end date in Apple Calendar for invited user: \(event.title)")
+                } else {
+                    // Regular update for non-recurring or events without end date change
+                    try await EventKitEventManager.shared.updateEvent(
+                        identifier: row.apple_calendar_event_id,
+                        title: event.title,
+                        start: event.start_date,
+                        end: event.end_date,
+                        isAllDay: event.is_all_day,
+                        location: event.location,
+                        notes: event.notes,
+                        categoryColor: categoryColor,
+                        updateAllOccurrences: event.recurrence_rule != nil
+                    )
+                }
 
                 // Store sync timestamp locally
                 storeLocalSyncTimestamp(eventId: row.event_id, timestamp: Date())
@@ -1493,6 +1519,7 @@ final class CalendarSyncManager: ObservableObject {
     // MARK: - Local Sync Timestamp Storage
 
     private static let localSyncTimestampsKey = "GroupEventSyncTimestamps"
+    private static let localRecurrenceEndDatesKey = "GroupEventRecurrenceEndDates"
 
     private func getLocalSyncTimestamps() -> [String: Date] {
         guard let data = defaults.dictionary(forKey: Self.localSyncTimestampsKey) as? [String: Double] else {
@@ -1505,6 +1532,20 @@ final class CalendarSyncManager: ObservableObject {
         var timestamps = defaults.dictionary(forKey: Self.localSyncTimestampsKey) as? [String: Double] ?? [:]
         timestamps[eventId.uuidString] = timestamp.timeIntervalSince1970
         defaults.set(timestamps, forKey: Self.localSyncTimestampsKey)
+    }
+    
+    private func getLocalRecurrenceEndDates() -> [String: Double] {
+        return defaults.dictionary(forKey: Self.localRecurrenceEndDatesKey) as? [String: Double] ?? [:]
+    }
+    
+    private func storeLocalRecurrenceEndDate(eventId: UUID, endDate: Date?) {
+        var dates = defaults.dictionary(forKey: Self.localRecurrenceEndDatesKey) as? [String: Double] ?? [:]
+        if let endDate = endDate {
+            dates[eventId.uuidString] = endDate.timeIntervalSince1970
+        } else {
+            dates.removeValue(forKey: eventId.uuidString)
+        }
+        defaults.set(dates, forKey: Self.localRecurrenceEndDatesKey)
     }
 
     /// Cleans up Apple Calendar events for group events that have been deleted from the database

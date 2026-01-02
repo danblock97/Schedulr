@@ -84,8 +84,16 @@ final class RecurrenceService {
         inRange dateRange: ClosedRange<Date>,
         exceptions: [CalendarEventWithUser]
     ) -> [CalendarEventWithUser] {
-        guard let rule = event.recurrenceRule else {
+        guard var rule = event.recurrenceRule else {
             return [event]
+        }
+
+        // IMPORTANT: Use event.recurrenceEndDate (from DB column) if it's more restrictive than rule.endDate
+        // This handles "this and future" deletes which update recurrence_end_date column
+        if let dbEndDate = event.recurrenceEndDate {
+            if rule.endDate == nil || dbEndDate < rule.endDate! {
+                rule.endDate = dbEndDate
+            }
         }
 
         let eventDuration = event.end_date.timeIntervalSince(event.start_date)
