@@ -39,6 +39,9 @@ struct EventEditorView: View {
     // Recurrence state
     @State private var isRecurring: Bool = false
     @State private var recurrenceRule: RecurrenceRule? = nil
+    // Validation state
+    @State private var showingMissingAttendeesAlert = false
+    @State private var currentUserId: UUID? = nil
 
     init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil, recurringEditScope: RecurringEditScope? = nil) {
         self.groupId = groupId
@@ -72,6 +75,21 @@ struct EventEditorView: View {
         case .allOccurrences:
             return "Edit All Events"
         }
+    }
+    
+    private var hasValidAttendees: Bool {
+        if eventType != "group" { return true }
+        // Exclude the creator from selected members count
+        // Group events need at least 2 people total: creator (auto-added) + at least 1 other
+        let otherMembers: Set<UUID>
+        if let creatorId = currentUserId {
+            otherMembers = selectedMemberIds.filter { $0 != creatorId }
+        } else {
+            otherMembers = selectedMemberIds
+        }
+        let hasOtherMembers = !otherMembers.isEmpty
+        let hasGuests = !guestNamesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasOtherMembers || hasGuests
     }
 
     var body: some View {
@@ -267,6 +285,17 @@ struct EventEditorView: View {
                                                     .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
                                             )
                                     }
+                                    
+                                    if !hasValidAttendees {
+                                        HStack {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundColor(.orange)
+                                            Text("Please invite at least one member or guest")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(.top, 4)
+                                    }
                                 }
                             }
                         }
@@ -335,6 +364,11 @@ struct EventEditorView: View {
             }
         }
         .task {
+            // Load current user ID for validation
+            if currentUserId == nil {
+                currentUserId = try? await SupabaseManager.shared.client.auth.session.user.id
+            }
+            
             await loadAvailableGroups()
             // If editing, set group from existing event after groups are loaded
             if let ev = existingEvent {
@@ -361,6 +395,11 @@ struct EventEditorView: View {
                 categories.append(category)
                 selectedCategoryId = category.id
             }
+        }
+        .alert("Add Attendees", isPresented: $showingMissingAttendeesAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Group events must include at least one other member or guest. Please invite at least one person to the event.")
         }
         .onDisappear {
             Task { await saveDraftIfNeeded() }
@@ -476,6 +515,12 @@ struct EventEditorView: View {
             guard !isSaving else { return }
             isSaving = true
             defer { isSaving = false }
+            
+            // Validate group events have at least one attendee
+            if eventType == "group" && !hasValidAttendees {
+                showingMissingAttendeesAlert = true
+                return
+            }
             
             // Validate that end date is not before start date
             if endDate < date {
