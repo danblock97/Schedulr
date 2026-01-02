@@ -42,21 +42,29 @@ final class RecurrenceService {
                 break
             }
 
-            // Only include if within range and not excluded
-            if currentDate >= dateRange.lowerBound {
-                let startOfDay = calendar.startOfDay(for: currentDate)
-                if !excludingDates.contains(startOfDay) {
-                    if shouldIncludeOccurrence(currentDate, for: rule, eventStart: eventStart) {
-                        // Apply the time from the original event
-                        let timeComponents = calendar.dateComponents([.hour, .minute, .second], from: eventStart)
-                        if let occurrenceWithTime = calendar.date(bySettingHour: timeComponents.hour ?? 0,
-                                                                   minute: timeComponents.minute ?? 0,
-                                                                   second: timeComponents.second ?? 0,
-                                                                   of: currentDate) {
-                            // Only add if this is on or after the original event start
-                            if occurrenceWithTime >= eventStart {
+            // Check if this date would be a valid occurrence (matching recurrence pattern)
+            if shouldIncludeOccurrence(currentDate, for: rule, eventStart: eventStart) {
+                // Apply the time from the original event
+                let timeComponents = calendar.dateComponents([.hour, .minute, .second], from: eventStart)
+                if let occurrenceWithTime = calendar.date(bySettingHour: timeComponents.hour ?? 0,
+                                                           minute: timeComponents.minute ?? 0,
+                                                           second: timeComponents.second ?? 0,
+                                                           of: currentDate) {
+                    // Only count if this is on or after the original event start
+                    if occurrenceWithTime >= eventStart {
+                        // This counts as an occurrence for the count limit, even if excluded
+                        // This ensures excluded dates don't cause extra occurrences to be generated
+                        occurrenceCount += 1
+
+                        // Only add to results if within range and not excluded
+                        if currentDate >= dateRange.lowerBound {
+                            let startOfDay = calendar.startOfDay(for: currentDate)
+                            let isExcluded = excludingDates.contains(startOfDay)
+                            if !isExcluded {
+                                print("[RecurrenceService] Adding occurrence: \(occurrenceWithTime), startOfDay: \(calendar.startOfDay(for: occurrenceWithTime)), isExcluded: \(isExcluded)")
                                 occurrences.append(occurrenceWithTime)
-                                occurrenceCount += 1
+                            } else {
+                                print("[RecurrenceService] Skipping excluded occurrence: \(occurrenceWithTime), startOfDay: \(startOfDay)")
                             }
                         }
                     }
@@ -84,9 +92,12 @@ final class RecurrenceService {
         let calendar = Calendar.current
 
         // Build set of exception dates (original occurrence dates that were modified/cancelled)
+        // Use start of day to ensure consistent comparison regardless of time precision differences
         let exceptionDates = Set(exceptions.compactMap { exception -> Date? in
             guard let originalDate = exception.originalOccurrenceDate else { return nil }
-            return calendar.startOfDay(for: originalDate)
+            let startOfDay = calendar.startOfDay(for: originalDate)
+            print("[RecurrenceService] Exception date: \(originalDate) -> startOfDay: \(startOfDay)")
+            return startOfDay
         })
 
         let occurrenceDates = generateOccurrences(

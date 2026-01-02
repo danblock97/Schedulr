@@ -4,6 +4,8 @@ struct RecurrencePickerView: View {
     @Binding var recurrenceRule: RecurrenceRule?
     @Binding var isRecurring: Bool
     let eventStartDate: Date
+    /// Optional initial rule to use for initialization (pass the parent event's rule when editing)
+    var initialRule: RecurrenceRule? = nil
 
     @State private var frequency: RecurrenceFrequency = .weekly
     @State private var interval: Int = 1
@@ -120,31 +122,52 @@ struct RecurrencePickerView: View {
         .onChange(of: occurrenceCount) { _, _ in updateRecurrenceRule() }
         .onChange(of: endDate) { _, _ in updateRecurrenceRule() }
         .onAppear {
-            guard !hasInitialized else { return }
-            hasInitialized = true
+            initializeFromRule()
+        }
+        .onChange(of: recurrenceRule) { oldValue, newValue in
+            // Re-initialize when the rule changes externally (e.g., when editing existing event)
+            // Only if we haven't initialized yet or if the rule is significantly different
+            if !hasInitialized || (newValue != nil && oldValue == nil) {
+                initializeFromRule()
+            }
+        }
+    }
 
-            // Initialize from existing rule if editing
-            if let rule = recurrenceRule {
-                isRecurring = true
-                frequency = rule.frequency
-                interval = rule.interval
-                selectedDays = Set(rule.daysOfWeek ?? [])
-                dayOfMonth = rule.dayOfMonth ?? Calendar.current.component(.day, from: eventStartDate)
-                if let count = rule.count {
-                    endType = .afterCount
-                    occurrenceCount = count
-                } else if let end = rule.endDate {
-                    endType = .onDate
-                    endDate = end
-                } else {
-                    endType = .never
-                }
-            } else {
-                // Set defaults based on event start date
+    private func initializeFromRule() {
+        guard !hasInitialized else { return }
+        hasInitialized = true
+
+        // Use initialRule if provided (for editing), otherwise use recurrenceRule binding
+        let ruleToUse = initialRule ?? recurrenceRule
+
+        // Initialize from existing rule if editing
+        if let rule = ruleToUse {
+            isRecurring = true
+            frequency = rule.frequency
+            interval = rule.interval
+            // Ensure we capture the days correctly
+            if let days = rule.daysOfWeek, !days.isEmpty {
+                selectedDays = Set(days)
+            } else if frequency == .weekly {
+                // Default to current weekday if no days specified
                 let weekday = Calendar.current.component(.weekday, from: eventStartDate) - 1
                 selectedDays = [weekday]
-                dayOfMonth = Calendar.current.component(.day, from: eventStartDate)
             }
+            dayOfMonth = rule.dayOfMonth ?? Calendar.current.component(.day, from: eventStartDate)
+            if let count = rule.count {
+                endType = .afterCount
+                occurrenceCount = count
+            } else if let end = rule.endDate {
+                endType = .onDate
+                endDate = end
+            } else {
+                endType = .never
+            }
+        } else {
+            // Set defaults based on event start date
+            let weekday = Calendar.current.component(.weekday, from: eventStartDate) - 1
+            selectedDays = [weekday]
+            dayOfMonth = Calendar.current.component(.day, from: eventStartDate)
         }
     }
 

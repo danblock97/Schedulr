@@ -8,6 +8,7 @@ struct EventEditorView: View {
     @State private var members: [DashboardViewModel.MemberSummary]
     var existingEvent: CalendarEventWithUser? = nil
     var initialDate: Date? = nil
+    var recurringEditScope: RecurringEditScope? = nil
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
 
@@ -39,13 +40,14 @@ struct EventEditorView: View {
     @State private var isRecurring: Bool = false
     @State private var recurrenceRule: RecurrenceRule? = nil
 
-    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil) {
+    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil, recurringEditScope: RecurringEditScope? = nil) {
         self.groupId = groupId
         self.members = members
         self.existingEvent = existingEvent
         self.initialDate = initialDate
+        self.recurringEditScope = recurringEditScope
         _selectedGroupId = State(initialValue: groupId)
-        
+
         // If creating a new event with an initial date, set the start and end dates
         if existingEvent == nil, let initialDate = initialDate {
             _date = State(initialValue: initialDate)
@@ -55,6 +57,23 @@ struct EventEditorView: View {
 
     @EnvironmentObject var themeManager: ThemeManager
 
+    private var navigationTitle: String {
+        if existingEvent == nil {
+            return "New Event"
+        }
+        guard let scope = recurringEditScope else {
+            return "Edit Event"
+        }
+        switch scope {
+        case .thisOccurrence:
+            return "Edit This Event"
+        case .thisAndFuture:
+            return "Edit Future Events"
+        case .allOccurrences:
+            return "Edit All Events"
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -63,6 +82,27 @@ struct EventEditorView: View {
                 
                 ScrollView {
                     VStack(spacing: 20) {
+                        // Recurring event edit scope banner
+                        if let scope = recurringEditScope {
+                            HStack(spacing: 12) {
+                                Image(systemName: "repeat")
+                                    .foregroundColor(.white)
+                                    .font(.title3)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Editing Recurring Event")
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.white)
+                                    Text(scope.subtitle)
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                                Spacer()
+                            }
+                            .padding()
+                            .background(themeManager.primaryColor)
+                            .cornerRadius(12)
+                        }
+
                         if let _ = availableDraftPayload {
                             SectionCard(title: "Draft available", icon: "doc.text") {
                                 HStack {
@@ -173,13 +213,16 @@ struct EventEditorView: View {
                             }
                         }
 
-                        // Recurrence Section
-                        SectionCard(title: "Repeat", icon: "repeat") {
-                            RecurrencePickerView(
-                                recurrenceRule: $recurrenceRule,
-                                isRecurring: $isRecurring,
-                                eventStartDate: date
-                            )
+                        // Recurrence Section (hide when editing single occurrence)
+                        if recurringEditScope != .thisOccurrence {
+                            SectionCard(title: "Repeat", icon: "repeat") {
+                                RecurrencePickerView(
+                                    recurrenceRule: $recurrenceRule,
+                                    isRecurring: $isRecurring,
+                                    eventStartDate: date,
+                                    initialRule: existingEvent?.recurrenceRule
+                                )
+                            }
                         }
 
                         if eventType == "group" {
@@ -281,7 +324,7 @@ struct EventEditorView: View {
                     .padding()
                 }
             }
-            .navigationTitle(existingEvent == nil ? "New Event" : "Edit Event")
+            .navigationTitle(navigationTitle)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -489,7 +532,86 @@ struct EventEditorView: View {
                     recurrenceEndDate: isRecurring ? recurrenceRule?.endDate : nil
                 )
                 if let existingEvent {
-                    try await CalendarEventService.shared.updateEvent(eventId: existingEvent.id, input: input, currentUserId: uid)
+                    // Handle recurring event edit scopes
+                    if let scope = recurringEditScope {
+                        switch scope {
+                        case .thisOccurrence:
+                            // Create an exception event for this occurrence only
+                            _ = try await CalendarEventService.shared.createRecurrenceException(
+                                parentEventId: existingEvent.parentEventId ?? existingEvent.id,
+                                originalOccurrenceDate: existingEvent.start_date,
+                                exception: .modified(input),
+                                currentUserId: uid
+                            )
+                        case .thisAndFuture:
+                            // End current series and create new series starting from this date
+                            _ = try await CalendarEventService.shared.updateFutureOccurrences(
+                                parentEventId: existingEvent.parentEventId ?? existingEvent.id,
+                                fromDate: existingEvent.start_date,
+                                newInput: input,
+                                currentUserId: uid
+                            )
+                        case .allOccurrences:
+                            // Update the parent event (all occurrences)
+                            let parentId = existingEvent.parentEventId ?? existingEvent.id
+                            
+                            // FIX: When updating "all occurrences", preserve the parent's original start DATE
+                            // but apply the new TIME from the edited occurrence.
+                            // This is needed because when editing from a virtual occurrence (expanded from recurrence),
+                            // the form shows the occurrence's date, not the parent's original start date.
+                            var fixedInput = input
+                            
+                            // ALWAYS fetch the parent event to get its original start date
+                            if let parentEvent = try? await CalendarEventService.shared.fetchEventById(eventId: parentId) {
+                                let calendar = Calendar.current
+                                
+                                // Check if the occurrence date differs from the parent's start date
+                                let occurrenceDate = calendar.startOfDay(for: existingEvent.start_date)
+                                let parentDate = calendar.startOfDay(for: parentEvent.start_date)
+                                
+                                if occurrenceDate != parentDate {
+                                    // We're editing from a different occurrence, preserve parent's date
+                                    // Get time components from the edited occurrence's new times
+                                    let newStartTime = calendar.dateComponents([.hour, .minute, .second], from: input.start)
+                                    let newEndTime = calendar.dateComponents([.hour, .minute, .second], from: input.end)
+                                    // Get date components from the PARENT's original start date
+                                    var parentStartComponents = calendar.dateComponents([.year, .month, .day], from: parentEvent.start_date)
+                                    var parentEndComponents = calendar.dateComponents([.year, .month, .day], from: parentEvent.start_date)
+                                    // Combine: parent's date + new time
+                                    parentStartComponents.hour = newStartTime.hour
+                                    parentStartComponents.minute = newStartTime.minute
+                                    parentStartComponents.second = newStartTime.second
+                                    parentEndComponents.hour = newEndTime.hour
+                                    parentEndComponents.minute = newEndTime.minute
+                                    parentEndComponents.second = newEndTime.second
+                                    
+                                    if let correctedStart = calendar.date(from: parentStartComponents),
+                                       let correctedEnd = calendar.date(from: parentEndComponents) {
+                                        fixedInput = NewEventInput(
+                                            groupId: input.groupId,
+                                            title: input.title,
+                                            start: correctedStart,
+                                            end: correctedEnd,
+                                            isAllDay: input.isAllDay,
+                                            location: input.location,
+                                            notes: input.notes,
+                                            attendeeUserIds: input.attendeeUserIds,
+                                            guestNames: input.guestNames,
+                                            originalEventId: input.originalEventId,
+                                            categoryId: input.categoryId,
+                                            eventType: input.eventType,
+                                            recurrenceRule: input.recurrenceRule
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            try await CalendarEventService.shared.updateEvent(eventId: parentId, input: fixedInput, currentUserId: uid, updateAllOccurrences: true)
+                        }
+                    } else {
+                        // Non-recurring event, update normally
+                        try await CalendarEventService.shared.updateEvent(eventId: existingEvent.id, input: input, currentUserId: uid)
+                    }
                 } else {
                     _ = try await CalendarEventService.shared.createEvent(input: input, currentUserId: uid)
                 }

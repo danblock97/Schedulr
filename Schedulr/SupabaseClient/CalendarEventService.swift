@@ -280,7 +280,7 @@ final class CalendarEventService {
     }
 
     // Update event and replace attendees set
-    func updateEvent(eventId: UUID, input: NewEventInput, currentUserId: UUID) async throws {
+    func updateEvent(eventId: UUID, input: NewEventInput, currentUserId: UUID, updateAllOccurrences: Bool = false) async throws {
         // Validate that end date is not before start date
         if input.end < input.start {
             throw NSError(domain: "CalendarEventService", code: -2, userInfo: [NSLocalizedDescriptionKey: "End date cannot be before start date"])
@@ -377,7 +377,7 @@ final class CalendarEventService {
         // Sync group events to Apple Calendar for all invited users (including the creator)
         if input.eventType == "group" {
             // Sync immediately (not in background Task) so it happens after attendees are inserted
-            try? await syncGroupEventToAppleCalendar(eventId: eventId, input: input, creatorUserId: currentUserId)
+            try? await syncGroupEventToAppleCalendar(eventId: eventId, input: input, creatorUserId: currentUserId, updateAllOccurrences: updateAllOccurrences)
         }
         
         // Notify attendees about the event update (async, don't fail if it errors)
@@ -552,7 +552,7 @@ final class CalendarEventService {
     
     /// Syncs a group event to Apple Calendar for all invited users
     /// Each user gets their own copy of the event in their Apple Calendar
-    private func syncGroupEventToAppleCalendar(eventId: UUID, input: NewEventInput, creatorUserId: UUID) async throws {
+    private func syncGroupEventToAppleCalendar(eventId: UUID, input: NewEventInput, creatorUserId: UUID, updateAllOccurrences: Bool = false) async throws {
         // Fetch event details including category and recurrence rule
         struct EventRow: Decodable {
             let id: UUID
@@ -635,7 +635,8 @@ final class CalendarEventService {
                     isAllDay: event.is_all_day,
                     location: event.location,
                     notes: event.notes,
-                    categoryColor: categoryColor
+                    categoryColor: categoryColor,
+                    updateAllOccurrences: updateAllOccurrences
                 )
             } else {
                 // Check if event already exists in Apple Calendar before creating
@@ -960,6 +961,33 @@ final class CalendarEventService {
                 if !attendeesLists.isEmpty {
                     _ = try await client.from("event_attendees").insert(attendeesLists).execute()
                 }
+
+                // Update Apple Calendar for the single occurrence
+                // Get the parent event's Apple Calendar ID for the current user
+                struct ParentAttendee: Decodable {
+                    let apple_calendar_event_id: String?
+                }
+                let parentAttendees: [ParentAttendee] = try await client
+                    .from("event_attendees")
+                    .select("apple_calendar_event_id")
+                    .eq("event_id", value: parentEventId)
+                    .eq("user_id", value: currentUserId)
+                    .execute()
+                    .value
+
+                if let appleEventId = parentAttendees.first?.apple_calendar_event_id {
+                    // Update the specific occurrence in Apple Calendar
+                    try? await EventKitEventManager.shared.updateRecurringOccurrence(
+                        identifier: appleEventId,
+                        occurrenceDate: originalOccurrenceDate,
+                        newTitle: input.title,
+                        newStart: input.start,
+                        newEnd: input.end,
+                        newIsAllDay: input.isAllDay,
+                        newLocation: input.location,
+                        newNotes: input.notes
+                    )
+                }
             }
 
             return exceptionId
@@ -985,6 +1013,27 @@ final class CalendarEventService {
         occurrenceDate: Date,
         currentUserId: UUID
     ) async throws {
+        // Get Apple Calendar event ID for this user
+        struct AttendeeRow: Decodable {
+            let apple_calendar_event_id: String?
+        }
+        let attendeeRows: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("apple_calendar_event_id")
+            .eq("event_id", value: parentEventId)
+            .eq("user_id", value: currentUserId)
+            .execute()
+            .value
+
+        // Delete the specific occurrence from Apple Calendar
+        if let appleEventId = attendeeRows.first?.apple_calendar_event_id {
+            try? await EventKitEventManager.shared.deleteRecurringOccurrence(
+                identifier: appleEventId,
+                occurrenceDate: occurrenceDate
+            )
+        }
+
+        // Create a cancelled exception in the database
         _ = try await createRecurrenceException(
             parentEventId: parentEventId,
             originalOccurrenceDate: occurrenceDate,
@@ -995,6 +1044,26 @@ final class CalendarEventService {
 
     /// Delete the entire recurring series
     func deleteRecurringSeries(parentEventId: UUID, currentUserId: UUID) async throws {
+        // Get all attendee Apple Calendar event IDs for the parent event
+        struct AttendeeRow: Decodable {
+            let user_id: UUID?
+            let apple_calendar_event_id: String?
+        }
+        let attendeeRows: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("user_id, apple_calendar_event_id")
+            .eq("event_id", value: parentEventId)
+            .execute()
+            .value
+
+        // Delete Apple Calendar events for the current user
+        for attendee in attendeeRows where attendee.user_id == currentUserId {
+            if let appleEventId = attendee.apple_calendar_event_id {
+                // Delete all occurrences of the recurring event from Apple Calendar
+                try? await EventKitEventManager.shared.deleteEvent(identifier: appleEventId, deleteAllOccurrences: true)
+            }
+        }
+
         // First delete all exceptions
         _ = try await client
             .from("calendar_events")
@@ -1002,7 +1071,7 @@ final class CalendarEventService {
             .eq("parent_event_id", value: parentEventId)
             .execute()
 
-        // Then delete the parent event
+        // Then delete the parent event (this will cascade delete attendees)
         _ = try await client
             .from("calendar_events")
             .delete()

@@ -843,12 +843,16 @@ final class CalendarSyncManager: ObservableObject {
         var exceptions: [UUID: [CalendarEventWithUser]] = [:] // parent_event_id -> exceptions
         var regularEvents: [CalendarEventWithUser] = []
 
+        print("[CalendarSyncManager] Processing \(mappedEvents.count) events for date range")
+
         for event in mappedEvents {
             if event.isRecurrenceException, let parentId = event.parentEventId {
                 // This is an exception (modified or cancelled occurrence)
+                print("[CalendarSyncManager] Found exception: \(event.title), parentId: \(parentId), is_public: \(event.is_public), originalOccurrenceDate: \(String(describing: event.originalOccurrenceDate))")
                 exceptions[parentId, default: []].append(event)
             } else if event.recurrenceRule != nil && event.parentEventId == nil {
                 // This is a recurring parent event
+                print("[CalendarSyncManager] Found recurring parent: \(event.title), id: \(event.id)")
                 recurringParents.append(event)
             } else if event.parentEventId == nil {
                 // Regular non-recurring event
@@ -857,14 +861,18 @@ final class CalendarSyncManager: ObservableObject {
             // Skip orphaned exceptions (parentEventId != nil but no recurrence rule and not an exception)
         }
 
+        print("[CalendarSyncManager] Recurring parents: \(recurringParents.count), Exceptions: \(exceptions.values.flatMap { $0 }.count), Regular: \(regularEvents.count)")
+
         // Expand recurring events
         for parent in recurringParents {
             let parentExceptions = exceptions[parent.id] ?? []
+            print("[CalendarSyncManager] Expanding parent \(parent.title) with \(parentExceptions.count) exceptions")
             let expanded = RecurrenceService.shared.expandRecurringEvent(
                 parent,
                 inRange: dateRange,
                 exceptions: parentExceptions
             )
+            print("[CalendarSyncManager] Expanded to \(expanded.count) occurrences")
             expandedEvents.append(contentsOf: expanded)
 
             // Add modified exceptions (not cancelled ones) to the list
@@ -987,7 +995,6 @@ final class CalendarSyncManager: ObservableObject {
         isRefreshing = true
         lastSyncError = nil
         defer { isRefreshing = false }
-
         do {
             // First refresh local events
             await refreshEvents()
@@ -1000,6 +1007,12 @@ final class CalendarSyncManager: ObservableObject {
             // This ensures that group events synced to Apple Calendar are marked with apple_calendar_event_id
             // so they won't be uploaded back as personal events
             try await syncPendingGroupEventsToAppleCalendar(userId: userId)
+
+            // Update already-synced group events in Apple Calendar if they've been modified
+            try await updateSyncedGroupEventsInAppleCalendar(userId: userId)
+            
+            // Sync recurrence exceptions (modified/cancelled occurrences) to Apple Calendar
+            try await syncRecurrenceExceptionsToAppleCalendar(userId: userId)
 
             // Refresh Apple Calendar events after syncing group events to get the latest state
             await refreshEvents()
@@ -1040,6 +1053,11 @@ final class CalendarSyncManager: ObservableObject {
             let category_id: UUID?
             let event_categories: CategoryInfo?
             let recurrence_rule: RecurrenceRule?
+            // Exception fields
+            let is_recurrence_exception: Bool?
+            let parent_event_id: UUID?
+            let original_occurrence_date: Date?
+            let is_public: Bool?
 
             struct CategoryInfo: Decodable {
                 let color: ColorComponents
@@ -1062,6 +1080,11 @@ final class CalendarSyncManager: ObservableObject {
                 let event_type: String
                 let event_categories: CategoryInfo?
                 let recurrence_rule: RecurrenceRule?
+                // Exception fields
+                let is_recurrence_exception: Bool?
+                let parent_event_id: UUID?
+                let original_occurrence_date: Date?
+                let is_public: Bool?
 
                 struct CategoryInfo: Decodable {
                     let color: ColorComponents
@@ -1071,7 +1094,7 @@ final class CalendarSyncManager: ObservableObject {
         
         let attendeeRows: [AttendeeRow] = try await client
             .from("event_attendees")
-            .select("event_id, id, calendar_events(title, start_date, end_date, is_all_day, location, notes, category_id, event_type, event_categories(color), recurrence_rule)")
+            .select("event_id, id, calendar_events(title, start_date, end_date, is_all_day, location, notes, category_id, event_type, event_categories(color), recurrence_rule, is_recurrence_exception, parent_event_id, original_occurrence_date, is_public)")
             .eq("user_id", value: userId)
             .is("apple_calendar_event_id", value: nil)
             .execute()
@@ -1093,10 +1116,13 @@ final class CalendarSyncManager: ObservableObject {
                 event_categories: event.event_categories.map { cat in
                     PendingEventRow.CategoryInfo(color: cat.color)
                 },
-                recurrence_rule: event.recurrence_rule
+                recurrence_rule: event.recurrence_rule,
+                is_recurrence_exception: event.is_recurrence_exception,
+                parent_event_id: event.parent_event_id,
+                original_occurrence_date: event.original_occurrence_date,
+                is_public: event.is_public
             )
         }
-        
         // CRITICAL: Deduplicate by event_id to ensure we only process each unique event once
         // Multiple attendee rows can exist for the same event (e.g., across different groups)
         var eventMap: [UUID: PendingEventRow] = [:]
@@ -1131,6 +1157,15 @@ final class CalendarSyncManager: ObservableObject {
             if processedEventIds.contains(pendingEvent.event_id) {
                 continue
             }
+            
+            // Skip exception events - they should be handled by syncRecurrenceExceptionsToAppleCalendar
+            // which modifies existing occurrences rather than creating new events
+            // Skip exception events - they are handled by syncRecurrenceExceptionsToAppleCalendar
+            if pendingEvent.is_recurrence_exception == true {
+                processedEventIds.insert(pendingEvent.event_id)
+                continue
+            }
+            
             do {
                 let appleEventId: String
                 
@@ -1242,12 +1277,241 @@ final class CalendarSyncManager: ObservableObject {
         }
     }
 
+    /// Updates Apple Calendar events for group events that have been modified since last sync
+    /// This handles the case where the event creator updates an event that the invited user already has synced
+    private func updateSyncedGroupEventsInAppleCalendar(userId: UUID) async throws {
+        guard let client = client else { return }
+        guard authorizationStatus == .authorized else { return }
+
+        // Fetch all attendee records where user has an apple_calendar_event_id (already synced)
+        // Join with calendar_events to get the current event details and updated_at timestamp
+        struct SyncedEventRow: Decodable {
+            let event_id: UUID
+            let apple_calendar_event_id: String
+            let calendar_events: EventInfo?
+
+            struct EventInfo: Decodable {
+                let id: UUID
+                let title: String
+                let start_date: Date
+                let end_date: Date
+                let is_all_day: Bool
+                let location: String?
+                let notes: String?
+                let updated_at: Date?
+                let event_type: String
+                let category_id: UUID?
+                let event_categories: CategoryInfo?
+                let recurrence_rule: RecurrenceRule?
+                // Exception fields for debugging
+                let is_recurrence_exception: Bool?
+                let parent_event_id: UUID?
+
+                struct CategoryInfo: Decodable {
+                    let color: ColorComponents
+                }
+            }
+        }
+
+        let syncedRows: [SyncedEventRow] = try await client
+            .from("event_attendees")
+            .select("event_id, apple_calendar_event_id, calendar_events(id, title, start_date, end_date, is_all_day, location, notes, updated_at, event_type, category_id, event_categories(color), recurrence_rule, is_recurrence_exception, parent_event_id)")
+            .eq("user_id", value: userId)
+            .not("apple_calendar_event_id", operator: .is, value: "null")
+            .execute()
+            .value
+        // Get local sync timestamps
+        let localSyncTimestamps = getLocalSyncTimestamps()
+
+        // Filter to only group events that have been updated since last sync
+        let eventsToUpdate = syncedRows.filter { row in
+            guard let event = row.calendar_events, event.event_type == "group" else { return false }
+            guard let updatedAt = event.updated_at else { return false }
+
+            // Check local storage for last sync timestamp
+            if let lastSynced = localSyncTimestamps[row.event_id.uuidString] {
+                return updatedAt > lastSynced
+            }
+
+            // If no local sync timestamp, we should update (first time checking)
+            return true
+        }
+
+        guard !eventsToUpdate.isEmpty else { return }
+
+        print("[CalendarSyncManager] Found \(eventsToUpdate.count) group events to update in Apple Calendar")
+
+        for row in eventsToUpdate {
+            guard let event = row.calendar_events else { continue }
+
+            do {
+                let categoryColor = event.event_categories?.color
+
+                // Update the Apple Calendar event
+                try await EventKitEventManager.shared.updateEvent(
+                    identifier: row.apple_calendar_event_id,
+                    title: event.title,
+                    start: event.start_date,
+                    end: event.end_date,
+                    isAllDay: event.is_all_day,
+                    location: event.location,
+                    notes: event.notes,
+                    categoryColor: categoryColor,
+                    updateAllOccurrences: event.recurrence_rule != nil
+                )
+
+                // Store sync timestamp locally
+                storeLocalSyncTimestamp(eventId: row.event_id, timestamp: Date())
+
+                print("[CalendarSyncManager] Updated Apple Calendar event: \(event.title)")
+            } catch {
+                print("[CalendarSyncManager] Failed to update Apple Calendar event \(event.title): \(error)")
+            }
+        }
+    }
+
+    /// Syncs recurrence exceptions (modified or cancelled occurrences) to Apple Calendar for invited users
+    /// This handles the case where the creator modifies or deletes a single occurrence
+    private func syncRecurrenceExceptionsToAppleCalendar(userId: UUID) async throws {
+        guard let client = client else { return }
+        guard authorizationStatus == .authorized else { return }
+        // Fetch all recurrence exceptions that this user might need to sync
+        // These are events where is_recurrence_exception = true
+        struct ExceptionRow: Decodable {
+            let id: UUID
+            let title: String
+            let start_date: Date
+            let end_date: Date
+            let is_all_day: Bool
+            let location: String?
+            let notes: String?
+            let is_public: Bool
+            let parent_event_id: UUID?
+            let original_occurrence_date: Date?
+            let updated_at: Date?
+        }
+        
+        // Get recurrence exceptions from groups the user is a member of
+        struct UserGroupRow: Decodable { let group_id: UUID }
+        let userGroupRows: [UserGroupRow] = try await client
+            .from("group_members")
+            .select("group_id")
+            .eq("user_id", value: userId)
+            .execute()
+            .value
+        let userGroupIds = userGroupRows.map { $0.group_id }
+        
+        guard !userGroupIds.isEmpty else { return }
+        
+        let exceptionRows: [ExceptionRow] = try await client
+            .from("calendar_events")
+            .select("id, title, start_date, end_date, is_all_day, location, notes, is_public, parent_event_id, original_occurrence_date, updated_at")
+            .eq("is_recurrence_exception", value: true)
+            .in("group_id", values: userGroupIds)
+            .execute()
+            .value
+        // Get local sync timestamps for exceptions
+        let exceptionSyncTimestamps = getExceptionSyncTimestamps()
+        
+        for exception in exceptionRows {
+            guard let parentEventId = exception.parent_event_id,
+                  let originalOccurrenceDate = exception.original_occurrence_date else { continue }
+            
+            // Check if we've already synced this exception
+            let exceptionKey = "\(exception.id.uuidString)"
+            if let lastSynced = exceptionSyncTimestamps[exceptionKey],
+               let updatedAt = exception.updated_at,
+               updatedAt <= lastSynced {
+                continue // Already synced this version
+            }
+            
+            // Get the parent event's Apple Calendar ID for this user
+            struct ParentAttendee: Decodable {
+                let apple_calendar_event_id: String?
+            }
+            let parentAttendees: [ParentAttendee] = try await client
+                .from("event_attendees")
+                .select("apple_calendar_event_id")
+                .eq("event_id", value: parentEventId)
+                .eq("user_id", value: userId)
+                .execute()
+                .value
+            
+            guard let appleEventId = parentAttendees.first?.apple_calendar_event_id else {
+                continue // User doesn't have this event in Apple Calendar
+            }
+            
+            do {
+                if !exception.is_public {
+                    // This is a cancelled occurrence - delete it from Apple Calendar
+                    try await EventKitEventManager.shared.deleteRecurringOccurrence(
+                        identifier: appleEventId,
+                        occurrenceDate: originalOccurrenceDate
+                    )
+                    print("[CalendarSyncManager] Deleted cancelled occurrence for invited user: \(exception.title) on \(originalOccurrenceDate)")
+                } else {
+                    // This is a modified occurrence - update it in Apple Calendar
+                    try await EventKitEventManager.shared.updateRecurringOccurrence(
+                        identifier: appleEventId,
+                        occurrenceDate: originalOccurrenceDate,
+                        newTitle: exception.title,
+                        newStart: exception.start_date,
+                        newEnd: exception.end_date,
+                        newIsAllDay: exception.is_all_day,
+                        newLocation: exception.location,
+                        newNotes: exception.notes
+                    )
+                    print("[CalendarSyncManager] Updated modified occurrence for invited user: \(exception.title) on \(originalOccurrenceDate)")
+                }
+                
+                // Store sync timestamp
+                storeExceptionSyncTimestamp(exceptionId: exception.id, timestamp: Date())
+                
+            } catch {
+                print("[CalendarSyncManager] Failed to sync exception to Apple Calendar: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Exception Sync Timestamp Storage
+    
+    private static let exceptionSyncTimestampsKey = "RecurrenceExceptionSyncTimestamps"
+    
+    private func getExceptionSyncTimestamps() -> [String: Date] {
+        guard let data = defaults.dictionary(forKey: Self.exceptionSyncTimestampsKey) as? [String: Double] else {
+            return [:]
+        }
+        return data.mapValues { Date(timeIntervalSince1970: $0) }
+    }
+    
+    private func storeExceptionSyncTimestamp(exceptionId: UUID, timestamp: Date) {
+        var timestamps = defaults.dictionary(forKey: Self.exceptionSyncTimestampsKey) as? [String: Double] ?? [:]
+        timestamps[exceptionId.uuidString] = timestamp.timeIntervalSince1970
+        defaults.set(timestamps, forKey: Self.exceptionSyncTimestampsKey)
+    }
+
+    // MARK: - Local Sync Timestamp Storage
+
+    private static let localSyncTimestampsKey = "GroupEventSyncTimestamps"
+
+    private func getLocalSyncTimestamps() -> [String: Date] {
+        guard let data = defaults.dictionary(forKey: Self.localSyncTimestampsKey) as? [String: Double] else {
+            return [:]
+        }
+        return data.mapValues { Date(timeIntervalSince1970: $0) }
+    }
+
+    private func storeLocalSyncTimestamp(eventId: UUID, timestamp: Date) {
+        var timestamps = defaults.dictionary(forKey: Self.localSyncTimestampsKey) as? [String: Double] ?? [:]
+        timestamps[eventId.uuidString] = timestamp.timeIntervalSince1970
+        defaults.set(timestamps, forKey: Self.localSyncTimestampsKey)
+    }
+
     /// Cleans up Apple Calendar events for group events that have been deleted from the database
     /// This handles the case where another user (e.g., event creator) deleted a group event
     private func cleanupDeletedGroupEventsFromAppleCalendar(userId: UUID) async throws {
         guard let client = client else { return }
         guard authorizationStatus == .authorized else { return }
-
         // APPROACH 1: Check local storage for synced group events and verify they still exist
         // This is the most reliable method as it doesn't depend on server-side records
         let localMapping = getSyncedGroupEventsMapping()

@@ -101,7 +101,7 @@ final class EventKitEventManager {
         return eventId
     }
 
-    func updateEvent(identifier: String, title: String, start: Date, end: Date, isAllDay: Bool, location: String?, notes: String?, categoryColor: ColorComponents? = nil) async throws {
+    func updateEvent(identifier: String, title: String, start: Date, end: Date, isAllDay: Bool, location: String?, notes: String?, categoryColor: ColorComponents? = nil, updateAllOccurrences: Bool = false) async throws {
         try await ensureAccess()
         guard let event = store.event(withIdentifier: identifier) else { return }
         event.title = title
@@ -110,14 +110,16 @@ final class EventKitEventManager {
         event.isAllDay = isAllDay
         event.location = location
         event.notes = notes
-        
+
         // If category color is provided, update the calendar
         if let color = categoryColor {
             let calendar = getOrCreateCalendarForCategory(color: color)
             event.calendar = calendar
         }
-        
-        try store.save(event, span: .thisEvent)
+
+        // Use .futureEvents to update all occurrences of recurring events
+        let span: EKSpan = (updateAllOccurrences && event.hasRecurrenceRules) ? .futureEvents : .thisEvent
+        try store.save(event, span: span)
     }
 
     func deleteEvent(identifier: String, deleteAllOccurrences: Bool = true) async throws {
@@ -127,6 +129,102 @@ final class EventKitEventManager {
         // Use .thisEvent for single events or when only deleting one occurrence
         let span: EKSpan = (deleteAllOccurrences && event.hasRecurrenceRules) ? .futureEvents : .thisEvent
         try store.remove(event, span: span, commit: true)
+    }
+
+    /// Delete a specific occurrence of a recurring event by finding the occurrence at the given date
+    func deleteRecurringOccurrence(identifier: String, occurrenceDate: Date) async throws {
+        try await ensureAccess()
+        guard let masterEvent = store.event(withIdentifier: identifier) else { return }
+
+        // Find the specific occurrence at the given date
+        let startOfDay = Calendar.current.startOfDay(for: occurrenceDate)
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? occurrenceDate.addingTimeInterval(86400)
+        let predicate = store.predicateForEvents(withStart: startOfDay, end: endOfDay, calendars: [masterEvent.calendar])
+        let occurrences = store.events(matching: predicate)
+
+        // Find the occurrence that matches the master event
+        // For recurring events, occurrences have the same eventIdentifier as the master
+        for occurrence in occurrences {
+            // Match by eventIdentifier OR by title (for recurring events with the same master)
+            let matchesById = occurrence.eventIdentifier == identifier
+            let matchesByTitle = occurrence.title == masterEvent.title
+
+            // Also check if the occurrence time is close to what we expect
+            let startMatches = Calendar.current.isDate(occurrence.startDate, inSameDayAs: occurrenceDate)
+
+            if (matchesById || matchesByTitle) && startMatches {
+                // Use .thisEvent to only delete this specific occurrence
+                // This creates an exception in Apple Calendar rather than deleting the series
+                try store.remove(occurrence, span: .thisEvent, commit: true)
+                print("[EventKitEventManager] Deleted single occurrence on \(occurrenceDate)")
+                return
+            }
+        }
+
+        print("[EventKitEventManager] Could not find occurrence to delete on \(occurrenceDate)")
+    }
+
+    /// Update a specific occurrence of a recurring event
+    func updateRecurringOccurrence(
+        identifier: String,
+        occurrenceDate: Date,
+        newTitle: String,
+        newStart: Date,
+        newEnd: Date,
+        newIsAllDay: Bool,
+        newLocation: String?,
+        newNotes: String?
+    ) async throws {
+        try await ensureAccess()
+        guard let masterEvent = store.event(withIdentifier: identifier) else { return }
+
+        // Find the specific occurrence at the given date
+        let startOfDay = Calendar.current.startOfDay(for: occurrenceDate)
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? occurrenceDate.addingTimeInterval(86400)
+        let predicate = store.predicateForEvents(withStart: startOfDay, end: endOfDay, calendars: [masterEvent.calendar])
+        let occurrences = store.events(matching: predicate)
+
+        // Find the occurrence that matches the master event
+        if let occurrence = occurrences.first(where: { $0.eventIdentifier == identifier || $0.title == masterEvent.title }) {
+            occurrence.title = newTitle
+            occurrence.startDate = newStart
+            occurrence.endDate = newEnd
+            occurrence.isAllDay = newIsAllDay
+            occurrence.location = newLocation
+            occurrence.notes = newNotes
+
+            // Use .thisEvent to only update this specific occurrence
+            try store.save(occurrence, span: .thisEvent)
+        }
+    }
+
+    /// Update the recurrence end date to effectively delete future occurrences
+    func endRecurrenceAt(identifier: String, date: Date) async throws {
+        try await ensureAccess()
+        guard let event = store.event(withIdentifier: identifier) else { return }
+        guard let rules = event.recurrenceRules, !rules.isEmpty else { return }
+
+        // Update the recurrence rule to end at the given date
+        let calendar = Calendar.current
+        let dayBefore = calendar.date(byAdding: .day, value: -1, to: date) ?? date
+        let newEnd = EKRecurrenceEnd(end: dayBefore)
+
+        // Create a new recurrence rule with the end date
+        if let oldRule = rules.first {
+            let newRule = EKRecurrenceRule(
+                recurrenceWith: oldRule.frequency,
+                interval: oldRule.interval,
+                daysOfTheWeek: oldRule.daysOfTheWeek,
+                daysOfTheMonth: oldRule.daysOfTheMonth,
+                monthsOfTheYear: oldRule.monthsOfTheYear,
+                weeksOfTheYear: oldRule.weeksOfTheYear,
+                daysOfTheYear: oldRule.daysOfTheYear,
+                setPositions: oldRule.setPositions,
+                end: newEnd
+            )
+            event.recurrenceRules = [newRule]
+            try store.save(event, span: .futureEvents)
+        }
     }
 
     func findMatchingEvent(title: String, start: Date, end: Date, isAllDay: Bool, tolerance: TimeInterval = 60) async throws -> EKEvent? {

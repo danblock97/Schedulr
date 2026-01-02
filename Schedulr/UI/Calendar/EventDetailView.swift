@@ -6,6 +6,7 @@ struct EventDetailView: View {
     let event: CalendarEventWithUser
     let member: (name: String, color: Color)?
     let currentUserId: UUID?
+    @State private var displayEvent: CalendarEventWithUser?
     @State private var attendees: [Attendee] = []
     @State private var myStatus: String = "invited"
     @State private var resolvedCurrentUserId: UUID?
@@ -15,10 +16,29 @@ struct EventDetailView: View {
     @State private var isLoading = true
     @State private var showingEditor = false
     @State private var showingDeleteConfirm = false
+    @State private var showingRecurringDeleteSheet = false
+    @State private var showingRecurringEditSheet = false
+    @State private var selectedDeleteScope: RecurringEditScope?
+    @State private var selectedEditScope: RecurringEditScope = .allOccurrences
     @State private var isDeleting = false
     @State private var isCurrentUserInvited = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
+
+    /// The event to display - uses displayEvent if available (after refresh), otherwise the original event
+    private var currentEvent: CalendarEventWithUser {
+        displayEvent ?? event
+    }
+
+    /// Whether this event is part of a recurring series
+    private var isRecurringEvent: Bool {
+        event.recurrenceRule != nil || event.parentEventId != nil
+    }
+
+    /// The parent event ID if this is an occurrence, otherwise the event's own ID
+    private var parentEventId: UUID {
+        event.parentEventId ?? event.id
+    }
     
     private let responseOptions = [
         ("invited", "Not responded"),
@@ -44,14 +64,14 @@ struct EventDetailView: View {
         ZStack {
             Color(.systemGroupedBackground)
                 .ignoresSafeArea()
-            
+
             ScrollView {
                 VStack(spacing: 24) {
                     // Hero Section
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
+                                Text(isPrivate ? "Busy" : (currentEvent.title.isEmpty ? "Busy" : currentEvent.title))
                                     .font(.system(size: 34, weight: .bold, design: .rounded))
                                     .foregroundStyle(.primary)
                                 
@@ -71,7 +91,7 @@ struct EventDetailView: View {
                                 .shadow(color: eventColor.opacity(0.3), radius: 8, x: 0, y: 4)
                         }
                         
-                        if !isPrivate, let catName = event.category?.name {
+                        if !isPrivate, let catName = currentEvent.category?.name {
                             Text(catName)
                                 .font(.caption.bold())
                                 .padding(.horizontal, 10)
@@ -87,31 +107,31 @@ struct EventDetailView: View {
                     VStack(spacing: 16) {
                         // When Card
                         DetailCard(title: "When", icon: "clock.fill", iconColor: .blue) {
-                            Text(timeRange(event))
+                            Text(timeRange(currentEvent))
                                 .font(.headline)
                                 .foregroundStyle(.primary)
                         }
-                        
+
                         // Location Card
-                        if !isPrivate, let location = event.location, !location.isEmpty {
+                        if !isPrivate, let location = currentEvent.location, !location.isEmpty {
                             DetailCard(title: "Location", icon: "location.fill", iconColor: .red) {
                                 Text(location)
                                     .font(.body)
                                     .foregroundStyle(.primary)
                             }
                         }
-                        
+
                         // Notes Card
-                        if !isPrivate, let notes = event.notes, !notes.isEmpty {
+                        if !isPrivate, let notes = currentEvent.notes, !notes.isEmpty {
                             DetailCard(title: "Notes", icon: "note.text", iconColor: .orange) {
                                 Text(notes)
                                     .font(.body)
                                     .foregroundStyle(.primary)
                             }
                         }
-                        
+
                         // Calendar Card
-                        if let calendar = event.calendar_name {
+                        if let calendar = currentEvent.calendar_name {
                             DetailCard(title: "Calendar", icon: "calendar", iconColor: .purple) {
                                 Text(calendar)
                                     .font(.body)
@@ -196,9 +216,19 @@ struct EventDetailView: View {
             if canEdit {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button("Edit", systemImage: "pencil") { showingEditor = true }
+                        Button("Edit", systemImage: "pencil") {
+                            if isRecurringEvent {
+                                showingRecurringEditSheet = true
+                            } else {
+                                showingEditor = true
+                            }
+                        }
                         Button(role: .destructive) {
-                            showingDeleteConfirm = true
+                            if isRecurringEvent {
+                                showingRecurringDeleteSheet = true
+                            } else {
+                                showingDeleteConfirm = true
+                            }
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -208,14 +238,38 @@ struct EventDetailView: View {
                 }
             }
         }
+        // Regular delete confirmation for non-recurring events
         .confirmationDialog("Delete this event?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { deleteEvent() }
+            Button("Delete", role: .destructive) { deleteEvent(scope: .allOccurrences) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will remove the event for everyone in the group if you created it.")
         }
-        .sheet(isPresented: $showingEditor) {
-            EventEditorView(groupId: event.group_id, members: [], existingEvent: event)
+        // Recurring event delete scope selection
+        .sheet(isPresented: $showingRecurringDeleteSheet) {
+            RecurringEventEditSheet(event: event, action: .delete) { scope in
+                selectedDeleteScope = scope
+                deleteEvent(scope: scope)
+            }
+        }
+        // Recurring event edit scope selection
+        .sheet(isPresented: $showingRecurringEditSheet) {
+            RecurringEventEditSheet(event: event, action: .edit) { scope in
+                handleRecurringEdit(scope: scope)
+            }
+        }
+        .sheet(isPresented: $showingEditor, onDismiss: {
+            // Refresh event data after editing
+            Task {
+                await refreshEventData()
+            }
+        }) {
+            EventEditorView(
+                groupId: currentEvent.group_id,
+                members: [],
+                existingEvent: currentEvent,
+                recurringEditScope: isRecurringEvent ? selectedEditScope : nil
+            )
         }
         .task {
             // Get current user ID first if not provided
@@ -231,7 +285,7 @@ struct EventDetailView: View {
     }
 
     private var eventColor: Color {
-        if let c = event.effectiveColor {
+        if let c = currentEvent.effectiveColor {
             return Color(red: c.red, green: c.green, blue: c.blue, opacity: c.alpha)
         }
         return member?.color ?? .blue
@@ -304,21 +358,160 @@ extension EventDetailView {
         }
     }
 
-    private func deleteEvent() {
+    private func deleteEvent(scope: RecurringEditScope) {
         Task {
             guard !isDeleting else { return }
             isDeleting = true
             defer { isDeleting = false }
             do {
-                if let uid = try? await SupabaseManager.shared.client.auth.session.user.id {
-                    try await CalendarEventService.shared.deleteEvent(eventId: event.id, currentUserId: uid, originalEventId: event.original_event_id)
-                    // Refresh the calendar to remove the deleted event from the UI
-                    try? await calendarSync.fetchGroupEvents(groupId: event.group_id)
-                    dismiss()
+                guard let uid = try? await SupabaseManager.shared.client.auth.session.user.id else { return }
+
+                switch scope {
+                case .thisOccurrence:
+                    // Delete only this single occurrence by creating a cancelled exception
+                    // Use the occurrence's start date as the original occurrence date
+                    try await CalendarEventService.shared.deleteRecurrenceOccurrence(
+                        parentEventId: parentEventId,
+                        occurrenceDate: event.start_date,
+                        currentUserId: uid
+                    )
+
+                case .thisAndFuture:
+                    // End the series at this occurrence by updating the parent's recurrence end date
+                    let calendar = Calendar.current
+                    let dayBefore = calendar.date(byAdding: .day, value: -1, to: event.start_date) ?? event.start_date
+
+                    // Get Apple Calendar event ID for this user
+                    struct AttendeeRow: Decodable {
+                        let apple_calendar_event_id: String?
+                    }
+                    let attendeeRows: [AttendeeRow] = try await SupabaseManager.shared.client
+                        .from("event_attendees")
+                        .select("apple_calendar_event_id")
+                        .eq("event_id", value: parentEventId)
+                        .eq("user_id", value: uid)
+                        .execute()
+                        .value
+
+                    // Update Apple Calendar to end recurrence at this date
+                    if let appleEventId = attendeeRows.first?.apple_calendar_event_id {
+                        try? await EventKitEventManager.shared.endRecurrenceAt(identifier: appleEventId, date: event.start_date)
+                    }
+
+                    struct UpdateEndDate: Encodable {
+                        let recurrence_end_date: Date
+                    }
+
+                    _ = try await SupabaseManager.shared.client
+                        .from("calendar_events")
+                        .update(UpdateEndDate(recurrence_end_date: dayBefore))
+                        .eq("id", value: parentEventId)
+                        .execute()
+
+                case .allOccurrences:
+                    // Delete the entire recurring series
+                    if isRecurringEvent {
+                        try await CalendarEventService.shared.deleteRecurringSeries(
+                            parentEventId: parentEventId,
+                            currentUserId: uid
+                        )
+                    } else {
+                        // Non-recurring event, use regular delete
+                        try await CalendarEventService.shared.deleteEvent(
+                            eventId: event.id,
+                            currentUserId: uid,
+                            originalEventId: event.original_event_id
+                        )
+                    }
                 }
+
+                // Refresh the calendar to remove the deleted event from the UI
+                try? await calendarSync.fetchGroupEvents(groupId: event.group_id)
+                dismiss()
             } catch {
                 // Swallow error for now; could show toast/alert
+                print("[EventDetailView] Failed to delete event: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func handleRecurringEdit(scope: RecurringEditScope) {
+        // Store the selected scope and show the editor
+        selectedEditScope = scope
+        showingEditor = true
+    }
+
+    /// Refresh the event data after editing
+    /// For recurring events edited with "this occurrence", this finds the new exception event
+    /// For other edits, it refreshes the current event from the database
+    private func refreshEventData() async {
+        // First refresh the calendar to get the latest data
+        try? await calendarSync.fetchGroupEvents(groupId: event.group_id)
+
+        // For "this occurrence" edits on recurring events, we need to find the exception event
+        // that was created with the matching originalOccurrenceDate
+        if selectedEditScope == .thisOccurrence && isRecurringEvent {
+            // Look for an exception event that matches our occurrence date
+            let matchingEvent = calendarSync.groupEvents.first { ev in
+                ev.isRecurrenceException &&
+                ev.parentEventId == parentEventId &&
+                ev.originalOccurrenceDate != nil &&
+                Calendar.current.isDate(ev.originalOccurrenceDate!, inSameDayAs: event.start_date)
+            }
+
+            if let matchingEvent {
+                await MainActor.run {
+                    displayEvent = matchingEvent
+                }
+                // Reload attendees for the new exception event
+                await loadAttendeesForEvent(matchingEvent.id)
+                return
+            }
+        }
+
+        // For non-recurring events or "all occurrences" edits, try to fetch the updated event
+        if let updatedEvent = try? await CalendarEventService.shared.fetchEventById(eventId: event.id) {
+            await MainActor.run {
+                displayEvent = updatedEvent
+            }
+        }
+
+        // Reload attendees
+        await loadAttendees()
+    }
+
+    /// Load attendees for a specific event ID (used when switching to exception event)
+    private func loadAttendeesForEvent(_ eventId: UUID) async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let rows = try await CalendarEventService.shared.loadAttendees(eventId: eventId)
+
+            let currentUserIdValue = resolvedCurrentUserId ?? currentUserId
+
+            let mappedAttendees = rows
+                .filter { $0.status.lowercased() != "declined" }
+                .map { r in
+                    let name = r.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let resolved = name.isEmpty ? (r.userId != nil ? "Member" : "Guest") : name
+                    let color = r.userId.map { _ in Color.blue }
+                    return Attendee(
+                        id: UUID(),
+                        userId: r.userId,
+                        displayName: resolved,
+                        status: r.status,
+                        color: color
+                    )
+                }
+
+            await MainActor.run {
+                attendees = mappedAttendees
+                if let userId = currentUserIdValue {
+                    isCurrentUserInvited = rows.contains(where: { $0.userId == userId })
+                }
+            }
+        } catch {
+            await MainActor.run { attendees = [] }
         }
     }
 }
