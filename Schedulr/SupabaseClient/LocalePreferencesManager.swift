@@ -14,7 +14,8 @@ final class LocalePreferencesManager {
     var deviceLocaleIdentifier: String {
         // Use Locale.current.identifier which gives us the full locale (e.g., "en_GB")
         // Fallback to preferredLanguages if needed
-        if let identifier = Locale.current.identifier, !identifier.isEmpty {
+        let identifier = Locale.current.identifier
+        if !identifier.isEmpty {
             return identifier
         }
         
