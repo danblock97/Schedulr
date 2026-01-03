@@ -192,6 +192,8 @@ struct EventCategory: Codable, Identifiable, Equatable {
     let group_id: UUID?
     let name: String
     let color: ColorComponents
+    let emoji: String?
+    let cover_image_url: String?
     let created_at: Date?
     let updated_at: Date?
 }
@@ -201,12 +203,16 @@ struct EventCategoryInsert: Encodable {
     var group_id: UUID?
     var name: String
     var color: ColorComponents
+    var emoji: String?
+    var cover_image_url: String?
 }
 
 struct EventCategoryUpdate: Encodable {
     var name: String?
     var color: ColorComponents?
     var group_id: UUID?
+    var emoji: String?
+    var cover_image_url: String?
 }
 
 struct DBCalendarEvent: Codable, Identifiable, Equatable {

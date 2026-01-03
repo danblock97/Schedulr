@@ -123,27 +123,33 @@ struct MonthGridView: View {
                 // Details: Event titles stacked
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(dayEvents.prefix(2)) { event in
-                        Text(shouldShowPrivate(event.base) ? "Busy" : (event.base.title.isEmpty ? "Busy" : event.base.title))
-                            .font(.system(size: 10, weight: .medium))
-                            .lineLimit(1)
-                            .foregroundColor(event.base.effectiveColor != nil ? Color(
-                                red: event.base.effectiveColor!.red,
-                                green: event.base.effectiveColor!.green,
-                                blue: event.base.effectiveColor!.blue,
-                                opacity: event.base.effectiveColor!.alpha
-                            ) : Color(red: 0.58, green: 0.41, blue: 0.87))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill((event.base.effectiveColor != nil ? Color(
-                                        red: event.base.effectiveColor!.red,
-                                        green: event.base.effectiveColor!.green,
-                                        blue: event.base.effectiveColor!.blue,
-                                        opacity: event.base.effectiveColor!.alpha
-                                    ) : Color(red: 0.58, green: 0.41, blue: 0.87)).opacity(0.15))
-                            )
+                        HStack(spacing: 4) {
+                            if let emoji = event.base.category?.emoji {
+                                Text(emoji)
+                                    .font(.system(size: 9))
+                            }
+                            Text(shouldShowPrivate(event.base) ? "Busy" : (event.base.title.isEmpty ? "Busy" : event.base.title))
+                                .font(.system(size: 10, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        .foregroundColor(event.base.effectiveColor != nil ? Color(
+                            red: event.base.effectiveColor!.red,
+                            green: event.base.effectiveColor!.green,
+                            blue: event.base.effectiveColor!.blue,
+                            opacity: event.base.effectiveColor!.alpha
+                        ) : Color(red: 0.58, green: 0.41, blue: 0.87))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill((event.base.effectiveColor != nil ? Color(
+                                    red: event.base.effectiveColor!.red,
+                                    green: event.base.effectiveColor!.green,
+                                    blue: event.base.effectiveColor!.blue,
+                                    opacity: event.base.effectiveColor!.alpha
+                                ) : Color(red: 0.58, green: 0.41, blue: 0.87)).opacity(0.15))
+                        )
                     }
                     if dayEvents.count > 2 {
                         Text("+\(dayEvents.count - 2)")
@@ -267,8 +273,14 @@ private struct MiniAgendaRow: View {
             Circle().fill(eventColor.opacity(0.9))
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 4) {
-                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                HStack(spacing: 6) {
+                    if let emoji = event.category?.emoji {
+                        Text(emoji)
+                            .font(.system(size: 16))
+                    }
+                    Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                }
                 if sharedCount > 1 && !isPrivate {
                     Text("shared by \(sharedCount)")
                         .font(.system(size: 11, weight: .semibold))

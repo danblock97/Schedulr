@@ -193,6 +193,8 @@ final class CalendarEventService {
                 let group_id: UUID?
                 let name: String
                 let color: ColorComponents
+                let emoji: String?
+                let cover_image_url: String?
                 let created_at: Date?
                 let updated_at: Date?
             }
@@ -245,6 +247,8 @@ final class CalendarEventService {
                 group_id: $0.group_id,
                 name: $0.name,
                 color: $0.color,
+                emoji: $0.emoji,
+                cover_image_url: $0.cover_image_url,
                 created_at: $0.created_at,
                 updated_at: $0.updated_at
             )},
@@ -762,7 +766,9 @@ final class CalendarEventService {
             user_id: currentUserId,
             group_id: input.group_id,
             name: input.name,
-            color: input.color
+            color: input.color,
+            emoji: input.emoji,
+            cover_image_url: input.cover_image_url
         )
         
         let category: [EventCategory] = try await client

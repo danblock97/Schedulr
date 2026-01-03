@@ -2,6 +2,7 @@ import SwiftUI
 import Supabase
 import Auth
 import UIKit
+import PhotosUI
 
 struct EventEditorView: View {
     let groupId: UUID
@@ -1116,9 +1117,17 @@ struct CategoryCreatorView: View {
     
     @State private var categoryName: String = ""
     @State private var selectedColor: Color = .blue
+    @State private var selectedEmoji: String? = nil
+    @State private var selectedTemplate: EventThemeTemplate? = nil
+    @State private var coverImageData: Data? = nil
+    @State private var coverImageURL: String? = nil
     @State private var isSaving = false
+    @State private var isUploadingImage = false
     @State private var errorMessage: String?
     @State private var shareWithGroup = false
+    @State private var showingEmojiPicker = false
+    @State private var showingImagePicker = false
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
     
     private let presetColors: [Color] = [
         .red, .orange, .yellow, .green, .mint, .teal, .cyan, .blue,
@@ -1128,35 +1137,11 @@ struct CategoryCreatorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Category Details") {
-                    TextField("Name", text: $categoryName)
-                    
-                    Toggle("Share with group", isOn: $shareWithGroup)
-                }
-                
-                Section("Color") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: 12) {
-                        ForEach(presetColors, id: \.self) { color in
-                            Circle()
-                                .fill(color)
-                                .frame(width: 44, height: 44)
-                                .overlay(
-                                    Circle()
-                                        .stroke(selectedColor == color ? Color.primary : Color.clear, lineWidth: 3)
-                                )
-                                .onTapGesture {
-                                    selectedColor = color
-                                }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-                
+                categoryDetailsSection
+                themeSection
+                colorSection
                 if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .foregroundColor(.red)
-                    }
+                    errorSection(message: errorMessage)
                 }
             }
             .navigationTitle("New Category")
@@ -1170,6 +1155,193 @@ struct CategoryCreatorView: View {
                     }
                     .disabled(categoryName.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
                 }
+            }
+            .sheet(isPresented: $showingEmojiPicker) {
+                EmojiPickerView(selectedEmoji: $selectedEmoji)
+            }
+            .onChange(of: selectedPhotoItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    if let data = try? await newItem.loadTransferable(type: Data.self) {
+                        await MainActor.run {
+                            coverImageData = data
+                        }
+                        await uploadCoverImage(data: data)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var categoryDetailsSection: some View {
+        Section("Category Details") {
+            TextField("Name", text: $categoryName)
+            Toggle("Share with group", isOn: $shareWithGroup)
+        }
+    }
+    
+    private var themeSection: some View {
+        Section("Theme") {
+            templatePicker
+            emojiPickerRow
+            coverImagePicker
+        }
+    }
+    
+    private var templatePicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(EventThemeTemplate.allTemplates) { template in
+                    ThemeTemplateButton(
+                        template: template,
+                        isSelected: selectedTemplate?.id == template.id
+                    ) {
+                        applyTemplate(template)
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+    
+    private var emojiPickerRow: some View {
+        HStack {
+            Text("Emoji")
+            Spacer()
+            Button {
+                showingEmojiPicker = true
+            } label: {
+                HStack {
+                    Text(selectedEmoji ?? "✨")
+                        .font(.system(size: 24))
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+    
+    private var coverImagePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Cover Image")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            
+            if let coverImageData = coverImageData,
+               let uiImage = UIImage(data: coverImageData) {
+                HStack {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 100, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    
+                    Button("Remove") {
+                        self.coverImageData = nil
+                        self.coverImageURL = nil
+                    }
+                    .foregroundColor(.red)
+                    
+                    Spacer()
+                }
+            } else {
+                PhotosPicker(
+                    selection: $selectedPhotoItem,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    Label("Choose Cover Image", systemImage: "photo")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                }
+            }
+        }
+    }
+    
+    private var colorSection: some View {
+        Section("Color") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: 12) {
+                ForEach(presetColors, id: \.self) { color in
+                    Circle()
+                        .fill(color)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .stroke(selectedColor == color ? Color.primary : Color.clear, lineWidth: 3)
+                        )
+                        .onTapGesture {
+                            selectedColor = color
+                        }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+    
+    private func errorSection(message: String) -> some View {
+        Section {
+            Text(message)
+                .foregroundColor(.red)
+        }
+    }
+    
+    private func applyTemplate(_ template: EventThemeTemplate) {
+        selectedTemplate = template
+        selectedEmoji = template.emoji
+        
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+        #if canImport(UIKit)
+        let uiColor = UIColor(
+            red: CGFloat(template.suggestedColor.red),
+            green: CGFloat(template.suggestedColor.green),
+            blue: CGFloat(template.suggestedColor.blue),
+            alpha: CGFloat(template.suggestedColor.alpha)
+        )
+        selectedColor = Color(uiColor)
+        #else
+        selectedColor = Color(
+            red: template.suggestedColor.red,
+            green: template.suggestedColor.green,
+            blue: template.suggestedColor.blue,
+            opacity: template.suggestedColor.alpha
+        )
+        #endif
+        
+        if template.id == "custom" {
+            selectedTemplate = nil
+        }
+    }
+    
+    private func uploadCoverImage(data: Data) async {
+        guard !isUploadingImage else { return }
+        isUploadingImage = true
+        defer { isUploadingImage = false }
+        
+        do {
+            let uid = try await SupabaseManager.shared.client.auth.session.user.id
+            let fileName = "\(uid.uuidString)/cover_\(Int(Date().timeIntervalSince1970)).jpg"
+            
+            _ = try await SupabaseManager.shared.client.storage
+                .from("event-covers")
+                .upload(
+                    path: fileName,
+                    file: data,
+                    options: FileOptions(contentType: "image/jpeg", upsert: true)
+                )
+            
+            let url = try SupabaseManager.shared.client.storage
+                .from("event-covers")
+                .getPublicURL(path: fileName)
+            
+            await MainActor.run {
+                coverImageURL = url.absoluteString
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to upload cover image: \(error.localizedDescription)"
             }
         }
     }
@@ -1202,7 +1374,9 @@ struct CategoryCreatorView: View {
                     user_id: uid,
                     group_id: shareWithGroup ? groupId : nil,
                     name: categoryName.trimmingCharacters(in: .whitespacesAndNewlines),
-                    color: colorComponents
+                    color: colorComponents,
+                    emoji: selectedEmoji,
+                    cover_image_url: coverImageURL
                 )
                 
                 let category = try await CalendarEventService.shared.createCategory(input: input, currentUserId: uid)
@@ -1212,6 +1386,221 @@ struct CategoryCreatorView: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+}
+
+// MARK: - Event Theme Template
+private struct EventThemeTemplate: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let emoji: String
+    let suggestedColor: ColorComponents
+    let presetImageName: String?
+    
+    static let movieNight = EventThemeTemplate(
+        id: "movie_night",
+        name: "Movie Night",
+        emoji: "🎬",
+        suggestedColor: ColorComponents(red: 0.2, green: 0.2, blue: 0.3, alpha: 1.0),
+        presetImageName: nil
+    )
+    
+    static let dinner = EventThemeTemplate(
+        id: "dinner",
+        name: "Dinner",
+        emoji: "🍕",
+        suggestedColor: ColorComponents(red: 0.9, green: 0.5, blue: 0.2, alpha: 1.0),
+        presetImageName: nil
+    )
+    
+    static let party = EventThemeTemplate(
+        id: "party",
+        name: "Party",
+        emoji: "🎉",
+        suggestedColor: ColorComponents(red: 0.9, green: 0.3, blue: 0.5, alpha: 1.0),
+        presetImageName: nil
+    )
+    
+    static let trip = EventThemeTemplate(
+        id: "trip",
+        name: "Trip",
+        emoji: "✈️",
+        suggestedColor: ColorComponents(red: 0.2, green: 0.6, blue: 0.9, alpha: 1.0),
+        presetImageName: nil
+    )
+    
+    static let gameNight = EventThemeTemplate(
+        id: "game_night",
+        name: "Game Night",
+        emoji: "🎮",
+        suggestedColor: ColorComponents(red: 0.5, green: 0.3, blue: 0.9, alpha: 1.0),
+        presetImageName: nil
+    )
+    
+    static let custom = EventThemeTemplate(
+        id: "custom",
+        name: "Custom",
+        emoji: "✨",
+        suggestedColor: ColorComponents(red: 0.58, green: 0.41, blue: 0.87, alpha: 1.0),
+        presetImageName: nil
+    )
+    
+    static let allTemplates: [EventThemeTemplate] = [
+        .movieNight,
+        .dinner,
+        .party,
+        .trip,
+        .gameNight,
+        .custom
+    ]
+}
+
+// MARK: - Emoji Picker Helper
+private struct EmojiPicker {
+    static let popularEmojis: [String] = [
+        "🎬", "🍕", "🎉", "✈️", "🎮", "🎂", "🎪", "🏖️", "⛷️", "🏄",
+        "🎨", "🎭", "🎤", "🎧", "🎸", "🎹", "🥳", "🎊", "🎈", "🎁",
+        "🏋️", "⚽", "🏀", "🎾", "🏐", "🏓", "🏸", "🏒", "⛳", "🏌️",
+        "🍔", "🍟", "🍕", "🌮", "🌯", "🍜", "🍱", "🍣", "🍰", "🍪",
+        "☕", "🍷", "🍸", "🍹", "🍺", "🍻", "🥂", "🧃", "🧉", "🧊",
+        "🎓", "📚", "✏️", "📝", "📖", "📕", "📗", "📘", "📙", "📔",
+        "🎯", "🎲", "🃏", "🀄", "🎴", "🎰", "🎳", "🎪", "🎭", "🎨"
+    ]
+    
+    static let categories: [(name: String, emojis: [String])] = [
+        ("Activities", ["🎬", "🎮", "🎨", "🎭", "🎤", "🎧", "🎸", "🎹", "🎯", "🎲"]),
+        ("Food & Drink", ["🍕", "🍔", "🍟", "🌮", "🌯", "🍜", "🍱", "🍣", "🍰", "☕", "🍷", "🍸"]),
+        ("Celebrations", ["🎉", "🎂", "🥳", "🎊", "🎈", "🎁", "🎪", "🎭"]),
+        ("Travel", ["✈️", "🏖️", "⛷️", "🏄", "🚗", "🚂", "🚢", "🚁"]),
+        ("Sports", ["⚽", "🏀", "🎾", "🏐", "🏓", "🏸", "🏒", "⛳", "🏋️"]),
+        ("Education", ["🎓", "📚", "✏️", "📝", "📖", "🎯"])
+    ]
+}
+
+// MARK: - Theme Template Button
+private struct ThemeTemplateButton: View {
+    let template: EventThemeTemplate
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Text(template.emoji)
+                    .font(.system(size: 32))
+                Text(template.name)
+                    .font(.caption)
+                    .foregroundColor(.primary)
+            }
+            .frame(width: 80, height: 80)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? Color(.systemGray5) : Color(.systemGray6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Emoji Picker View
+private struct EmojiPickerView: View {
+    @Binding var selectedEmoji: String?
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String = ""
+    @State private var selectedCategory: String = "All"
+    
+    private var filteredEmojis: [String] {
+        if searchText.isEmpty {
+            if selectedCategory == "All" {
+                return EmojiPicker.popularEmojis
+            } else {
+                return EmojiPicker.categories.first(where: { $0.name == selectedCategory })?.emojis ?? []
+            }
+        } else {
+            return EmojiPicker.popularEmojis.filter { emoji in
+                // Simple search - could be enhanced with emoji names
+                true
+            }
+        }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Category tabs
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        CategoryTab(title: "All", isSelected: selectedCategory == "All") {
+                            selectedCategory = "All"
+                        }
+                        ForEach(EmojiPicker.categories, id: \.name) { category in
+                            CategoryTab(title: category.name, isSelected: selectedCategory == category.name) {
+                                selectedCategory = category.name
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, 8)
+                
+                Divider()
+                
+                // Emoji grid
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: 12) {
+                        ForEach(filteredEmojis, id: \.self) { emoji in
+                            Button {
+                                selectedEmoji = emoji
+                                dismiss()
+                            } label: {
+                                Text(emoji)
+                                    .font(.system(size: 32))
+                                    .frame(width: 50, height: 50)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(Color(.systemGray6))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .navigationTitle("Choose Emoji")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct CategoryTab: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .foregroundColor(isSelected ? .primary : .secondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color(.systemGray5) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

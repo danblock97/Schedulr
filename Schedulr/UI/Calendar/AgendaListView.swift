@@ -85,10 +85,16 @@ private struct AgendaRow: View {
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
-                // Event title
-                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundColor(.primary)
+                // Event title with emoji
+                HStack(spacing: 6) {
+                    if let emoji = event.category?.emoji {
+                        Text(emoji)
+                            .font(.system(size: 16))
+                    }
+                    Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
+                        .font(.system(size: 17, weight: .regular))
+                        .foregroundColor(.primary)
+                }
 
                 // Time and "all-day" indicator
                 HStack(spacing: 4) {

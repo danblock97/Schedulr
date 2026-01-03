@@ -109,7 +109,13 @@ struct DayTimelineView: View {
                 let h = CGFloat(max(30, minutesDuration(e))) / 60.0 * hourHeight
                 NavigationLink(destination: EventDetailView(event: e, member: members[e.user_id], currentUserId: currentUserId)) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(isPrivate(e) ? "Busy" : e.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        HStack(spacing: 4) {
+                            if let emoji = e.category?.emoji {
+                                Text(emoji)
+                                    .font(.system(size: 11))
+                            }
+                            Text(isPrivate(e) ? "Busy" : e.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        }
                         if let name = members[e.user_id]?.name { Text(name).font(.system(size: 10)) }
                     }
                     .foregroundStyle(.white)

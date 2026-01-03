@@ -66,43 +66,133 @@ struct EventDetailView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 24) {
-                    // Hero Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(isPrivate ? "Busy" : (currentEvent.title.isEmpty ? "Busy" : currentEvent.title))
-                                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.primary)
-                                
-                                if let name = member?.name {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "person.circle.fill")
-                                        Text(name)
-                                    }
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                VStack(spacing: 0) {
+                    // Cover Image Hero Section
+                    if !isPrivate, let coverImageURL = currentEvent.category?.cover_image_url, let url = URL(string: coverImageURL) {
+                        ZStack(alignment: .bottomLeading) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .empty:
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                case .success(let image):
+                                    image
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                case .failure:
+                                    Color(.systemGray5)
+                                @unknown default:
+                                    Color(.systemGray5)
                                 }
                             }
-                            Spacer()
-                            Circle()
-                                .fill(eventColor)
-                                .frame(width: 44, height: 44)
-                                .shadow(color: eventColor.opacity(0.3), radius: 8, x: 0, y: 4)
+                            .frame(height: 200)
+                            .clipped()
+                            
+                            // Combined gradient: dark overlay for text + fade to background at bottom
+                            ZStack {
+                                // Top gradient for text readability
+                                LinearGradient(
+                                    colors: [Color.clear, Color.black.opacity(0.6)],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                )
+                                
+                                // Bottom fade to blend with content below
+                                LinearGradient(
+                                    colors: [
+                                        Color.clear,
+                                        Color(.systemGroupedBackground).opacity(0.3),
+                                        Color(.systemGroupedBackground)
+                                    ],
+                                    startPoint: UnitPoint(x: 0.5, y: 0.6),
+                                    endPoint: .bottom
+                                )
+                            }
+                            .frame(height: 200)
+                            
+                            // Title and emoji overlay
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .top, spacing: 8) {
+                                    if let emoji = currentEvent.category?.emoji {
+                                        Text(emoji)
+                                            .font(.system(size: 40))
+                                    }
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(isPrivate ? "Busy" : (currentEvent.title.isEmpty ? "Busy" : currentEvent.title))
+                                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                                            .foregroundStyle(.white)
+                                        
+                                        if let name = member?.name {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "person.circle.fill")
+                                                Text(name)
+                                            }
+                                            .font(.subheadline)
+                                            .foregroundStyle(.white.opacity(0.9))
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                
+                                if let catName = currentEvent.category?.name {
+                                    Text(catName)
+                                        .font(.caption.bold())
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(Color.white.opacity(0.2))
+                                        .foregroundColor(.white)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            .padding()
                         }
-                        
-                        if !isPrivate, let catName = currentEvent.category?.name {
-                            Text(catName)
-                                .font(.caption.bold())
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(eventColor.opacity(0.1))
-                                .foregroundColor(eventColor)
-                                .clipShape(Capsule())
+                        .frame(height: 200)
+                        .padding(.bottom, 32) // Add spacing between cover image and details
+                    } else {
+                        // Hero Section (no cover image)
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 8) {
+                                        if let emoji = currentEvent.category?.emoji {
+                                            Text(emoji)
+                                                .font(.system(size: 40))
+                                        }
+                                        Text(isPrivate ? "Busy" : (currentEvent.title.isEmpty ? "Busy" : currentEvent.title))
+                                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                                            .foregroundStyle(.primary)
+                                    }
+                                    
+                                    if let name = member?.name {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "person.circle.fill")
+                                            Text(name)
+                                        }
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Circle()
+                                    .fill(eventColor)
+                                    .frame(width: 44, height: 44)
+                                    .shadow(color: eventColor.opacity(0.3), radius: 8, x: 0, y: 4)
+                            }
+                            
+                            if !isPrivate, let catName = currentEvent.category?.name {
+                                Text(catName)
+                                    .font(.caption.bold())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(eventColor.opacity(0.1))
+                                    .foregroundColor(eventColor)
+                                    .clipShape(Capsule())
+                            }
                         }
+                        .padding(.horizontal)
+                        .padding(.top, 20)
+                        .padding(.bottom, 8) // Add some bottom padding for consistency
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 20)
                     
                     VStack(spacing: 16) {
                         // When Card

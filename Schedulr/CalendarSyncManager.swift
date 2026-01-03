@@ -471,6 +471,8 @@ final class CalendarSyncManager: ObservableObject {
                 let group_id: UUID?
                 let name: String
                 let color: ColorComponents
+                let emoji: String?
+                let cover_image_url: String?
                 let created_at: Date?
                 let updated_at: Date?
             }
@@ -766,6 +768,8 @@ final class CalendarSyncManager: ObservableObject {
                     group_id: catInfo.group_id,
                     name: catInfo.name,
                     color: catInfo.color,
+                    emoji: catInfo.emoji,
+                    cover_image_url: catInfo.cover_image_url,
                     created_at: catInfo.created_at,
                     updated_at: catInfo.updated_at
                 )
