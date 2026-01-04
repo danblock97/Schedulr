@@ -64,7 +64,75 @@ final class NotificationService {
             )
         }
     }
-    
+
+    /// Notify event creator when an attendee requests a rain check
+    /// - Parameters:
+    ///   - eventId: The event that was requested for rain check
+    ///   - requesterId: The attendee who requested the rain check
+    ///   - creatorId: The event creator who should be notified
+    func notifyRainCheckRequested(eventId: UUID, requesterId: UUID, creatorId: UUID) {
+        Task {
+            await sendNotification(
+                type: "rain_check_requested",
+                payload: [
+                    "event_id": eventId.uuidString,
+                    "requester_user_id": requesterId.uuidString,
+                    "creator_user_id": creatorId.uuidString
+                ]
+            )
+        }
+    }
+
+    /// Notify all attendees when a rain check is approved
+    /// - Parameters:
+    ///   - eventId: The event that was rain-checked
+    ///   - attendeeUserIds: List of attendee user IDs to notify
+    func notifyRainCheckApproved(eventId: UUID, attendeeUserIds: [UUID]) {
+        Task {
+            await sendNotification(
+                type: "rain_check_approved",
+                payload: [
+                    "event_id": eventId.uuidString,
+                    "attendee_user_ids": attendeeUserIds.map { $0.uuidString }.joined(separator: ",")
+                ]
+            )
+        }
+    }
+
+    /// Notify requester when their rain check request is denied
+    /// - Parameters:
+    ///   - eventId: The event that was not rain-checked
+    ///   - requesterId: The attendee who requested the rain check
+    func notifyRainCheckDenied(eventId: UUID, requesterId: UUID) {
+        Task {
+            await sendNotification(
+                type: "rain_check_denied",
+                payload: [
+                    "event_id": eventId.uuidString,
+                    "requester_user_id": requesterId.uuidString
+                ]
+            )
+        }
+    }
+
+    /// Notify attendees when a rain-checked event has been rescheduled
+    /// - Parameters:
+    ///   - newEventId: The ID of the newly created rescheduled event
+    ///   - oldEventId: The ID of the original rain-checked event
+    ///   - attendeeUserIds: List of attendee user IDs to notify
+    func notifyEventRescheduled(newEventId: UUID, oldEventId: UUID, attendeeUserIds: [UUID]) {
+        Task {
+            await sendNotification(
+                type: "event_rescheduled",
+                payload: [
+                    "new_event_id": newEventId.uuidString,
+                    "old_event_id": oldEventId.uuidString,
+                    "attendee_user_ids": attendeeUserIds.map { $0.uuidString }.joined(separator: ",")
+                ]
+            )
+        }
+    }
+
     // MARK: - Group Notifications
     
     /// Notify group members when a new member joins

@@ -11,6 +11,9 @@
 		06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */; };
 		0EE8623E8ED0C13BEF843DF7 /* MonthViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */; };
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
+		1B5E973E2F0A715E0083768D /* RainCheckRequestSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5E973D2F0A715E0083768D /* RainCheckRequestSheet.swift */; };
+		1B5E97412F0A715E0083768D /* RainCheckedEventsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5E973C2F0A715E0083768D /* RainCheckedEventsView.swift */; };
+		1B5E97422F0A730E0083768D /* RainCheckApprovalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5E973B2F0A715E0083768D /* RainCheckApprovalSheet.swift */; };
 		1B929AD62ED05562001176EF /* NotificationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD32ED05562001176EF /* NotificationListView.swift */; };
 		1B929AD72ED05562001176EF /* NotificationBellButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD22ED05562001176EF /* NotificationBellButton.swift */; };
 		1B929AD82ED05562001176EF /* NotificationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B929AD42ED05562001176EF /* NotificationViewModel.swift */; };
@@ -136,6 +139,10 @@
 		150AB9468B8BFC0794E91152 /* AgendaListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgendaListView.swift; sourceTree = "<group>"; };
 		1B0AC2222EB7885800E9E405 /* Config/Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Debug.xcconfig; sourceTree = "<group>"; };
 		1B0AC2232EB7886300E9E405 /* Config/Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Release.xcconfig; sourceTree = "<group>"; };
+		1B5E973A2F0A715E0083768D /* EventThemeTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventThemeTemplates.swift; sourceTree = "<group>"; };
+		1B5E973B2F0A715E0083768D /* RainCheckApprovalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RainCheckApprovalSheet.swift; sourceTree = "<group>"; };
+		1B5E973C2F0A715E0083768D /* RainCheckedEventsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RainCheckedEventsView.swift; sourceTree = "<group>"; };
+		1B5E973D2F0A715E0083768D /* RainCheckRequestSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RainCheckRequestSheet.swift; sourceTree = "<group>"; };
 		1B79C8872EC2647B00BECADF /* Schedulr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Schedulr.entitlements; sourceTree = "<group>"; };
 		1B929AD22ED05562001176EF /* NotificationBellButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationBellButton.swift; sourceTree = "<group>"; };
 		1B929AD32ED05562001176EF /* NotificationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationListView.swift; sourceTree = "<group>"; };
@@ -452,6 +459,10 @@
 		E5118D921023605E2B3CEACE /* Calendar */ = {
 			isa = PBXGroup;
 			children = (
+				1B5E973A2F0A715E0083768D /* EventThemeTemplates.swift */,
+				1B5E973B2F0A715E0083768D /* RainCheckApprovalSheet.swift */,
+				1B5E973C2F0A715E0083768D /* RainCheckedEventsView.swift */,
+				1B5E973D2F0A715E0083768D /* RainCheckRequestSheet.swift */,
 				150AB9468B8BFC0794E91152 /* AgendaListView.swift */,
 				A7B439C35CC43A6C48036F2F /* CalendarModels.swift */,
 				67706EEFD76F9B5596E0CD83 /* CalendarRootView.swift */,
@@ -701,6 +712,8 @@
 				95DC941F2A86944EDE84A226 /* YearlyCalendarView.swift in Sources */,
 				C6AA77868C9F461301CDC5F7 /* CalendarBlockView.swift in Sources */,
 				4431845D2D2B7D95F31C0415 /* FloatingTabBar.swift in Sources */,
+				1B5E973E2F0A715E0083768D /* RainCheckRequestSheet.swift in Sources */,
+				1B5E97412F0A715E0083768D /* RainCheckedEventsView.swift in Sources */,
 				59D2ED49CC1C5E604E37E571 /* GroupDashboardView.swift in Sources */,
 				208771430C71DBEE0AF55814 /* GroupManagementView.swift in Sources */,
 				93F0C606CCE9F4BD1DA4CC74 /* MonthlyCalendarView.swift in Sources */,
@@ -709,6 +722,7 @@
 				7F1A9B0C2F1234567890ABD0 /* SupportTicketView.swift in Sources */,
 				7F1A9B0C2F1234567890ABD1 /* SupportTicketViewModel.swift in Sources */,
 				7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */,
+				1B5E97422F0A730E0083768D /* RainCheckApprovalSheet.swift in Sources */,
 				7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */,
 				7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */,
 				1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */,

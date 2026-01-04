@@ -458,6 +458,12 @@ final class CalendarSyncManager: ObservableObject {
             let parent_event_id: UUID?
             let is_recurrence_exception: Bool?
             let original_occurrence_date: Date?
+            // Rain check fields
+            let event_status: String?
+            let rain_checked_at: Date?
+            let rain_check_requested_by: UUID?
+            let rain_check_reason: String?
+            let original_event_id_for_reschedule: UUID?
 
             struct UserInfo: Decodable {
                 let id: UUID
@@ -539,6 +545,7 @@ final class CalendarSyncManager: ObservableObject {
                 .select("*, users(id, display_name, avatar_url), event_categories(*)")
                 .in("group_id", values: allMemberGroupIds)  // Fetch from all groups members are in
                 .eq("event_type", value: "group")
+                .or("event_status.is.null,event_status.eq.active")  // Exclude rain-checked and rescheduled events
                 .lte("start_date", value: end)
                 .gte("end_date", value: start)
                 .order("start_date", ascending: true)
@@ -579,6 +586,7 @@ final class CalendarSyncManager: ObservableObject {
                 .select("*, users(id, display_name, avatar_url), event_categories(*)")
                 .in("id", values: Array(attendeeEventIds))
                 .eq("event_type", value: "group")
+                .or("event_status.is.null,event_status.eq.active")  // Exclude rain-checked and rescheduled events
                 .lte("start_date", value: end)
                 .gte("end_date", value: start)
                 .order("start_date", ascending: true)
@@ -609,6 +617,7 @@ final class CalendarSyncManager: ObservableObject {
             .from("calendar_events")
             .select("*, users(id, display_name, avatar_url), event_categories(*)")
             .eq("event_type", value: "personal")
+            .or("event_status.is.null,event_status.eq.active")  // Exclude rain-checked and rescheduled events
             .in("user_id", values: allGroupMemberIds)
             .lte("start_date", value: end)
             .gte("end_date", value: start)
@@ -834,7 +843,12 @@ final class CalendarSyncManager: ObservableObject {
                 recurrenceEndDate: row.recurrence_end_date,
                 parentEventId: row.parent_event_id,
                 isRecurrenceException: row.is_recurrence_exception ?? false,
-                originalOccurrenceDate: row.original_occurrence_date
+                originalOccurrenceDate: row.original_occurrence_date,
+                eventStatus: row.event_status,
+                rainCheckedAt: row.rain_checked_at,
+                rainCheckRequestedBy: row.rain_check_requested_by,
+                rainCheckReason: row.rain_check_reason,
+                originalEventIdForReschedule: row.original_event_id_for_reschedule
             )
         }
         

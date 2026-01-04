@@ -10,6 +10,7 @@ struct EventEditorView: View {
     var existingEvent: CalendarEventWithUser? = nil
     var initialDate: Date? = nil
     var recurringEditScope: RecurringEditScope? = nil
+    var isRescheduling: Bool = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
 
@@ -44,12 +45,13 @@ struct EventEditorView: View {
     @State private var showingMissingAttendeesAlert = false
     @State private var currentUserId: UUID? = nil
 
-    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil, recurringEditScope: RecurringEditScope? = nil) {
+    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil, recurringEditScope: RecurringEditScope? = nil, isRescheduling: Bool = false) {
         self.groupId = groupId
         self.members = members
         self.existingEvent = existingEvent
         self.initialDate = initialDate
         self.recurringEditScope = recurringEditScope
+        self.isRescheduling = isRescheduling
         _selectedGroupId = State(initialValue: groupId)
 
         // If creating a new event with an initial date, set the start and end dates
@@ -62,6 +64,9 @@ struct EventEditorView: View {
     @EnvironmentObject var themeManager: ThemeManager
 
     private var navigationTitle: String {
+        if isRescheduling {
+            return "Reschedule Event"
+        }
         if existingEvent == nil {
             return "New Event"
         }
@@ -577,7 +582,15 @@ struct EventEditorView: View {
                     recurrenceRule: isRecurring ? recurrenceRule : nil,
                     recurrenceEndDate: isRecurring ? recurrenceRule?.endDate : nil
                 )
-                if let existingEvent {
+
+                // Special handling for rescheduling rain-checked events
+                if isRescheduling, let rainCheckedEvent = existingEvent {
+                    _ = try await CalendarEventService.shared.rescheduleRainCheckedEvent(
+                        rainCheckedEventId: rainCheckedEvent.id,
+                        newInput: input,
+                        currentUserId: uid
+                    )
+                } else if let existingEvent {
                     // Handle recurring event edit scopes
                     if let scope = recurringEditScope {
                         switch scope {

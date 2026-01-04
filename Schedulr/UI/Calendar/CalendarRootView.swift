@@ -41,6 +41,7 @@ struct CalendarRootView: View {
     @StateObject private var notificationViewModel = NotificationViewModel()
     @State private var pendingEventId: UUID?
     @State private var showingProposeTimes = false
+    @State private var showingRainCheckedEvents = false
 
     @State private var isViewReady = false
     
@@ -182,6 +183,15 @@ struct CalendarRootView: View {
                     
                     if let gid = viewModel.selectedGroupID {
                         Button {
+                            showingRainCheckedEvents = true
+                        } label: {
+                            Image(systemName: "cloud.rain")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                        .disabled(calendarSync.isRefreshing)
+
+                        Button {
                             showingProposeTimes = true
                         } label: {
                             Image(systemName: "wand.and.stars")
@@ -233,6 +243,12 @@ struct CalendarRootView: View {
                 ProposeTimesView(dashboardViewModel: viewModel)
                     .environmentObject(calendarSync)
                     .environmentObject(themeManager)
+            }
+            .sheet(isPresented: $showingRainCheckedEvents) {
+                if let gid = viewModel.selectedGroupID {
+                    RainCheckedEventsView(groupId: gid)
+                        .environmentObject(calendarSync)
+                }
             }
             .sheet(isPresented: $showingMonthModePicker) {
                 MonthViewModePicker(selectedMode: $monthViewMode)

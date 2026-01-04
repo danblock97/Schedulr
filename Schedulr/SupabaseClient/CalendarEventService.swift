@@ -180,6 +180,18 @@ final class CalendarEventService {
             let event_type: String
             let users: UserInfo?
             let event_categories: CategoryInfo?
+            // Recurrence fields
+            let recurrence_rule: RecurrenceRule?
+            let recurrence_end_date: Date?
+            let parent_event_id: UUID?
+            let is_recurrence_exception: Bool?
+            let original_occurrence_date: Date?
+            // Rain check fields
+            let event_status: String?
+            let rain_checked_at: Date?
+            let rain_check_requested_by: UUID?
+            let rain_check_reason: String?
+            let original_event_id_for_reschedule: UUID?
             
             struct UserInfo: Decodable {
                 let id: UUID
@@ -253,7 +265,17 @@ final class CalendarEventService {
                 updated_at: $0.updated_at
             )},
             hasAttendees: nil,
-            isCurrentUserAttendee: nil
+            isCurrentUserAttendee: nil,
+            recurrenceRule: row.recurrence_rule,
+            recurrenceEndDate: row.recurrence_end_date,
+            parentEventId: row.parent_event_id,
+            isRecurrenceException: row.is_recurrence_exception ?? false,
+            originalOccurrenceDate: row.original_occurrence_date,
+            eventStatus: row.event_status,
+            rainCheckedAt: row.rain_checked_at,
+            rainCheckRequestedBy: row.rain_check_requested_by,
+            rainCheckReason: row.rain_check_reason,
+            originalEventIdForReschedule: row.original_event_id_for_reschedule
         )
     }
     
@@ -1109,6 +1131,178 @@ final class CalendarEventService {
 
         // Create a new recurring event starting from this date
         return try await createEvent(input: newInput, currentUserId: currentUserId)
+    }
+
+    // MARK: - Rain Check Methods
+
+    /// Request a rain check for an event (can be requested by attendee or creator)
+    /// - Parameters:
+    ///   - eventId: The ID of the event to rain check
+    ///   - requesterId: The user requesting the rain check
+    ///   - reason: Optional reason for the rain check
+    ///   - creatorId: The event creator's ID (for notifications)
+    /// - Returns: True if creator approved directly (creator requested), false if pending approval
+    func requestRainCheck(eventId: UUID, requesterId: UUID, reason: String?, creatorId: UUID) async throws -> Bool {
+        // Check if requester is the creator
+        let isCreator = requesterId == creatorId
+
+        if isCreator {
+            // Creator can rain check directly without approval
+            try await approveRainCheck(eventId: eventId)
+            return true
+        } else {
+            // Attendee requesting - mark as pending approval
+            struct RainCheckRequest: Encodable {
+                let rain_check_requested_by: UUID
+                let rain_check_reason: String?
+            }
+
+            _ = try await client
+                .from("calendar_events")
+                .update(RainCheckRequest(rain_check_requested_by: requesterId, rain_check_reason: reason))
+                .eq("id", value: eventId)
+                .execute()
+
+            // Notify creator of the request
+            NotificationService.shared.notifyRainCheckRequested(eventId: eventId, requesterId: requesterId, creatorId: creatorId)
+
+            return false
+        }
+    }
+
+    /// Approve a rain check request (creator only)
+    func approveRainCheck(eventId: UUID) async throws {
+        // Fetch attendee user IDs for notifications
+        struct AttendeeRow: Decodable {
+            let user_id: UUID?
+        }
+
+        let attendees: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("user_id")
+            .eq("event_id", value: eventId)
+            .execute()
+            .value
+
+        let attendeeUserIds = attendees.compactMap { $0.user_id }
+
+        // Update event status to rain_checked
+        struct RainCheckApproval: Encodable {
+            let event_status: String
+            let rain_checked_at: Date
+        }
+
+        _ = try await client
+            .from("calendar_events")
+            .update(RainCheckApproval(event_status: "rain_checked", rain_checked_at: Date()))
+            .eq("id", value: eventId)
+            .execute()
+
+        // Notify all attendees
+        NotificationService.shared.notifyRainCheckApproved(eventId: eventId, attendeeUserIds: attendeeUserIds)
+    }
+
+    /// Deny a rain check request (creator only)
+    func denyRainCheck(eventId: UUID) async throws {
+        // Fetch the requester ID for notification
+        struct EventRow: Decodable {
+            let rain_check_requested_by: UUID?
+        }
+
+        let event: EventRow = try await client
+            .from("calendar_events")
+            .select("rain_check_requested_by")
+            .eq("id", value: eventId)
+            .single()
+            .execute()
+            .value
+
+        // Clear the rain check request
+        struct RainCheckDenial: Encodable {
+            let rain_check_requested_by: UUID?
+            let rain_check_reason: String?
+        }
+
+        _ = try await client
+            .from("calendar_events")
+            .update(RainCheckDenial(rain_check_requested_by: nil, rain_check_reason: nil))
+            .eq("id", value: eventId)
+            .execute()
+
+        // Notify requester of denial
+        if let requesterId = event.rain_check_requested_by {
+            NotificationService.shared.notifyRainCheckDenied(eventId: eventId, requesterId: requesterId)
+        }
+    }
+
+    /// Reschedule a rain-checked event by creating a new event with updated dates
+    /// - Parameters:
+    ///   - rainCheckedEventId: The ID of the rain-checked event
+    ///   - newInput: The new event details (with updated dates)
+    ///   - currentUserId: The current user's ID
+    /// - Returns: The ID of the newly created event
+    func rescheduleRainCheckedEvent(rainCheckedEventId: UUID, newInput: NewEventInput, currentUserId: UUID) async throws -> UUID {
+        // Create the new event
+        let newEventId = try await createEvent(input: newInput, currentUserId: currentUserId)
+
+        // Link the new event back to the rain-checked one
+        struct RescheduleLink: Encodable {
+            let original_event_id_for_reschedule: UUID
+        }
+
+        _ = try await client
+            .from("calendar_events")
+            .update(RescheduleLink(original_event_id_for_reschedule: rainCheckedEventId))
+            .eq("id", value: newEventId)
+            .execute()
+
+        // Mark the original event as rescheduled
+        struct MarkRescheduled: Encodable {
+            let event_status: String
+        }
+
+        _ = try await client
+            .from("calendar_events")
+            .update(MarkRescheduled(event_status: "rescheduled"))
+            .eq("id", value: rainCheckedEventId)
+            .execute()
+
+        // Fetch attendees for notifications
+        struct AttendeeRow: Decodable {
+            let user_id: UUID?
+        }
+
+        let attendees: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .select("user_id")
+            .eq("event_id", value: newEventId)
+            .execute()
+            .value
+
+        let attendeeUserIds = attendees.compactMap { $0.user_id }
+
+        // Notify attendees of the reschedule
+        NotificationService.shared.notifyEventRescheduled(newEventId: newEventId, oldEventId: rainCheckedEventId, attendeeUserIds: attendeeUserIds)
+
+        return newEventId
+    }
+
+    /// Fetch all rain-checked events for a group
+    func fetchRainCheckedEvents(groupId: UUID) async throws -> [CalendarEventWithUser] {
+        let events: [CalendarEventWithUser] = try await client
+            .from("calendar_events")
+            .select("""
+                *,
+                user:users!user_id(id, display_name, avatar_url),
+                category:event_categories(id, user_id, group_id, name, color, emoji, cover_image_url)
+            """)
+            .eq("group_id", value: groupId)
+            .eq("event_status", value: "rain_checked")
+            .order("rain_checked_at", ascending: false)
+            .execute()
+            .value
+
+        return events
     }
 }
 

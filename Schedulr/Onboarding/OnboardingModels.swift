@@ -381,6 +381,12 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable, Hashable {
     let parentEventId: UUID?
     let isRecurrenceException: Bool
     let originalOccurrenceDate: Date?
+    // Rain check fields
+    let eventStatus: String?
+    let rainCheckedAt: Date?
+    let rainCheckRequestedBy: UUID?
+    let rainCheckReason: String?
+    let originalEventIdForReschedule: UUID?
 
     struct UserInfo: Codable, Equatable {
         let id: UUID
@@ -422,6 +428,11 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable, Hashable {
         case parentEventId = "parent_event_id"
         case isRecurrenceException = "is_recurrence_exception"
         case originalOccurrenceDate = "original_occurrence_date"
+        case eventStatus = "event_status"
+        case rainCheckedAt = "rain_checked_at"
+        case rainCheckRequestedBy = "rain_check_requested_by"
+        case rainCheckReason = "rain_check_reason"
+        case originalEventIdForReschedule = "original_event_id_for_reschedule"
     }
 
     // Custom decoder to handle missing recurrence fields from older data
@@ -455,6 +466,12 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable, Hashable {
         parentEventId = try container.decodeIfPresent(UUID.self, forKey: .parentEventId)
         isRecurrenceException = try container.decodeIfPresent(Bool.self, forKey: .isRecurrenceException) ?? false
         originalOccurrenceDate = try container.decodeIfPresent(Date.self, forKey: .originalOccurrenceDate)
+        // Rain check fields with defaults for backward compatibility
+        eventStatus = try container.decodeIfPresent(String.self, forKey: .eventStatus)
+        rainCheckedAt = try container.decodeIfPresent(Date.self, forKey: .rainCheckedAt)
+        rainCheckRequestedBy = try container.decodeIfPresent(UUID.self, forKey: .rainCheckRequestedBy)
+        rainCheckReason = try container.decodeIfPresent(String.self, forKey: .rainCheckReason)
+        originalEventIdForReschedule = try container.decodeIfPresent(UUID.self, forKey: .originalEventIdForReschedule)
     }
 
     init(
@@ -484,7 +501,12 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable, Hashable {
         recurrenceEndDate: Date? = nil,
         parentEventId: UUID? = nil,
         isRecurrenceException: Bool = false,
-        originalOccurrenceDate: Date? = nil
+        originalOccurrenceDate: Date? = nil,
+        eventStatus: String? = nil,
+        rainCheckedAt: Date? = nil,
+        rainCheckRequestedBy: UUID? = nil,
+        rainCheckReason: String? = nil,
+        originalEventIdForReschedule: UUID? = nil
     ) {
         self.id = id
         self.user_id = user_id
@@ -513,5 +535,10 @@ struct CalendarEventWithUser: Codable, Identifiable, Equatable, Hashable {
         self.parentEventId = parentEventId
         self.isRecurrenceException = isRecurrenceException
         self.originalOccurrenceDate = originalOccurrenceDate
+        self.eventStatus = eventStatus
+        self.rainCheckedAt = rainCheckedAt
+        self.rainCheckRequestedBy = rainCheckRequestedBy
+        self.rainCheckReason = rainCheckReason
+        self.originalEventIdForReschedule = originalEventIdForReschedule
     }
 }

@@ -22,8 +22,12 @@ struct EventDetailView: View {
     @State private var selectedEditScope: RecurringEditScope = .allOccurrences
     @State private var isDeleting = false
     @State private var isCurrentUserInvited = false
+    @State private var showingRainCheckRequest = false
+    @State private var showingRainCheckApproval = false
+    @State private var requesterName: String = ""
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var calendarSync: CalendarSyncManager
+    @EnvironmentObject private var themeManager: ThemeManager
 
     /// The event to display - uses displayEvent if available (after refresh), otherwise the original event
     private var currentEvent: CalendarEventWithUser {
@@ -58,6 +62,18 @@ struct EventDetailView: View {
         // Event is private if it's a personal event and current user didn't create it
         guard let userId = resolvedCurrentUserId ?? currentUserId else { return false }
         return event.event_type == "personal" && event.user_id != userId
+    }
+
+    private var hasPendingRainCheckRequest: Bool {
+        currentEvent.rainCheckRequestedBy != nil
+    }
+
+    private var canRainCheck: Bool {
+        // Only group events can be rain-checked
+        // Must be either creator or an attendee
+        guard let userId = resolvedCurrentUserId ?? currentUserId else { return false }
+        if event.event_type != "group" { return false }
+        return event.user_id == userId || isCurrentUserInvited
     }
 
     var body: some View {
@@ -193,7 +209,47 @@ struct EventDetailView: View {
                         .padding(.top, 20)
                         .padding(.bottom, 8) // Add some bottom padding for consistency
                     }
-                    
+
+                    // Rain Check Request Banner
+                    if hasPendingRainCheckRequest, canEdit {
+                        Button(action: showRainCheckApprovalSheet) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "cloud.rain.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Rain Check Request Pending")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+
+                                    if let requesterId = currentEvent.rainCheckRequestedBy,
+                                       let requesterName = attendees.first(where: { $0.userId == requesterId })?.displayName {
+                                        Text("\(requesterName) wants to postpone this event")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white.opacity(0.9))
+                                    } else {
+                                        Text("Tap to review and approve or deny")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white.opacity(0.9))
+                                    }
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                            .padding()
+                            .background(themeManager.gradient)
+                            .cornerRadius(12)
+                            .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 8, x: 0, y: 4)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                    }
+
                     VStack(spacing: 16) {
                         // When Card
                         DetailCard(title: "When", icon: "clock.fill", iconColor: .blue) {
@@ -306,6 +362,14 @@ struct EventDetailView: View {
             if canEdit {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
+                        // Show approval button if there's a pending rain check request
+                        if hasPendingRainCheckRequest {
+                            Button("Review Rain Check Request", systemImage: "cloud.rain") {
+                                showRainCheckApprovalSheet()
+                            }
+                            Divider()
+                        }
+
                         Button("Edit", systemImage: "pencil") {
                             if isRecurringEvent {
                                 showingRecurringEditSheet = true
@@ -313,6 +377,13 @@ struct EventDetailView: View {
                                 showingEditor = true
                             }
                         }
+
+                        if canRainCheck {
+                            Button("Rain Check Event", systemImage: "cloud.rain") {
+                                showingRainCheckRequest = true
+                            }
+                        }
+
                         Button(role: .destructive) {
                             if isRecurringEvent {
                                 showingRecurringDeleteSheet = true
@@ -324,6 +395,15 @@ struct EventDetailView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
+                    }
+                }
+            } else if canRainCheck {
+                // Non-creators who are attendees can still request rain check
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingRainCheckRequest = true
+                    } label: {
+                        Image(systemName: "cloud.rain")
                     }
                 }
             }
@@ -359,6 +439,28 @@ struct EventDetailView: View {
                 members: [],
                 existingEvent: currentEvent,
                 recurringEditScope: isRecurringEvent ? selectedEditScope : nil
+            )
+        }
+        .sheet(isPresented: $showingRainCheckRequest) {
+            RainCheckRequestSheet(
+                event: currentEvent,
+                isCreator: canEdit,
+                onSubmit: { reason in
+                    try await handleRainCheckRequest(reason: reason)
+                }
+            )
+        }
+        .sheet(isPresented: $showingRainCheckApproval) {
+            RainCheckApprovalSheet(
+                event: currentEvent,
+                requesterName: requesterName,
+                reason: currentEvent.rainCheckReason,
+                onApprove: {
+                    try await handleRainCheckApproval()
+                },
+                onDeny: {
+                    try await handleRainCheckDenial()
+                }
             )
         }
         .task {
@@ -568,6 +670,73 @@ extension EventDetailView {
 
         // Reload attendees
         await loadAttendees()
+    }
+
+    // MARK: - Rain Check Handlers
+
+    private func handleRainCheckRequest(reason: String?) async throws {
+        guard let uid = try? await SupabaseManager.shared.client.auth.session.user.id else {
+            throw NSError(domain: "EventDetailView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not get user ID"])
+        }
+
+        let wasApproved = try await CalendarEventService.shared.requestRainCheck(
+            eventId: event.id,
+            requesterId: uid,
+            reason: reason,
+            creatorId: event.user_id
+        )
+
+        if wasApproved {
+            // Creator rain-checked directly - refresh and dismiss
+            try? await calendarSync.fetchGroupEvents(groupId: event.group_id)
+            dismiss()
+        } else {
+            // Attendee requested - refresh to show pending request badge
+            await refreshEventData()
+        }
+    }
+
+    private func handleRainCheckApproval() async throws {
+        try await CalendarEventService.shared.approveRainCheck(eventId: event.id)
+        try? await calendarSync.fetchGroupEvents(groupId: event.group_id)
+        dismiss()
+    }
+
+    private func handleRainCheckDenial() async throws {
+        try await CalendarEventService.shared.denyRainCheck(eventId: event.id)
+        await refreshEventData()
+    }
+
+    private func showRainCheckApprovalSheet() {
+        // Fetch the requester's name to display in the approval sheet
+        Task {
+            guard let requesterId = currentEvent.rainCheckRequestedBy else { return }
+
+            do {
+                struct UserRow: Decodable {
+                    let display_name: String?
+                }
+
+                let user: UserRow = try await SupabaseManager.shared.client
+                    .from("users")
+                    .select("display_name")
+                    .eq("id", value: requesterId)
+                    .single()
+                    .execute()
+                    .value
+
+                await MainActor.run {
+                    requesterName = user.display_name ?? "Someone"
+                    showingRainCheckApproval = true
+                }
+            } catch {
+                // Fallback if we can't fetch the name
+                await MainActor.run {
+                    requesterName = "An attendee"
+                    showingRainCheckApproval = true
+                }
+            }
+        }
     }
 
     /// Load attendees for a specific event ID (used when switching to exception event)
