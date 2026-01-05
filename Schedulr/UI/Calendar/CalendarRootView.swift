@@ -22,6 +22,7 @@ struct CalendarRootView: View {
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     @EnvironmentObject var themeManager: ThemeManager
     @ObservedObject var viewModel: DashboardViewModel
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
 
     @State private var mode: CalendarMode = .month
     @State private var monthViewMode: MonthViewMode = .details
@@ -191,14 +192,16 @@ struct CalendarRootView: View {
                         }
                         .disabled(calendarSync.isRefreshing)
 
-                        Button {
-                            showingProposeTimes = true
-                        } label: {
-                            Image(systemName: "wand.and.stars")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.primary)
+                        if subscriptionManager.isPro {
+                            Button {
+                                showingProposeTimes = true
+                            } label: {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.primary)
+                            }
+                            .disabled(calendarSync.isRefreshing)
                         }
-                        .disabled(calendarSync.isRefreshing)
                         
                         Button {
                             showingEditor = true

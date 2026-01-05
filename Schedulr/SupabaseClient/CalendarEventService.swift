@@ -1172,19 +1172,61 @@ final class CalendarEventService {
 
     /// Approve a rain check request (creator only)
     func approveRainCheck(eventId: UUID) async throws {
-        // Fetch attendee user IDs for notifications
+        // Fetch attendee user IDs and Apple Calendar event IDs
         struct AttendeeRow: Decodable {
             let user_id: UUID?
+            let apple_calendar_event_id: String?
         }
 
         let attendees: [AttendeeRow] = try await client
             .from("event_attendees")
-            .select("user_id")
+            .select("user_id, apple_calendar_event_id")
             .eq("event_id", value: eventId)
             .execute()
             .value
 
         let attendeeUserIds = attendees.compactMap { $0.user_id }
+        
+        // Get current user ID to delete Apple Calendar events for this user's device
+        let currentUserId = try await client.auth.session.user.id
+
+        // Store pending deletions for other users BEFORE clearing apple_calendar_event_id
+        // This allows other users' devices to delete their Apple Calendar events on sync
+        let appleEventIdsToDelete = attendees.compactMap { $0.apple_calendar_event_id }
+        if !appleEventIdsToDelete.isEmpty {
+            struct PendingDeletion: Encodable {
+                let user_id: UUID
+                let apple_calendar_event_id: String
+                let event_id: UUID
+            }
+            let pendingDeletions = attendees.compactMap { row -> PendingDeletion? in
+                guard let userId = row.user_id, let appleId = row.apple_calendar_event_id else { return nil }
+                return PendingDeletion(user_id: userId, apple_calendar_event_id: appleId, event_id: eventId)
+            }
+            // Try to insert pending deletions, but don't fail if table doesn't exist
+            _ = try? await client
+                .from("pending_apple_calendar_deletions")
+                .insert(pendingDeletions)
+                .execute()
+        }
+
+        // Delete Apple Calendar events for the current user only
+        // (we can only delete events on this device; other users' devices will handle cleanup on sync)
+        for attendee in attendees where attendee.user_id == currentUserId {
+            if let appleEventId = attendee.apple_calendar_event_id {
+                try? await EventKitEventManager.shared.deleteEvent(identifier: appleEventId, deleteAllOccurrences: true)
+            }
+        }
+        
+        // Clear apple_calendar_event_id for all attendees so rescheduling creates fresh Apple Calendar events
+        struct ClearAppleCalendarId: Encodable {
+            let apple_calendar_event_id: String?
+        }
+        _ = try await client
+            .from("event_attendees")
+            .update(ClearAppleCalendarId(apple_calendar_event_id: nil))
+            .eq("event_id", value: eventId)
+            .execute()
 
         // Update event status to rain_checked
         struct RainCheckApproval: Encodable {

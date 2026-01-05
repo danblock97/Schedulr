@@ -1571,8 +1571,9 @@ final class CalendarSyncManager: ObservableObject {
     private func cleanupDeletedGroupEventsFromAppleCalendar(userId: UUID) async throws {
         guard let client = client else { return }
         guard authorizationStatus == .authorized else { return }
-        // APPROACH 1: Check local storage for synced group events and verify they still exist
+        // APPROACH 1: Check local storage for synced group events and verify they still exist and are active
         // This is the most reliable method as it doesn't depend on server-side records
+        // Also handles rain-checked events which should be removed from Apple Calendar
         let localMapping = getSyncedGroupEventsMapping()
         if !localMapping.isEmpty {
             let localEventIds = localMapping.keys.compactMap { UUID(uuidString: $0) }
@@ -1580,25 +1581,29 @@ final class CalendarSyncManager: ObservableObject {
             if !localEventIds.isEmpty {
                 struct ExistingEvent: Decodable {
                     let id: UUID
+                    let event_status: String?
                 }
                 let existingEvents: [ExistingEvent] = try await client
                     .from("calendar_events")
-                    .select("id")
+                    .select("id, event_status")
                     .in("id", values: localEventIds)
                     .execute()
                     .value
 
-                let existingEventIds = Set(existingEvents.map { $0.id })
+                let activeEventIds = Set(existingEvents.filter { event in
+                    // Event is active if status is null or "active"
+                    event.event_status == nil || event.event_status == "active"
+                }.map { $0.id })
 
-                // Find events in local storage that no longer exist in database
+                // Find events in local storage that no longer exist, are deleted, or are rain-checked
                 for (eventIdString, appleCalendarEventId) in localMapping {
                     guard let eventId = UUID(uuidString: eventIdString) else { continue }
 
-                    if !existingEventIds.contains(eventId) {
-                        // Event was deleted from database, delete from Apple Calendar
+                    if !activeEventIds.contains(eventId) {
+                        // Event was deleted from database or rain-checked, delete from Apple Calendar
                         do {
                             try await EventKitEventManager.shared.deleteEvent(identifier: appleCalendarEventId)
-                            print("[CalendarSyncManager] Deleted Apple Calendar event for deleted group event: \(appleCalendarEventId)")
+                            print("[CalendarSyncManager] Deleted Apple Calendar event for deleted/rain-checked group event: \(appleCalendarEventId)")
                         } catch {
                             print("[CalendarSyncManager] Failed to delete Apple Calendar event (may already be deleted): \(error)")
                         }
@@ -1647,6 +1652,7 @@ final class CalendarSyncManager: ObservableObject {
         }
 
         // APPROACH 3: Check for orphaned attendee records (fallback for older events)
+        // Also handles rain-checked events that should be removed from Apple Calendar
         struct AttendeeAppleEventId: Decodable {
             let event_id: UUID
             let apple_calendar_event_id: String?
@@ -1662,30 +1668,34 @@ final class CalendarSyncManager: ObservableObject {
         let syncedAttendees = attendeeRows.filter { $0.apple_calendar_event_id != nil }
         guard !syncedAttendees.isEmpty else { return }
 
-        // Get the event IDs and check which ones still exist in calendar_events
+        // Get the event IDs and check which ones still exist and are active in calendar_events
         let eventIds = syncedAttendees.map { $0.event_id }
 
         struct ExistingEventCheck: Decodable {
             let id: UUID
+            let event_status: String?
         }
         let existingEventsCheck: [ExistingEventCheck] = try await client
             .from("calendar_events")
-            .select("id")
+            .select("id, event_status")
             .in("id", values: eventIds)
             .execute()
             .value
 
-        let existingEventIdsCheck = Set(existingEventsCheck.map { $0.id })
+        // Events are active if status is null or "active" (exclude rain-checked and deleted)
+        let activeEventIdsCheck = Set(existingEventsCheck.filter { event in
+            event.event_status == nil || event.event_status == "active"
+        }.map { $0.id })
 
-        // Find attendee records where the event no longer exists
-        let deletedAttendees = syncedAttendees.filter { !existingEventIdsCheck.contains($0.event_id) }
+        // Find attendee records where the event no longer exists or is rain-checked
+        let deletedAttendees = syncedAttendees.filter { !activeEventIdsCheck.contains($0.event_id) }
 
-        // Delete the Apple Calendar events for deleted group events
+        // Delete the Apple Calendar events for deleted or rain-checked group events
         for attendee in deletedAttendees {
             if let appleEventId = attendee.apple_calendar_event_id {
                 do {
                     try await EventKitEventManager.shared.deleteEvent(identifier: appleEventId)
-                    print("[CalendarSyncManager] Deleted orphaned Apple Calendar event: \(appleEventId)")
+                    print("[CalendarSyncManager] Deleted orphaned/rain-checked Apple Calendar event: \(appleEventId)")
                 } catch {
                     print("[CalendarSyncManager] Failed to delete orphaned Apple Calendar event: \(error)")
                 }

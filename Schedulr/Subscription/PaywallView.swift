@@ -393,10 +393,12 @@ private struct FeatureComparisonRow: View {
                 Text(freeValue)
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(.secondary)
+                    .frame(minWidth: 80, alignment: .trailing)
                 
                 Text(proValue)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(Color(red: 0.98, green: 0.29, blue: 0.55))
+                    .frame(minWidth: 100, alignment: .leading)
             }
         }
     }
@@ -413,6 +415,64 @@ private struct PricingOptionCard: View {
     
     private var productPrice: String {
         package.storeProduct.localizedPriceString
+    }
+    
+    /// Extracts the currency locale from the localizedPriceString
+    /// Since priceLocale is unavailable on iOS, we detect the currency symbol
+    /// This ensures calculated prices (monthly equivalent, savings) use the same currency as displayed prices
+    private var currencyLocale: Locale {
+        let priceString = package.storeProduct.localizedPriceString
+        
+        // Check for common currency symbols and return appropriate locale
+        // StoreKit's localizedPriceString already uses the correct currency for the user's App Store region
+        if priceString.contains("£") {
+            return Locale(identifier: "en_GB")
+        } else if priceString.contains("€") {
+            // Euro - try to detect country from device locale, default to Ireland
+            if Locale.current.identifier.contains("FR") {
+                return Locale(identifier: "fr_FR")
+            } else if Locale.current.identifier.contains("DE") {
+                return Locale(identifier: "de_DE")
+            } else {
+                return Locale(identifier: "en_IE")
+            }
+        } else if priceString.contains("$") {
+            // Dollar - could be USD, CAD, AUD, NZD, etc.
+            // Try to detect from device locale
+            let deviceLocale = Locale.current.identifier
+            if deviceLocale.contains("CA") {
+                return Locale(identifier: "en_CA")
+            } else if deviceLocale.contains("AU") {
+                return Locale(identifier: "en_AU")
+            } else if deviceLocale.contains("NZ") {
+                return Locale(identifier: "en_NZ")
+            } else {
+                return Locale(identifier: "en_US")
+            }
+        } else if priceString.contains("¥") {
+            // Yen - could be JPY or CNY
+            if Locale.current.identifier.contains("CN") {
+                return Locale(identifier: "zh_CN")
+            } else {
+                return Locale(identifier: "ja_JP")
+            }
+        } else if priceString.contains("kr") || priceString.contains("KR") {
+            // Krona - could be SEK, NOK, DKK
+            if Locale.current.identifier.contains("SE") {
+                return Locale(identifier: "sv_SE")
+            } else if Locale.current.identifier.contains("NO") {
+                return Locale(identifier: "nb_NO")
+            } else {
+                return Locale(identifier: "da_DK")
+            }
+        }
+        
+        // Fallback: use device locale if available, otherwise default to GBP
+        // Note: This ensures the formatter uses the correct currency formatting
+        if !Locale.current.identifier.isEmpty {
+            return Locale.current
+        }
+        return Locale(identifier: "en_GB")
     }
     
     private var subscriptionPeriod: String {
@@ -435,7 +495,7 @@ private struct PricingOptionCard: View {
     }
     
     private var monthlyEquivalent: String? {
-        // Calculate monthly equivalent for yearly subscriptions
+        // Show the actual monthly package price for yearly subscriptions
         guard let subscriptionPeriod = package.storeProduct.subscriptionPeriod,
               subscriptionPeriod.unit == .year,
               subscriptionPeriod.value == 1,
@@ -443,17 +503,15 @@ private struct PricingOptionCard: View {
             return nil
         }
         
-        let yearlyPrice = NSDecimalNumber(decimal: package.storeProduct.price).doubleValue
+        // Use the actual monthly package price, not a calculated division
         let monthlyPrice = NSDecimalNumber(decimal: monthlyPackage.storeProduct.price).doubleValue
-        let monthlyEquivalentPrice = yearlyPrice / 12.0
         
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        // Use current locale since priceLocale is unavailable on iOS
-        // The localizedPriceString already handles locale formatting
-        formatter.locale = Locale.current
+        // Use currency locale extracted from localizedPriceString to match App Store currency
+        formatter.locale = currencyLocale
         
-        if let formattedPrice = formatter.string(from: NSNumber(value: monthlyEquivalentPrice)) {
+        if let formattedPrice = formatter.string(from: NSNumber(value: monthlyPrice)) {
             return "\(formattedPrice)/month"
         }
         
@@ -477,9 +535,8 @@ private struct PricingOptionCard: View {
         
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        // Use current locale since priceLocale is unavailable on iOS
-        // The localizedPriceString already handles locale formatting
-        formatter.locale = Locale.current
+        // Use currency locale extracted from localizedPriceString to match App Store currency
+        formatter.locale = currencyLocale
         
         if let formattedSavings = formatter.string(from: NSNumber(value: savings)) {
             return "Save \(formattedSavings)/year"

@@ -1133,6 +1133,7 @@ private struct QuickActionRow: View {
     let onProposeTime: () -> Void
     let onInvite: () -> Void
     @EnvironmentObject var themeManager: ThemeManager
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     
     var body: some View {
         HStack(spacing: 12) {
@@ -1143,12 +1144,14 @@ private struct QuickActionRow: View {
                 action: onNewEvent
             )
             
-            QuickActionButton(
-                title: "Propose",
-                icon: "clock.badge.checkmark.fill",
-                color: themeManager.secondaryColor,
-                action: onProposeTime
-            )
+            if subscriptionManager.isPro {
+                QuickActionButton(
+                    title: "Propose",
+                    icon: "clock.badge.checkmark.fill",
+                    color: themeManager.secondaryColor,
+                    action: onProposeTime
+                )
+            }
             
             QuickActionButton(
                 title: "Invite",

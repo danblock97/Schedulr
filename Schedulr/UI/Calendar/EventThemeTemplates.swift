@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Preset event theme templates with emojis and suggested colors
-struct EventThemeTemplate: Identifiable, Equatable {
+struct EventThemeTemplate: Identifiable, Equatable {	
     let id: String
     let name: String
     let emoji: String
