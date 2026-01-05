@@ -151,7 +151,7 @@ struct PaywallView: View {
                 )
                 
                 FeatureComparisonRow(
-                    title: "Calendar sync",
+                    title: "Share when you're free",
                     freeValue: "✓",
                     proValue: "✓",
                     icon: "calendar.badge.plus",

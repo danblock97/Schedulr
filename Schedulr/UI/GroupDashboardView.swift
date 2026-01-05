@@ -260,6 +260,7 @@ struct GroupDashboardView: View {
     @State private var showEventEditor = false
     @State private var showProfile = false
     @State private var showInviteSheet = false
+    @State private var showAvailabilityView = false
 
     var body: some View {
         NavigationStack {
@@ -288,6 +289,7 @@ struct GroupDashboardView: View {
                             }
                             
                             groupSelectorSection
+                            availabilitySection
                             upcomingEventsSection
                             membersSection
                         }
@@ -493,6 +495,12 @@ struct GroupDashboardView: View {
         .sheet(isPresented: $showProposeTimesSheet) {
             ProposeTimesView(dashboardViewModel: viewModel)
         }
+        .sheet(isPresented: $showAvailabilityView) {
+            if let groupId = viewModel.selectedGroupID {
+                GroupAvailabilityView(groupId: groupId, members: viewModel.members)
+                    .environmentObject(themeManager)
+            }
+        }
     }
     
     // MARK: - Hero Section
@@ -602,6 +610,25 @@ struct GroupDashboardView: View {
         .offset(y: animateIn ? 0 : 20)
     }
     
+    // MARK: - Availability Section
+    
+    private var availabilitySection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if viewModel.selectedGroupID != nil && calendarSync.syncEnabled {
+                DashboardSectionHeader(title: "When's good?", icon: "clock.badge.checkmark.fill")
+                
+                AvailabilityPreviewCard(
+                    groupId: viewModel.selectedGroupID!,
+                    members: viewModel.members
+                ) {
+                    showAvailabilityView = true
+                }
+            }
+        }
+        .opacity(animateIn ? 1 : 0)
+        .offset(y: animateIn ? 0 : 20)
+    }
+    
     // MARK: - Upcoming Events Section
     
     private var upcomingEventsSection: some View {
@@ -649,7 +676,7 @@ struct GroupDashboardView: View {
             } else if !calendarSync.syncEnabled {
                 DashboardCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Enable calendar sync to share availability with your group")
+                        Text("Let your friends see when you're free")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                         
@@ -663,7 +690,7 @@ struct GroupDashboardView: View {
                                 }
                             }
                         } label: {
-                            Text("Enable Calendar Sync")
+                            Text("Share when you're free")
                                 .font(.system(size: 14, weight: .bold, design: .rounded))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 20)
@@ -683,7 +710,7 @@ struct GroupDashboardView: View {
                 DashboardCard {
                     HStack(spacing: 12) {
                         ProgressView()
-                        Text("Syncing calendar...")
+                        Text("Checking your schedule...")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
