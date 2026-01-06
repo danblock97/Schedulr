@@ -140,22 +140,16 @@ class ProfileViewModel: ObservableObject {
             let session = try await client.auth.session
             let uid = session.user.id
 
-            // Upload to Supabase Storage using same path format as onboarding
-            // This matches the pattern: {uid}/avatar_{timestamp}.jpg
-            let fileName = "\(uid.uuidString)/avatar_\(Int(Date().timeIntervalSince1970)).jpg"
+            // Upload to R2 via pre-signed URL
+            let filename = R2StorageService.avatarFilename()
+            let url = try await R2StorageService.shared.upload(
+                data: data,
+                filename: filename,
+                folder: .avatars,
+                contentType: "image/jpeg"
+            )
 
-            _ = try await client.storage
-                .from("avatars")
-                .upload(
-                    path: fileName,
-                    file: data,
-                    options: FileOptions(contentType: "image/jpeg", upsert: true)
-                )
-
-            // Get public URL
-            let url = try client.storage.from("avatars").getPublicURL(path: fileName)
-
-            // Update user record
+            // Update user record with the new CDN URL
             let update = DBUserUpdate(display_name: nil, avatar_url: url.absoluteString)
 
             _ = try await client.database
@@ -167,13 +161,7 @@ class ProfileViewModel: ObservableObject {
             avatarURL = url.absoluteString
 
         } catch {
-            // Provide more helpful error messages for RLS issues
-            let errorString = String(describing: error)
-            if errorString.contains("403") || errorString.contains("row-level security") {
-                errorMessage = "Failed to upload avatar: Permission denied. Please ensure your storage bucket policies allow avatar uploads."
-            } else {
-                errorMessage = "Failed to upload avatar: \(error.localizedDescription)"
-            }
+            errorMessage = "Failed to upload avatar: \(error.localizedDescription)"
             print("Error uploading avatar: \(error)")
         }
 

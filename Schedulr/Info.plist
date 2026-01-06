@@ -66,6 +66,8 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPPORT_TICKETS_FUNCTION_NAME</key>
 	<string>$(SUPPORT_TICKETS_FUNCTION_NAME)</string>
+	<key>CDN_URL</key>
+	<string>$(CDN_URL)</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiresFullScreen</key>

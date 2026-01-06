@@ -44,7 +44,6 @@ final class OnboardingViewModel: ObservableObject {
     enum GroupMode: String, CaseIterable, Identifiable { case skip, create, join; var id: String { rawValue } }
 
     private var client: SupabaseClient { SupabaseManager.shared.client }
-    private let avatarsBucket = "avatars"
     private let calendarManager: CalendarSyncManager?
 
     init(calendarManager: CalendarSyncManager? = nil, onFinished: (() -> Void)? = nil) {
@@ -164,14 +163,18 @@ final class OnboardingViewModel: ObservableObject {
         isUploadingAvatar = true
         defer { isUploadingAvatar = false }
         do {
-            let uid = try await currentUID()
             _ = try await ensureUserRow()
             guard let data = pickedImageData, !data.isEmpty else { return }
-            let fileName = "\(uid.uuidString)/avatar_\(Int(Date().timeIntervalSince1970)).jpg"
-            // Overwrite if exists
-            _ = try await client.storage.from(avatarsBucket).upload(fileName, data: data, options: .init(contentType: "image/jpeg", upsert: true))
-            // Get a public URL (bucket should be public)
-            let url = try client.storage.from(avatarsBucket).getPublicURL(path: fileName)
+            
+            // Upload to R2 via pre-signed URL (user ID is determined server-side from the auth token)
+            let filename = R2StorageService.avatarFilename()
+            let url = try await R2StorageService.shared.upload(
+                data: data,
+                filename: filename,
+                folder: .avatars,
+                contentType: "image/jpeg"
+            )
+            
             avatarPublicURL = url
             try await updateUser(avatarURL: url)
         } catch {

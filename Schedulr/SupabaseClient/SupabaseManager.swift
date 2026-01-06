@@ -27,6 +27,8 @@ struct SupabaseConfiguration {
     let oauthCallbackScheme: String?
     // OpenAI API key for AI features
     let openAIAPIKey: String?
+    // Cloudflare R2 CDN URL for image storage
+    let cdnUrl: URL?
 
     // Loads from the app bundle's Info.plist.
     // Provide these via Build Settings -> Info.plist Preprocessor or .xcconfig.
@@ -43,11 +45,21 @@ struct SupabaseConfiguration {
         let service = value("SUPABASE_SERVICE_ROLE_KEY")
         let scheme = value("SUPABASE_OAUTH_CALLBACK_SCHEME")
         let openAIKey = value("OPENAI_API_KEY")
+        let cdnUrlString = value("CDN_URL")
+        let cdnUrl = cdnUrlString.flatMap { URL(string: $0) }
 
         guard let url = URL(string: urlString), url.scheme != nil, url.host != nil else {
             throw SupabaseConfigError.invalidURL(urlString)
         }
-        return SupabaseConfiguration(url: url, anonKey: anon, serviceRoleKey: service, oauthCallbackScheme: scheme, openAIAPIKey: openAIKey)
+        return SupabaseConfiguration(url: url, anonKey: anon, serviceRoleKey: service, oauthCallbackScheme: scheme, openAIAPIKey: openAIKey, cdnUrl: cdnUrl)
+    }
+}
+
+// MARK: - Global Config Access
+enum Config {
+    /// The Cloudflare R2 CDN URL for serving images
+    static var cdnUrl: URL? {
+        SupabaseManager.shared.configuration?.cdnUrl
     }
 }
 
