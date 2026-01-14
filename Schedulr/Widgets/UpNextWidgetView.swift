@@ -85,11 +85,13 @@ struct UpNextWidgetView: View {
                     
                     Spacer()
                     
-                    // Rotation Indicator
-                    HStack(spacing: 3) {
-                        Circle().fill(primaryColor).frame(width: 4, height: 4)
-                        Circle().fill(primaryColor.opacity(0.2)).frame(width: 4, height: 4)
-                        Circle().fill(primaryColor.opacity(0.1)).frame(width: 4, height: 4)
+                    // Rotation Indicator (only show in rolling mode)
+                    if entry.displayMode == .rolling {
+                        HStack(spacing: 3) {
+                            Circle().fill(primaryColor).frame(width: 4, height: 4)
+                            Circle().fill(primaryColor.opacity(0.2)).frame(width: 4, height: 4)
+                            Circle().fill(primaryColor.opacity(0.1)).frame(width: 4, height: 4)
+                        }
                     }
                 }
                 .padding(.bottom, 6)

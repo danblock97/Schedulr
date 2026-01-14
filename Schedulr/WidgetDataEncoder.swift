@@ -8,6 +8,19 @@
 import Foundation
 import SwiftUI
 
+/// Widget display mode options
+enum WidgetDisplayMode: String, Codable, CaseIterable {
+    case rolling = "rolling"
+    case staticNextUp = "static"
+    
+    var displayName: String {
+        switch self {
+        case .rolling: return "Rolling Events"
+        case .staticNextUp: return "Next Up Only"
+        }
+    }
+}
+
 /// Helper to share data between the main app and widget extension via App Groups
 struct WidgetDataEncoder {
     static let shared = WidgetDataEncoder()

@@ -8,11 +8,26 @@
 import WidgetKit
 import SwiftUI
 
+// Note: This enum is duplicated in WidgetDataEncoder.swift for the main app target
+// Both definitions must match exactly for UserDefaults compatibility
+enum WidgetDisplayMode: String, Codable, CaseIterable {
+    case rolling = "rolling"
+    case staticNextUp = "static"
+    
+    var displayName: String {
+        switch self {
+        case .rolling: return "Rolling Events"
+        case .staticNextUp: return "Next Up Only"
+        }
+    }
+}
+
 struct UpNextEntry: TimelineEntry {
     let date: Date
     let event: WidgetEvent? // The primary event to show (rotates)
     let upcomingEvents: [WidgetEvent] // List of next few events (for Large view)
     let theme: WidgetTheme
+    let displayMode: WidgetDisplayMode
 }
 
 struct WidgetTheme {
@@ -43,6 +58,7 @@ struct UpNextProvider: TimelineProvider {
     let appGroupId = "group.uk.co.schedulr.Schedulr"
     let dataKey = "upcoming_widget_events"
     let themeKey = "widget_theme_colors"
+    let displayModeKey = "widget_display_mode"
     
     func placeholder(in context: Context) -> UpNextEntry {
         let sampleEvent = WidgetEvent(
@@ -59,7 +75,8 @@ struct UpNextProvider: TimelineProvider {
             date: Date(),
             event: sampleEvent,
             upcomingEvents: [sampleEvent],
-            theme: WidgetTheme(primary: Color(red: 0.85, green: 0.45, blue: 0.65), secondary: Color(red: 0.65, green: 0.55, blue: 0.80))
+            theme: WidgetTheme(primary: Color(red: 0.85, green: 0.45, blue: 0.65), secondary: Color(red: 0.65, green: 0.55, blue: 0.80)),
+            displayMode: .rolling
         )
     }
 
@@ -80,6 +97,7 @@ struct UpNextProvider: TimelineProvider {
         let lookaheadEnd = calendar.date(byAdding: .day, value: 30, to: now) ?? Date.distantFuture
         
         // Read from Shared UserDefaults
+        var displayMode: WidgetDisplayMode = .rolling // Default to rolling
         if let userDefaults = UserDefaults(suiteName: appGroupId) {
             // Read Events
             if let data = userDefaults.data(forKey: dataKey),
@@ -108,46 +126,74 @@ struct UpNextProvider: TimelineProvider {
                 
                 theme = WidgetTheme(primary: Color(primaryUi), secondary: Color(secondaryUi))
             }
+            
+            // Read Display Mode
+            if let modeString = userDefaults.string(forKey: displayModeKey),
+               let mode = WidgetDisplayMode(rawValue: modeString) {
+                displayMode = mode
+            }
         }
         
         var entries: [UpNextEntry] = []
         
-        // Create a timeline that rotates through the top 3 events every 10 minutes
-        // We generate entries for the next 2 hours
-        let rotationInterval: TimeInterval = 10 * 60 // 10 minutes
-        let timelineDuration: TimeInterval = 2 * 60 * 60 // 2 hours
+        // For Large widget, we always pass the top 4 events
+        let listEvents = Array(widgetEvents.prefix(4))
         
         // If no events, just one entry
         if widgetEvents.isEmpty {
-            let entry = UpNextEntry(date: now, event: nil, upcomingEvents: [], theme: theme)
+            let entry = UpNextEntry(date: now, event: nil, upcomingEvents: [], theme: theme, displayMode: displayMode)
             let timeline = Timeline(entries: [entry], policy: .after(now.addingTimeInterval(900))) // Retry in 15 mins
             completion(timeline)
             return
         }
         
-        let topEvents = Array(widgetEvents.prefix(3)) // Take top 3 for rotation
-        
-        for offset in stride(from: 0, to: timelineDuration, by: rotationInterval) {
-            let entryDate = now.addingTimeInterval(offset)
-            
-            // Determine which event to show based on the rotation index
-            let index = Int(offset / rotationInterval) % topEvents.count
-            let rotatedEvent = topEvents[index]
-            
-            // For Large widget, we always pass the top 4 events
-            let listEvents = Array(widgetEvents.prefix(4))
-            
+        // Handle display mode
+        switch displayMode {
+        case .staticNextUp:
+            // Static mode: show only the next event, no rotation
+            let nextEvent = widgetEvents.first
             let entry = UpNextEntry(
-                date: entryDate,
-                event: rotatedEvent,
+                date: now,
+                event: nextEvent,
                 upcomingEvents: listEvents,
-                theme: theme
+                theme: theme,
+                displayMode: displayMode
             )
-            entries.append(entry)
+            // Refresh in 1 hour or when the event ends, whichever comes first
+            let refreshDate = min(
+                calendar.date(byAdding: .hour, value: 1, to: now) ?? now.addingTimeInterval(3600),
+                nextEvent?.endDate ?? now.addingTimeInterval(3600)
+            )
+            let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
+            completion(timeline)
+            return
+            
+        case .rolling:
+            // Rolling mode: rotate through top 3 events every 10 minutes
+            let rotationInterval: TimeInterval = 10 * 60 // 10 minutes
+            let timelineDuration: TimeInterval = 2 * 60 * 60 // 2 hours
+            let topEvents = Array(widgetEvents.prefix(3)) // Take top 3 for rotation
+            
+            for offset in stride(from: 0, to: timelineDuration, by: rotationInterval) {
+                let entryDate = now.addingTimeInterval(offset)
+                
+                // Determine which event to show based on the rotation index
+                let index = Int(offset / rotationInterval) % topEvents.count
+                let rotatedEvent = topEvents[index]
+                
+                let entry = UpNextEntry(
+                    date: entryDate,
+                    event: rotatedEvent,
+                    upcomingEvents: listEvents,
+                    theme: theme,
+                    displayMode: displayMode
+                )
+                entries.append(entry)
+            }
+            
+            let timeline = Timeline(entries: entries, policy: .atEnd)
+            completion(timeline)
         }
-        
-        let timeline = Timeline(entries: entries, policy: .atEnd)
-        completion(timeline)
     }
 }
 

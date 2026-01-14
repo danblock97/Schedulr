@@ -33,6 +33,9 @@ struct SettingsView: View {
                         // Calendar Preferences Section
                         calendarPreferencesSection
                         
+                        // Widgets Section
+                        widgetsSection
+                        
                         // Appearance Section
                         appearanceSection
                     }
@@ -295,6 +298,34 @@ struct SettingsView: View {
                         }
                     )
                 )
+            }
+        }
+    }
+    
+    // MARK: - Widgets Section
+    
+    private var widgetsSection: some View {
+        SettingsSectionCard(title: "Widgets", icon: "square.grid.2x2.fill") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Display Mode")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                
+                Picker("Widget Display Mode", selection: $viewModel.widgetDisplayMode) {
+                    ForEach(WidgetDisplayMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(themeManager.primaryColor)
+                .onChange(of: viewModel.widgetDisplayMode) { _, newValue in
+                    viewModel.updateWidgetDisplayMode(newValue)
+                }
+                
+                Text("Choose how widgets display upcoming events. Rolling mode rotates through events every 10 minutes. Next Up Only shows just the next event.")
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
             }
         }
     }

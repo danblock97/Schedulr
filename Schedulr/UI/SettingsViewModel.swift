@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import WidgetKit
 
 @MainActor
 final class SettingsViewModel: ObservableObject {
@@ -10,6 +11,9 @@ final class SettingsViewModel: ObservableObject {
     // MARK: - Notification Preferences
     @Published var notificationPrefs = NotificationPreferences.default
     @Published var selectedReminderTiming: ReminderTiming = .oneDay
+    
+    // MARK: - Widget Preferences
+    @Published var widgetDisplayMode: WidgetDisplayMode = .rolling
     
     // MARK: - Loading States
     @Published var isLoadingCalendarPrefs = false
@@ -30,6 +34,7 @@ final class SettingsViewModel: ObservableObject {
             
             await loadCalendarPrefs()
             await loadNotificationPrefs()
+            await loadWidgetDisplayMode()
         } catch {
             errorMessage = "Failed to load settings: \(error.localizedDescription)"
         }
@@ -115,6 +120,41 @@ final class SettingsViewModel: ObservableObject {
             try await ThemePreferencesManager.shared.save(theme, for: userId)
         } catch {
             errorMessage = "Failed to save theme"
+        }
+    }
+    
+    // MARK: - Widget Display Mode
+    
+    func loadWidgetDisplayMode() async {
+        let appGroupId = "group.uk.co.schedulr.Schedulr"
+        let displayModeKey = "widget_display_mode"
+        
+        if let userDefaults = UserDefaults(suiteName: appGroupId),
+           let modeString = userDefaults.string(forKey: displayModeKey),
+           let mode = WidgetDisplayMode(rawValue: modeString) {
+            widgetDisplayMode = mode
+        } else {
+            // Default to rolling if not set
+            widgetDisplayMode = .rolling
+        }
+    }
+    
+    func saveWidgetDisplayMode(_ mode: WidgetDisplayMode) async {
+        let appGroupId = "group.uk.co.schedulr.Schedulr"
+        let displayModeKey = "widget_display_mode"
+        
+        widgetDisplayMode = mode
+        
+        if let userDefaults = UserDefaults(suiteName: appGroupId) {
+            userDefaults.set(mode.rawValue, forKey: displayModeKey)
+            // Reload all widget timelines to apply the change
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+    
+    func updateWidgetDisplayMode(_ mode: WidgetDisplayMode) {
+        Task {
+            await saveWidgetDisplayMode(mode)
         }
     }
     
