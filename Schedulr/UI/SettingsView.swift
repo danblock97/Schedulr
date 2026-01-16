@@ -17,6 +17,49 @@ struct SettingsView: View {
         }
         return "Custom"
     }
+
+    private var notificationGroups: [NotificationGroup] {
+        [
+            NotificationGroup(
+                title: "Event Notifications",
+                subtitle: "Updates, cancellations, RSVPs, and reminders",
+                keyPaths: [
+                    \.notifyEventUpdates,
+                    \.notifyEventCancellations,
+                    \.notifyRsvpResponses,
+                    \.notifyEventReminders
+                ]
+            ),
+            NotificationGroup(
+                title: "Group Notifications",
+                subtitle: "Membership, ownership, and group changes",
+                keyPaths: [
+                    \.notifyNewGroupMembers,
+                    \.notifyGroupMemberLeft,
+                    \.notifyGroupOwnershipTransfer,
+                    \.notifyGroupRenamed,
+                    \.notifyGroupDeleted
+                ]
+            ),
+            NotificationGroup(
+                title: "Subscription Notifications",
+                subtitle: "Plan changes and limit warnings",
+                keyPaths: [
+                    \.notifySubscriptionChanges,
+                    \.notifyFeatureLimitWarnings
+                ]
+            ),
+            NotificationGroup(
+                title: "Engagement Nudges",
+                subtitle: "Gentle reminders to stay active",
+                keyPaths: [
+                    \.notifyEmptyWeekNudges,
+                    \.notifyGroupQuietPings,
+                    \.notifyAIAssistFollowups
+                ]
+            )
+        ]
+    }
     
     var body: some View {
         NavigationStack {
@@ -26,7 +69,7 @@ struct SettingsView: View {
                     .ignoresSafeArea()
                 
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 20) {
                         // Notification Preferences Section
                         notificationPreferencesSection
                         
@@ -40,8 +83,8 @@ struct SettingsView: View {
                         appearanceSection
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 40)
+                    .padding(.top, 24)
+                    .padding(.bottom, 48)
                     .offset(y: sectionsAppeared ? 0 : 20)
                     .opacity(sectionsAppeared ? 1 : 0)
                 }
@@ -79,9 +122,9 @@ struct SettingsView: View {
     
     private var notificationPreferencesSection: some View {
         SettingsSectionCard(title: "Notifications", icon: "bell.fill") {
-            VStack(spacing: 16) {
+            VStack(spacing: 18) {
                 // Event Reminder Timing Picker
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("Event Reminder Timing")
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary)
@@ -100,169 +143,26 @@ struct SettingsView: View {
                 .padding(.bottom, 8)
                 
                 Divider().opacity(0.5)
-                
-                // Event Notifications Group
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Event Notifications")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    SettingsToggleRow(
-                        title: "Event Updates",
-                        subtitle: "When events you're attending are modified",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyEventUpdates },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyEventUpdates, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "Event Cancellations",
-                        subtitle: "When events you're attending are cancelled",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyEventCancellations },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyEventCancellations, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "RSVP Responses",
-                        subtitle: "When attendees respond to your events",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyRsvpResponses },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyRsvpResponses, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "Event Reminders",
-                        subtitle: "Reminder before events start",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyEventReminders },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyEventReminders, value: $0) }
-                        )
-                    )
-                }
-                
-                Divider().opacity(0.5)
-                
-                // Group Notifications Group
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Group Notifications")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    SettingsToggleRow(
-                        title: "New Members",
-                        subtitle: "When someone joins your groups",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyNewGroupMembers },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyNewGroupMembers, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "Member Left",
-                        subtitle: "When someone leaves your groups",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyGroupMemberLeft },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyGroupMemberLeft, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "Ownership Transfer",
-                        subtitle: "When you receive group ownership",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyGroupOwnershipTransfer },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyGroupOwnershipTransfer, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "Group Renamed",
-                        subtitle: "When groups you're in are renamed",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyGroupRenamed },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyGroupRenamed, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "Group Deleted",
-                        subtitle: "When groups you're in are deleted",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyGroupDeleted },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyGroupDeleted, value: $0) }
-                        )
-                    )
-                }
-                
-                Divider().opacity(0.5)
-                
-                // Subscription Notifications Group
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Subscription Notifications")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    SettingsToggleRow(
-                        title: "Subscription Changes",
-                        subtitle: "Updates about your subscription status",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifySubscriptionChanges },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifySubscriptionChanges, value: $0) }
-                        )
-                    )
-                    
-                    SettingsToggleRow(
-                        title: "Feature Limit Warnings",
-                        subtitle: "When approaching plan limits",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyFeatureLimitWarnings },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyFeatureLimitWarnings, value: $0) }
-                        )
-                    )
-                }
 
-                Divider().opacity(0.5)
-
-                // Engagement Nudges
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Engagement Nudges")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-
-                    SettingsToggleRow(
-                        title: "Empty Week Nudge",
-                        subtitle: "Sunday prompt if next 7 days are empty",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyEmptyWeekNudges },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyEmptyWeekNudges, value: $0) }
+                VStack(spacing: 14) {
+                    ForEach(Array(notificationGroups.enumerated()), id: \.offset) { index, group in
+                        SettingsGroupToggleRow(
+                            title: group.title,
+                            subtitle: group.subtitle,
+                            isOn: Binding(
+                                get: {
+                                    group.keyPaths.allSatisfy { viewModel.notificationPrefs[keyPath: $0] }
+                                },
+                                set: { newValue in
+                                    viewModel.updateNotificationPreferences(group.keyPaths, value: newValue)
+                                }
+                            )
                         )
-                    )
 
-                    SettingsToggleRow(
-                        title: "Group Quiet Ping",
-                        subtitle: "If a group is quiet for 14 days",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyGroupQuietPings },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyGroupQuietPings, value: $0) }
-                        )
-                    )
-
-                    SettingsToggleRow(
-                        title: "AI Assist Follow-up",
-                        subtitle: "If you asked availability but didn’t schedule",
-                        isOn: Binding(
-                            get: { viewModel.notificationPrefs.notifyAIAssistFollowups },
-                            set: { viewModel.toggleNotificationPreference(keyPath: \.notifyAIAssistFollowups, value: $0) }
-                        )
-                    )
+                        if index < notificationGroups.count - 1 {
+                            Divider().opacity(0.5)
+                        }
+                    }
                 }
             }
         }
@@ -272,7 +172,7 @@ struct SettingsView: View {
     
     private var calendarPreferencesSection: some View {
         SettingsSectionCard(title: "Calendar", icon: "calendar") {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 SettingsToggleRow(
                     title: "Hide holidays & birthdays",
                     subtitle: "Filters common holiday and birthday calendars",
@@ -306,7 +206,7 @@ struct SettingsView: View {
     
     private var widgetsSection: some View {
         SettingsSectionCard(title: "Widgets", icon: "square.grid.2x2.fill") {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text("Display Mode")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundColor(.primary)
@@ -325,7 +225,7 @@ struct SettingsView: View {
                 Text("Choose how widgets display upcoming events. Rolling mode rotates through events every 10 minutes. Next Up Only shows just the next event.")
                     .font(.system(size: 12, weight: .regular, design: .rounded))
                     .foregroundColor(.secondary)
-                    .padding(.top, 4)
+                    .padding(.top, 6)
             }
         }
     }
@@ -394,7 +294,7 @@ private struct SettingsSectionCard<Content: View>: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             // Header
             HStack(spacing: 8) {
                 Image(systemName: icon)
@@ -408,7 +308,8 @@ private struct SettingsSectionCard<Content: View>: View {
             
             content
         }
-        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(colorScheme == .dark ? Color(hex: "1a1a2e").opacity(0.7) : Color.white.opacity(0.85))
@@ -442,6 +343,40 @@ private struct SettingsToggleRow: View {
             }
         }
         .tint(themeManager.primaryColor)
+        .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Notification Group Model
+
+private struct NotificationGroup {
+    let title: String
+    let subtitle: String
+    let keyPaths: [WritableKeyPath<NotificationPreferences, Bool>]
+}
+
+// MARK: - Settings Group Toggle Row
+
+private struct SettingsGroupToggleRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var isOn: Bool
+    @EnvironmentObject var themeManager: ThemeManager
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .tint(themeManager.primaryColor)
+        .padding(.vertical, 6)
     }
 }
 

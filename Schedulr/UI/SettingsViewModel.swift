@@ -110,6 +110,15 @@ final class SettingsViewModel: ObservableObject {
             await saveNotificationPrefs()
         }
     }
+
+    func updateNotificationPreferences(_ keyPaths: [WritableKeyPath<NotificationPreferences, Bool>], value: Bool) {
+        for keyPath in keyPaths {
+            notificationPrefs[keyPath: keyPath] = value
+        }
+        Task {
+            await saveNotificationPrefs()
+        }
+    }
     
     // MARK: - Theme Preferences
     
