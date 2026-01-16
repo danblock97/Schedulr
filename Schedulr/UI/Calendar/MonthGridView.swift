@@ -8,15 +8,17 @@ struct MonthGridView: View {
     let viewMode: MonthViewMode
     var onDateSelected: ((Date) -> Void)?
     let currentUserId: UUID?
-
-    private let columns = Array(repeating: GridItem(.flexible(minimum: 36, maximum: .infinity)), count: 7)
+    
+    private var weekSpacing: CGFloat {
+        viewMode == .compact ? 4 : 6
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                LazyVGrid(columns: columns, spacing: viewMode == .compact ? 4 : 6) {
-                    ForEach(daysInMonthGrid, id: \.self) { day in
-                        dayCell(day)
+                VStack(spacing: weekSpacing) {
+                    ForEach(Array(weeksInMonthGrid.enumerated()), id: \.offset) { _, weekDays in
+                        weekRow(weekDays)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -58,12 +60,16 @@ struct MonthGridView: View {
     }
 
 
-    private func dayCell(_ day: Date) -> some View {
+    private func dayCell(_ day: Date, barRowCount: Int) -> some View {
         let isCurrentMonth = Calendar.current.isDate(day, equalTo: displayedMonth, toGranularity: .month)
         let isToday = Calendar.current.isDateInToday(day)
         let isSelected = Calendar.current.isDate(day, inSameDayAs: selectedDate)
-        let dayEvents = eventsForDay(day)
+        let dayEvents = eventsForDayForGrid(day)
         let dayNumber = Calendar.current.component(.day, from: day)
+        let baseContentOffset: CGFloat = viewMode == .compact ? 42 : 44
+        let barHeight: CGFloat = viewMode == .compact ? 12 : 16
+        let barSpacing: CGFloat = 3
+        let contentOffset = baseContentOffset + CGFloat(barRowCount) * (barHeight + barSpacing)
         
         return ZStack(alignment: .top) {
             // Date number - centered horizontally
@@ -80,7 +86,7 @@ struct MonthGridView: View {
             VStack(alignment: .leading, spacing: viewMode == .compact ? 2 : 4) {
                 // Spacer to align content below day number
                 Spacer()
-                    .frame(height: viewMode == .compact ? 32 : 34)
+                    .frame(height: contentOffset)
             
             // Event indicators based on view mode
             if viewMode == .compact {
@@ -121,7 +127,7 @@ struct MonthGridView: View {
                 }
             } else {
                 // Details: Event titles stacked
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .center, spacing: 2) {
                     ForEach(dayEvents.prefix(2)) { event in
                         HStack(spacing: 4) {
                             if let emoji = event.base.category?.emoji {
@@ -130,7 +136,8 @@ struct MonthGridView: View {
                             }
                             Text(shouldShowPrivate(event.base) ? "Busy" : (event.base.title.isEmpty ? "Busy" : event.base.title))
                                 .font(.system(size: 10, weight: .medium))
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
                         }
                         .foregroundColor(event.base.effectiveColor != nil ? Color(
                             red: event.base.effectiveColor!.red,
@@ -138,11 +145,11 @@ struct MonthGridView: View {
                             blue: event.base.effectiveColor!.blue,
                             opacity: event.base.effectiveColor!.alpha
                         ) : Color(red: 0.58, green: 0.41, blue: 0.87))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .frame(maxWidth: .infinity, alignment: .center)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: 6)
                                 .fill((event.base.effectiveColor != nil ? Color(
                                     red: event.base.effectiveColor!.red,
                                     green: event.base.effectiveColor!.green,
@@ -215,6 +222,14 @@ struct MonthGridView: View {
         while days.count % 7 != 0 { days.append(Calendar.current.date(byAdding: .day, value: 1, to: days.last ?? start)!) }
         return days
     }
+    
+    private var weeksInMonthGrid: [[Date]] {
+        let days = daysInMonthGrid
+        guard !days.isEmpty else { return [] }
+        return stride(from: 0, to: days.count, by: 7).map { index in
+            Array(days[index..<min(index + 7, days.count)])
+        }
+    }
 
     private func eventsForDay(_ day: Date) -> [DisplayEvent] {
         let dayStart = Calendar.current.startOfDay(for: day)
@@ -239,6 +254,111 @@ struct MonthGridView: View {
             }
         }
     }
+    
+    private func eventsForDayForGrid(_ day: Date) -> [DisplayEvent] {
+        eventsForDay(day).filter { !$0.isMultiDay }
+    }
+    
+    private func weekRow(_ weekDays: [Date]) -> some View {
+        let segments = layoutMultiDaySegments(for: weekDays)
+        let barRowCount = max(segments.map { $0.row }.max() ?? -1, -1) + 1
+        
+        return ZStack(alignment: .topLeading) {
+            HStack(spacing: weekSpacing) {
+                ForEach(weekDays, id: \.self) { day in
+                    dayCell(day, barRowCount: barRowCount)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            
+            multiDayBarsOverlay(segments: segments)
+        }
+    }
+    
+    private func layoutMultiDaySegments(for weekDays: [Date]) -> [WeekSpan] {
+        let sortedSegments = multiDaySegments(for: events, weekDays: weekDays).sorted { a, b in
+            if a.startIndex == b.startIndex {
+                return a.endIndex > b.endIndex
+            }
+            return a.startIndex < b.startIndex
+        }
+        
+        var rowEndIndexes: [Int] = []
+        var result: [WeekSpan] = []
+        
+        for segment in sortedSegments {
+            var assignedRow: Int?
+            for (row, endIndex) in rowEndIndexes.enumerated() {
+                if segment.startIndex > endIndex {
+                    assignedRow = row
+                    rowEndIndexes[row] = segment.endIndex
+                    break
+                }
+            }
+            if assignedRow == nil {
+                rowEndIndexes.append(segment.endIndex)
+                assignedRow = rowEndIndexes.count - 1
+            }
+            
+            result.append(WeekSpan(segment: segment, row: assignedRow ?? 0))
+        }
+        
+        return result
+    }
+    
+    private func multiDayBarsOverlay(segments: [WeekSpan]) -> some View {
+        GeometryReader { geometry in
+            let totalSpacing = weekSpacing * 6
+            let cellWidth = (geometry.size.width - totalSpacing) / 7
+            let barHeight: CGFloat = viewMode == .compact ? 12 : 16
+            let barSpacing: CGFloat = 3
+            let barTopOffset: CGFloat = viewMode == .compact ? 42 : 44
+            let barFontSize: CGFloat = viewMode == .compact ? 8 : 10
+            
+            if cellWidth > 0 {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, span in
+                    let spanDays = span.segment.endIndex - span.segment.startIndex + 1
+                    let rawWidth = (CGFloat(spanDays) * cellWidth) + (CGFloat(spanDays - 1) * weekSpacing)
+                    let barWidth = max(rawWidth - 4, 4)
+                    let xOffset = (CGFloat(span.segment.startIndex) * (cellWidth + weekSpacing)) + 2
+                    let yOffset = barTopOffset + (CGFloat(span.row) * (barHeight + barSpacing))
+                    let cornerRadius = barHeight / 2
+                    let event = span.segment.event
+                    
+                    ZStack(alignment: .leading) {
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: span.segment.continuesFromPrevious ? 2 : cornerRadius,
+                            bottomLeadingRadius: span.segment.continuesFromPrevious ? 2 : cornerRadius,
+                            bottomTrailingRadius: span.segment.continuesToNext ? 2 : cornerRadius,
+                            topTrailingRadius: span.segment.continuesToNext ? 2 : cornerRadius
+                        )
+                        .fill(eventColor(event).opacity(0.9))
+                        .overlay(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: span.segment.continuesFromPrevious ? 2 : cornerRadius,
+                                bottomLeadingRadius: span.segment.continuesFromPrevious ? 2 : cornerRadius,
+                                bottomTrailingRadius: span.segment.continuesToNext ? 2 : cornerRadius,
+                                topTrailingRadius: span.segment.continuesToNext ? 2 : cornerRadius
+                            )
+                            .stroke(eventColor(event), lineWidth: 1)
+                        )
+                        
+                        Text(shouldShowPrivate(event.base) ? "Busy" : (event.base.title.isEmpty ? "Busy" : event.base.title))
+                            .font(.system(size: barFontSize, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    }
+                    .frame(width: barWidth, height: barHeight, alignment: .leading)
+                    .offset(x: xOffset, y: yOffset)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
 
     private func startOfMonth(for date: Date) -> Date {
         let comps = Calendar.current.dateComponents([.year, .month], from: date)
@@ -254,6 +374,27 @@ struct MonthGridView: View {
     private func shouldShowPrivate(_ event: CalendarEventWithUser) -> Bool {
         // Show private view if it's a personal event and current user didn't create it
         return event.event_type == "personal" && event.user_id != currentUserId
+    }
+
+    private func eventColor(_ event: DisplayEvent) -> Color {
+        if let color = event.base.effectiveColor {
+            return Color(
+                red: color.red,
+                green: color.green,
+                blue: color.blue,
+                opacity: color.alpha
+            )
+        }
+        return Color(red: 0.58, green: 0.41, blue: 0.87)
+    }
+}
+
+private struct WeekSpan: Identifiable {
+    let segment: MultiDaySpanSegment
+    let row: Int
+    
+    var id: String {
+        "\(segment.id)-row-\(row)"
     }
 }
 

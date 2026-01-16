@@ -8,6 +8,7 @@ struct YearlyCalendarView: View {
     
     private let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+    private let weekSpacing: CGFloat = 2
     
     var body: some View {
         ScrollView {
@@ -45,9 +46,10 @@ struct YearlyCalendarView: View {
             
             // Calendar grid
             let days = daysInMonth(for: monthDate)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 7), spacing: 2) {
-                ForEach(days, id: \.self) { day in
-                    dayCell(day: day, monthDate: monthDate, monthIndex: monthIndex)
+            let weeks = weeksInMonth(days)
+            VStack(spacing: weekSpacing) {
+                ForEach(Array(weeks.enumerated()), id: \.offset) { _, weekDays in
+                    weekRow(weekDays: weekDays, monthDate: monthDate, monthIndex: monthIndex)
                 }
             }
         }
@@ -116,6 +118,85 @@ struct YearlyCalendarView: View {
         }
     }
     
+    private func weekRow(weekDays: [Date], monthDate: Date, monthIndex: Int) -> some View {
+        let segments = layoutMultiDaySegments(for: weekDays)
+        
+        return ZStack(alignment: .topLeading) {
+            HStack(spacing: weekSpacing) {
+                ForEach(weekDays, id: \.self) { day in
+                    dayCell(day: day, monthDate: monthDate, monthIndex: monthIndex)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            
+            multiDayBarsOverlay(segments: segments)
+        }
+    }
+    
+    private func layoutMultiDaySegments(for weekDays: [Date]) -> [YearWeekSpan] {
+        let sortedSegments = multiDaySegments(for: events, weekDays: weekDays).sorted { a, b in
+            if a.startIndex == b.startIndex {
+                return a.endIndex > b.endIndex
+            }
+            return a.startIndex < b.startIndex
+        }
+        
+        var rowEndIndexes: [Int] = []
+        var result: [YearWeekSpan] = []
+        
+        for segment in sortedSegments {
+            var assignedRow: Int?
+            for (row, endIndex) in rowEndIndexes.enumerated() {
+                if segment.startIndex > endIndex {
+                    assignedRow = row
+                    rowEndIndexes[row] = segment.endIndex
+                    break
+                }
+            }
+            if assignedRow == nil {
+                rowEndIndexes.append(segment.endIndex)
+                assignedRow = rowEndIndexes.count - 1
+            }
+            
+            result.append(YearWeekSpan(segment: segment, row: assignedRow ?? 0))
+        }
+        
+        return result
+    }
+    
+    private func multiDayBarsOverlay(segments: [YearWeekSpan]) -> some View {
+        GeometryReader { geometry in
+            let totalSpacing = weekSpacing * 6
+            let cellWidth = (geometry.size.width - totalSpacing) / 7
+            let barHeight: CGFloat = 3
+            let barSpacing: CGFloat = 1
+            let barBaseline: CGFloat = 16
+            
+            if cellWidth >= 12 {
+                ForEach(segments) { span in
+                    let spanDays = span.segment.endIndex - span.segment.startIndex + 1
+                    let rawWidth = (CGFloat(spanDays) * cellWidth) + (CGFloat(spanDays - 1) * weekSpacing)
+                    let barWidth = max(rawWidth - 2, 2)
+                    let xOffset = (CGFloat(span.segment.startIndex) * (cellWidth + weekSpacing)) + 1
+                    let yOffset = barBaseline - (CGFloat(span.row) * (barHeight + barSpacing))
+                    let cornerRadius = barHeight / 2
+                    let event = span.segment.event
+                    
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: span.segment.continuesFromPrevious ? 1 : cornerRadius,
+                        bottomLeadingRadius: span.segment.continuesFromPrevious ? 1 : cornerRadius,
+                        bottomTrailingRadius: span.segment.continuesToNext ? 1 : cornerRadius,
+                        topTrailingRadius: span.segment.continuesToNext ? 1 : cornerRadius
+                    )
+                    .fill(eventColor(event).opacity(0.9))
+                    .frame(width: barWidth, height: barHeight)
+                    .offset(x: xOffset, y: yOffset)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+    
     private func daysInMonth(for monthDate: Date) -> [Date] {
         let start = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: monthDate)) ?? monthDate
         let range = Calendar.current.range(of: .day, in: .month, for: start) ?? 1..<31
@@ -146,6 +227,13 @@ struct YearlyCalendarView: View {
         return days
     }
     
+    private func weeksInMonth(_ days: [Date]) -> [[Date]] {
+        guard !days.isEmpty else { return [] }
+        return stride(from: 0, to: days.count, by: 7).map { index in
+            Array(days[index..<min(index + 7, days.count)])
+        }
+    }
+    
     private func eventsForDay(_ day: Date) -> [DisplayEvent] {
         let dayStart = Calendar.current.startOfDay(for: day)
         let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
@@ -168,6 +256,27 @@ struct YearlyCalendarView: View {
                 return eventStart < dayEnd && eventEnd > dayStart
             }
         }
+    }
+    
+    private func eventColor(_ event: DisplayEvent) -> Color {
+        if let color = event.base.effectiveColor {
+            return Color(
+                red: color.red,
+                green: color.green,
+                blue: color.blue,
+                opacity: color.alpha
+            )
+        }
+        return Color(red: 0.58, green: 0.41, blue: 0.87)
+    }
+}
+
+private struct YearWeekSpan: Identifiable {
+    let segment: MultiDaySpanSegment
+    let row: Int
+    
+    var id: String {
+        "\(segment.id)-row-\(row)"
     }
 }
 
