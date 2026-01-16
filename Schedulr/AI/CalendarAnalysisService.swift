@@ -135,8 +135,103 @@ final class CalendarAnalysisService {
             return slot1.startDate < slot2.startDate
         }
     }
+
+    // MARK: - Find Free Time Ranges
+
+    /// Finds full free time ranges (gaps between busy periods) for specified users.
+    func findFreeTimeRanges(
+        userIds: [UUID],
+        groupId: UUID,
+        timeWindow: AvailabilityQuery.TimeWindow?,
+        dateRange: AvailabilityQuery.DateRange?
+    ) async throws -> [FreeTimeRange] {
+        guard let client = client else {
+            throw NSError(domain: "CalendarAnalysisService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Supabase client not available"])
+        }
+        
+        guard !userIds.isEmpty else {
+            return []
+        }
+        
+        // Determine date range
+        let calendar = Calendar.current
+        let now = Date()
+        let searchStart: Date
+        let searchEnd: Date
+        
+        if let dateRange = dateRange {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+            searchStart = formatter.date(from: dateRange.start) ?? now
+            searchEnd = formatter.date(from: dateRange.end) ?? calendar.date(byAdding: .day, value: 30, to: now) ?? now
+        } else {
+            searchStart = now
+            searchEnd = calendar.date(byAdding: .day, value: 30, to: now) ?? now
+        }
+        
+        // Fetch all events for specified users in the date range
+        let rows: [EventRow] = try await client
+            .from("calendar_events")
+            .select("id, user_id, start_date, end_date, is_all_day")
+            .eq("group_id", value: groupId)
+            .in("user_id", value: userIds)
+            .gte("end_date", value: searchStart)
+            .lte("start_date", value: searchEnd)
+            .order("start_date", ascending: true)
+            .execute()
+            .value
+        
+        // Group events by user
+        var userEvents: [UUID: [EventRow]] = [:]
+        for userId in userIds {
+            userEvents[userId] = []
+        }
+        
+        for event in rows {
+            userEvents[event.user_id, default: []].append(event)
+        }
+        
+        // Find free time ranges
+        var freeRanges: [FreeTimeRange] = []
+        
+        // Iterate through days in the search range
+        var currentDate = calendar.startOfDay(for: searchStart)
+        let endDate = calendar.startOfDay(for: searchEnd)
+        
+        while currentDate <= endDate {
+            let (dayStart, dayEnd) = dayBounds(for: currentDate, timeWindow: timeWindow)
+            if dayEnd > dayStart {
+                let dayRanges = findFreeRangesForDay(
+                    dayStart: dayStart,
+                    dayEnd: dayEnd,
+                    userEvents: userEvents,
+                    date: currentDate
+                )
+                freeRanges.append(contentsOf: dayRanges)
+            }
+            
+            // Move to next day
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: currentDate) else { break }
+            currentDate = nextDay
+        }
+        
+        return freeRanges.sorted { $0.startDate < $1.startDate }
+    }
     
     // MARK: - Helper Methods
+    
+    private func dayBounds(for date: Date, timeWindow: AvailabilityQuery.TimeWindow?) -> (Date, Date) {
+        let calendar = Calendar.current
+        if let timeWindow = timeWindow {
+            let start = parseTimeWindow(time: timeWindow.start, for: date)
+            let end = parseTimeWindow(time: timeWindow.end, for: date)
+            return (start, end)
+        }
+        
+        let dayStart = calendar.startOfDay(for: date)
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        return (dayStart, dayEnd)
+    }
     
     private func findFreeSlotsForDay(
         dayStart: Date,
@@ -228,6 +323,36 @@ final class CalendarAnalysisService {
         
         return slots
     }
+
+    private func findFreeRangesForDay(
+        dayStart: Date,
+        dayEnd: Date,
+        userEvents: [UUID: [EventRow]],
+        date: Date
+    ) -> [FreeTimeRange] {
+        let calendar = Calendar.current
+        var busyPeriods: [BusyPeriod] = []
+        
+        for (_, events) in userEvents {
+            for event in events {
+                if calendar.isDate(event.start_date, inSameDayAs: date) ||
+                    calendar.isDate(event.end_date, inSameDayAs: date) ||
+                    (event.start_date < date && event.end_date > calendar.date(byAdding: .day, value: 1, to: date) ?? date) {
+                    let periodStart = max(event.start_date, dayStart)
+                    let periodEnd = min(event.end_date, dayEnd)
+                    if periodStart < periodEnd {
+                        busyPeriods.append(BusyPeriod(start: periodStart, end: periodEnd))
+                    }
+                }
+            }
+        }
+        
+        return AvailabilityRangeCalculator.freeRanges(
+            dayStart: dayStart,
+            dayEnd: dayEnd,
+            busyPeriods: busyPeriods
+        )
+    }
     
     private func findAvailableUsers(
         in userEvents: [UUID: [EventRow]],
@@ -274,3 +399,48 @@ final class CalendarAnalysisService {
     }
 }
 
+struct BusyPeriod: Equatable {
+    let start: Date
+    let end: Date
+}
+
+struct AvailabilityRangeCalculator {
+    static func freeRanges(
+        dayStart: Date,
+        dayEnd: Date,
+        busyPeriods: [BusyPeriod]
+    ) -> [FreeTimeRange] {
+        let mergedPeriods = mergedBusyPeriods(busyPeriods)
+        var ranges: [FreeTimeRange] = []
+        var currentTime = dayStart
+        
+        for period in mergedPeriods {
+            if period.start > currentTime {
+                ranges.append(FreeTimeRange(startDate: currentTime, endDate: period.start))
+            }
+            currentTime = max(currentTime, period.end)
+        }
+        
+        if currentTime < dayEnd {
+            ranges.append(FreeTimeRange(startDate: currentTime, endDate: dayEnd))
+        }
+        
+        return ranges
+    }
+    
+    static func mergedBusyPeriods(_ busyPeriods: [BusyPeriod]) -> [BusyPeriod] {
+        guard !busyPeriods.isEmpty else { return [] }
+        let sorted = busyPeriods.sorted { $0.start < $1.start }
+        var merged: [BusyPeriod] = [sorted[0]]
+        
+        for period in sorted.dropFirst() {
+            if let last = merged.last, period.start <= last.end {
+                merged[merged.count - 1] = BusyPeriod(start: last.start, end: max(last.end, period.end))
+            } else {
+                merged.append(period)
+            }
+        }
+        
+        return merged
+    }
+}

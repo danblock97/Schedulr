@@ -343,30 +343,65 @@ final class AIAssistantViewModel: ObservableObject {
             return true
         }
         
+        let effectiveDateRange = query.dateRange ?? inferDateRangeFromRecentMessage()
+        let isSelfOnly = await isCurrentUserOnly(foundNames)
+        
         // Default duration to 1 hour if not specified
         let duration = query.durationHours ?? 1.0
+        let shouldSummarizeRanges = query.durationHours == nil
         
         do {
+            if shouldSummarizeRanges {
+                let ranges = try await calendarAnalysisService.findFreeTimeRanges(
+                    userIds: userIds,
+                    groupId: groupId,
+                    timeWindow: query.timeWindow,
+                    dateRange: effectiveDateRange
+                )
+                
+                if ranges.isEmpty {
+                    let response = ChatMessage(
+                        role: .assistant,
+                        content: isSelfOnly
+                            ? "I couldn't find any free time in the requested time period. Try adjusting the time window."
+                            : "I couldn't find any free time for \(foundNames.joined(separator: ", ")) in the requested time period. Try adjusting the time window."
+                    )
+                    messages.append(response)
+                    await persistMessage(response)
+                } else {
+                    let summary = formatFreeTimeRanges(ranges, timeWindow: query.timeWindow)
+                    let prefix = (!isSelfOnly && !foundNames.isEmpty) ? "For \(foundNames.joined(separator: ", ")), " : ""
+                    let response = ChatMessage(role: .assistant, content: "\(prefix)\(summary)")
+                    messages.append(response)
+                    await persistMessage(response)
+                    Task { await recordPendingAIFollowUp(reason: "availability_slots_found") }
+                }
+                return true
+            }
+            
             // Find free time slots
             let slots = try await calendarAnalysisService.findFreeTimeSlots(
                 userIds: userIds,
                 groupId: groupId,
                 durationHours: duration,
                 timeWindow: query.timeWindow,
-                dateRange: query.dateRange
+                dateRange: effectiveDateRange
             )
             
             if slots.isEmpty {
                 let response = ChatMessage(
                     role: .assistant,
-                    content: "I couldn't find any free \(duration > 1 ? String(format: "%.1f", duration) : "1") hour time slots for \(foundNames.joined(separator: ", ")) in the requested time period. Try adjusting the duration or time window."
+                    content: isSelfOnly
+                        ? "I couldn't find any free \(duration > 1 ? String(format: "%.1f", duration) : "1") hour time slots in the requested time period. Try adjusting the duration or time window."
+                        : "I couldn't find any free \(duration > 1 ? String(format: "%.1f", duration) : "1") hour time slots for \(foundNames.joined(separator: ", ")) in the requested time period. Try adjusting the duration or time window."
                 )
                 messages.append(response)
                 await persistMessage(response)
             } else {
                 // Format response with available slots
                 let slotCount = min(slots.count, 5) // Show top 5 slots
-                var responseText = "I found \(slots.count) available time slot\(slots.count == 1 ? "" : "s") for \(foundNames.joined(separator: ", ")):\n\n"
+                let namesSuffix = isSelfOnly ? "" : " for \(foundNames.joined(separator: ", "))"
+                var responseText = "I found \(slots.count) available time slot\(slots.count == 1 ? "" : "s")\(namesSuffix):\n\n"
                 
                 let formatter = DateFormatter()
                 formatter.dateStyle = .medium
@@ -1315,6 +1350,106 @@ Be concise and friendly in your responses. If asked about availability, remind u
             map[member.displayName.lowercased()] = member.id
         }
         return map
+    }
+    
+    private func formatFreeTimeRanges(_ ranges: [FreeTimeRange], timeWindow: AvailabilityQuery.TimeWindow?) -> String {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: ranges) { calendar.startOfDay(for: $0.startDate) }
+        let sortedDays = grouped.keys.sorted()
+        let isSingleDay = sortedDays.count == 1
+        
+        let timeFormatter = DateFormatter()
+        timeFormatter.timeStyle = .short
+        timeFormatter.dateStyle = .none
+        
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateStyle = .medium
+        dayFormatter.timeStyle = .none
+        
+        func joinRanges(_ parts: [String]) -> String {
+            switch parts.count {
+            case 0:
+                return ""
+            case 1:
+                return parts[0]
+            case 2:
+                return "\(parts[0]) and \(parts[1])"
+            default:
+                return parts.dropLast().joined(separator: ", ") + ", and \(parts.last ?? "")"
+            }
+        }
+        
+        var daySummaries: [String] = []
+        
+        for day in sortedDays {
+            guard let dayRanges = grouped[day]?.sorted(by: { $0.startDate < $1.startDate }) else { continue }
+            let dayStart = calendar.startOfDay(for: day)
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            let isAllDay = timeWindow == nil &&
+                dayRanges.count == 1 &&
+                abs(dayRanges[0].startDate.timeIntervalSince(dayStart)) < 1 &&
+                abs(dayRanges[0].endDate.timeIntervalSince(dayEnd)) < 1
+            
+            if isAllDay {
+                if isSingleDay {
+                    daySummaries.append("You're free all day.")
+                } else {
+                    daySummaries.append("\(dayFormatter.string(from: dayStart)): You're free all day.")
+                }
+                continue
+            }
+            
+            let rangeStrings = dayRanges.map { range in
+                let start = timeFormatter.string(from: range.startDate)
+                let end = timeFormatter.string(from: range.endDate)
+                return "\(start)-\(end)"
+            }
+            
+            let rangesText = joinRanges(rangeStrings)
+            if isSingleDay {
+                daySummaries.append("You're free \(rangesText).")
+            } else {
+                daySummaries.append("\(dayFormatter.string(from: dayStart)): \(rangesText).")
+            }
+        }
+        
+        let separator = daySummaries.count > 1 ? "\n" : " "
+        return daySummaries.joined(separator: separator)
+    }
+    
+    private func inferDateRangeFromRecentMessage() -> AvailabilityQuery.DateRange? {
+        let lastUserMessage = messages.last(where: { $0.role == .user })?.content.lowercased() ?? ""
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        let targetDate: Date?
+        if lastUserMessage.contains("tomorrow") {
+            targetDate = calendar.date(byAdding: .day, value: 1, to: today)
+        } else if lastUserMessage.contains("today") || lastUserMessage.contains("tonight") {
+            targetDate = today
+        } else {
+            targetDate = nil
+        }
+        
+        guard let date = targetDate else { return nil }
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+        let dateString = formatter.string(from: date)
+        return AvailabilityQuery.DateRange(start: dateString, end: dateString)
+    }
+    
+    private func isCurrentUserOnly(_ names: [String]) async -> Bool {
+        guard names.count == 1 else { return false }
+        guard let currentUserName = await currentUserDisplayName() else { return false }
+        return currentUserName.lowercased() == names[0].lowercased()
+    }
+    
+    private func currentUserDisplayName() async -> String? {
+        guard let client = SupabaseManager.shared.client else { return nil }
+        guard let session = try? await client.auth.session else { return nil }
+        let currentUserId = session.user.id
+        return dashboardViewModel.members.first(where: { $0.id == currentUserId })?.displayName
     }
     
     private func buildFollowUpOptions(for slots: [FreeTimeSlot], durationHours: Double) -> [FollowUpOption] {

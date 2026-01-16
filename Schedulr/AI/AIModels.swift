@@ -208,6 +208,18 @@ struct FreeTimeSlot: Identifiable, Equatable {
     }
 }
 
+struct FreeTimeRange: Identifiable, Equatable {
+    let id: UUID
+    let startDate: Date
+    let endDate: Date
+    
+    init(id: UUID = UUID(), startDate: Date, endDate: Date) {
+        self.id = id
+        self.startDate = startDate
+        self.endDate = endDate
+    }
+}
+
 // MARK: - OpenAI API Models
 
 struct OpenAIRequest: Codable {
