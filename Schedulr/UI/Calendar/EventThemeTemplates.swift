@@ -7,7 +7,7 @@ struct EventThemeTemplate: Identifiable, Equatable {
     let name: String
     let emoji: String
     let suggestedColor: ColorComponents
-    let presetImageName: String? // Name of bundled asset image
+    let presetI44 tmageName: String? // Name of bundled asset image
     
     static let movieNight = EventThemeTemplate(
         id: "movie_night",

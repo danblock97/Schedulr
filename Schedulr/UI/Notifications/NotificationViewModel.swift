@@ -41,7 +41,7 @@ class NotificationViewModel: ObservableObject {
                     // Sort by date, most recent first
                     notification1.date > notification2.date
                 }
-                self?.badgeCount = notifications.count
+                self?.applyBadgeCount(notifications.count)
                 self?.isLoading = false
             }
         }
@@ -50,7 +50,7 @@ class NotificationViewModel: ObservableObject {
     func updateBadgeCount() {
         UNUserNotificationCenter.current().getDeliveredNotifications { [weak self] notifications in
             Task { @MainActor in
-                self?.badgeCount = notifications.count
+                self?.applyBadgeCount(notifications.count)
             }
         }
     }
@@ -59,13 +59,9 @@ class NotificationViewModel: ObservableObject {
         // Remove all delivered notifications
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
         
-        // Clear badge count
-        UIApplication.shared.applicationIconBadgeNumber = 0
-        UserDefaults.standard.set(0, forKey: "SchedulrBadgeCount")
-        
         // Update local state
         notifications = []
-        badgeCount = 0
+        applyBadgeCount(0)
         
         #if DEBUG
         print("[NotificationViewModel] Marked all notifications as read and cleared badge")
@@ -94,6 +90,12 @@ class NotificationViewModel: ObservableObject {
                 UserDefaults.standard.set(badgeCount, forKey: "SchedulrBadgeCount")
             }
         }
+    }
+
+    private func applyBadgeCount(_ count: Int) {
+        badgeCount = count
+        UIApplication.shared.applicationIconBadgeNumber = count
+        UserDefaults.standard.set(count, forKey: "SchedulrBadgeCount")
     }
     
     func refresh() {
