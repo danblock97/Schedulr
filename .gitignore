@@ -12,5 +12,4 @@ run-dual-simulators.sh
 # Swift Package Manager generated files
 *.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
-generate-jwt.js
-RENEW_APPLE_JWT.md
+JWT/*
