@@ -135,8 +135,10 @@ struct MonthGridView: View {
                                     .font(.system(size: 9))
                             }
                             Text(shouldShowPrivate(event.base) ? "Busy" : (event.base.title.isEmpty ? "Busy" : event.base.title))
-                                .font(.system(size: 10, weight: .medium))
-                                .lineLimit(2)
+                                .font(.system(size: 9, weight: .medium))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                                .allowsTightening(true)
                                 .multilineTextAlignment(.center)
                         }
                         .foregroundColor(event.base.effectiveColor != nil ? Color(
@@ -470,5 +472,4 @@ private struct MiniAgendaRow: View {
         return member?.color ?? .blue
     }
 }
-
 

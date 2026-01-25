@@ -5,14 +5,18 @@ import SwiftUI
 struct GroupAvailabilityView: View {
     @StateObject private var viewModel: GroupAvailabilityViewModel
     @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject private var calendarSync: CalendarSyncManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     
     @State private var showingDetail = false
     @State private var selectedDate: Date?
     @State private var selectedBlock: GroupAvailabilityViewModel.TimeBlock?
+    @State private var calendarPrefs = CalendarPreferences(hideHolidays: true, dedupAllDay: true)
+    private let groupId: UUID
     
     init(groupId: UUID, members: [DashboardViewModel.MemberSummary]) {
+        self.groupId = groupId
         _viewModel = StateObject(wrappedValue: GroupAvailabilityViewModel(
             groupId: groupId,
             members: members
@@ -78,6 +82,7 @@ struct GroupAvailabilityView: View {
             }
             .task {
                 await viewModel.loadAvailability()
+                await loadCalendarPrefs()
             }
             .overlay {
                 if showingDetail, let date = selectedDate, let block = selectedBlock {
@@ -161,7 +166,7 @@ struct GroupAvailabilityView: View {
                         TimeBlockRow(
                             block: block,
                             dates: viewModel.displayDates,
-                            viewModel: viewModel
+                            summaryProvider: blockSummary
                         ) { date, tappedBlock in
                             selectedDate = date
                             selectedBlock = tappedBlock
@@ -289,13 +294,15 @@ struct GroupAvailabilityView: View {
                 }
             
             // Detail popover
-            let summary = viewModel.getBlockSummary(for: date, block: block)
+            let summary = blockSummary(for: date, block: block)
             let freeMemberNames = viewModel.freeMemberNames(for: summary.freeMemberIds)
+            let busyEventSummaries = busyEventSummaries(for: date, block: block)
             
             AvailabilityDetailPopover(
                 date: date,
                 block: block,
                 freeMemberNames: freeMemberNames,
+                busyEventSummaries: busyEventSummaries,
                 totalMembers: summary.totalMembers
             ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -303,6 +310,95 @@ struct GroupAvailabilityView: View {
                 }
             }
             .transition(.scale.combined(with: .opacity))
+        }
+    }
+
+    private func busyEventSummaries(for date: Date, block: GroupAvailabilityViewModel.TimeBlock) -> [String] {
+        let filteredEvents = availabilityEvents()
+        let calendar = Calendar.current
+        guard
+            let blockStart = calendar.date(bySettingHour: block.hours.lowerBound, minute: 0, second: 0, of: date),
+            let blockEnd = calendar.date(bySettingHour: block.hours.upperBound + 1, minute: 0, second: 0, of: date)
+        else {
+            return []
+        }
+        
+        let overlappingEvents = filteredEvents.filter { event in
+            return event.start_date < blockEnd && event.end_date > blockStart
+        }
+        
+        var seen = Set<String>()
+        var summaries: [String] = []
+        
+        for event in overlappingEvents {
+            let summary: String
+            if event.event_type == "group" {
+                summary = event.title.isEmpty ? "Group event" : event.title
+            } else {
+                summary = "Busy (private)"
+            }
+            
+            if !seen.contains(summary) {
+                summaries.append(summary)
+                seen.insert(summary)
+            }
+        }
+        
+        return summaries
+    }
+
+    private func blockSummary(for date: Date, block: GroupAvailabilityViewModel.TimeBlock) -> GroupAvailabilityViewModel.BlockSummary {
+        let summary = viewModel.getBlockSummary(for: date, block: block)
+        guard summary.totalMembers > 0, summary.freeMembers == 0 else {
+            return summary
+        }
+        
+        let calendar = Calendar.current
+        guard
+            let blockStart = calendar.date(bySettingHour: block.hours.lowerBound, minute: 0, second: 0, of: date),
+            let blockEnd = calendar.date(bySettingHour: block.hours.upperBound + 1, minute: 0, second: 0, of: date)
+        else {
+            return summary
+        }
+        
+        let overlappingEvents = availabilityEvents().filter { event in
+            event.start_date < blockEnd && event.end_date > blockStart
+        }
+        
+        guard overlappingEvents.isEmpty else { return summary }
+        
+        let memberIds = Array(viewModel.memberNames.keys)
+        return GroupAvailabilityViewModel.BlockSummary(
+            totalMembers: summary.totalMembers,
+            freeMembers: summary.totalMembers,
+            allSlotsFree: summary.totalMembers > 0,
+            freeMemberIds: memberIds
+        )
+    }
+    
+    private func availabilityEvents() -> [CalendarEventWithUser] {
+        var events = calendarSync.groupEvents.filter { event in
+            event.group_id == groupId || event.event_type == "personal"
+        }
+        
+        if calendarPrefs.hideHolidays {
+            events = events.filter { ev in
+                let name = (ev.calendar_name ?? ev.title).lowercased()
+                let cal = (ev.calendar_name ?? "").lowercased()
+                let isHoliday = name.contains("holiday") || cal.contains("holiday")
+                let isBirthday = name.contains("birthday") || cal.contains("birthday")
+                return !(isHoliday || isBirthday)
+            }
+        }
+        
+        return events
+    }
+    
+    private func loadCalendarPrefs() async {
+        guard let client = SupabaseManager.shared.client else { return }
+        guard let userId = try? await client.auth.session.user.id else { return }
+        if let prefs = try? await CalendarPreferencesManager.shared.load(for: userId) {
+            calendarPrefs = prefs
         }
     }
 }
@@ -316,8 +412,12 @@ struct AvailabilityPreviewCard: View {
     let onTap: () -> Void
     
     @EnvironmentObject var themeManager: ThemeManager
-    @State private var topHighlight: EveryoneFreeHighlight?
+    @State private var highlights: [EveryoneFreeHighlight] = []
     @State private var isLoading = false
+    
+    private var highlightSummary: String {
+        highlights.prefix(2).map { $0.friendlyDescription }.joined(separator: " • ")
+    }
     
     var body: some View {
         Button(action: onTap) {
@@ -334,12 +434,12 @@ struct AvailabilityPreviewCard: View {
                 }
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    if let highlight = topHighlight {
+                    if !highlights.isEmpty {
                         Text("Everyone's free!")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
                         
-                        Text(highlight.friendlyDescription)
+                        Text(highlightSummary)
                             .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                     } else {
@@ -367,7 +467,7 @@ struct AvailabilityPreviewCard: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(
-                        topHighlight != nil ?
+                        !highlights.isEmpty ?
                         AnyShapeStyle(LinearGradient(
                             colors: [themeManager.primaryColor.opacity(0.25), themeManager.secondaryColor.opacity(0.15)],
                             startPoint: .topLeading,
@@ -390,14 +490,30 @@ struct AvailabilityPreviewCard: View {
         guard let endDate = calendar.date(byAdding: .day, value: 7, to: startDate) else { return }
         
         do {
-            let highlights = try await AvailabilityService.shared.findEveryoneFreeHighlights(
+            let fetched = try await AvailabilityService.shared.findEveryoneFreeHighlights(
                 groupId: groupId,
                 startDate: startDate,
                 endDate: endDate
             )
-            topHighlight = highlights.first
+            highlights = upcomingHighlights(from: fetched, now: Date())
         } catch {
             print("[AvailabilityPreviewCard] Failed to load highlights: \(error)")
+        }
+    }
+    
+    private func upcomingHighlights(from highlights: [EveryoneFreeHighlight], now: Date) -> [EveryoneFreeHighlight] {
+        let calendar = Calendar.current
+        let upcoming = highlights.filter { highlight in
+            guard let endDate = calendar.date(bySettingHour: highlight.endHour, minute: 0, second: 0, of: highlight.date) else {
+                return false
+            }
+            return endDate > now
+        }
+        
+        return upcoming.sorted { lhs, rhs in
+            let leftDate = calendar.date(bySettingHour: lhs.startHour, minute: 0, second: 0, of: lhs.date) ?? lhs.date
+            let rightDate = calendar.date(bySettingHour: rhs.startHour, minute: 0, second: 0, of: rhs.date) ?? rhs.date
+            return leftDate < rightDate
         }
     }
 }
@@ -425,5 +541,5 @@ struct AvailabilityPreviewCard: View {
         ]
     )
     .environmentObject(ThemeManager.shared)
+    .environmentObject(CalendarSyncManager())
 }
-

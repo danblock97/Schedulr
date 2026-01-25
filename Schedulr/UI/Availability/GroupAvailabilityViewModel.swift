@@ -113,7 +113,7 @@ final class GroupAvailabilityViewModel: ObservableObject {
             let (summary, highlights) = try await (summaryTask, highlightsTask)
             
             availabilitySummary = summary
-            everyoneFreeHighlights = highlights
+            everyoneFreeHighlights = upcomingHighlights(from: highlights, now: Date())
         } catch {
             errorMessage = error.localizedDescription
             print("[GroupAvailabilityViewModel] Failed to load availability: \(error)")
@@ -144,11 +144,12 @@ final class GroupAvailabilityViewModel: ObservableObject {
         }
         
         guard !relevantSlots.isEmpty else {
+            let memberIds = members.map { $0.id }
             return BlockSummary(
                 totalMembers: members.count,
-                freeMembers: 0,
-                allSlotsFree: false,
-                freeMemberIds: []
+                freeMembers: members.count,
+                allSlotsFree: !members.isEmpty,
+                freeMemberIds: memberIds
             )
         }
         
@@ -203,5 +204,20 @@ final class GroupAvailabilityViewModel: ObservableObject {
     func freeMemberNames(for memberIds: [UUID]) -> [String] {
         memberIds.compactMap { memberNames[$0] }
     }
-}
 
+    private func upcomingHighlights(from highlights: [EveryoneFreeHighlight], now: Date) -> [EveryoneFreeHighlight] {
+        let calendar = Calendar.current
+        let upcoming = highlights.filter { highlight in
+            guard let endDate = calendar.date(bySettingHour: highlight.endHour, minute: 0, second: 0, of: highlight.date) else {
+                return false
+            }
+            return endDate > now
+        }
+        
+        return upcoming.sorted { lhs, rhs in
+            let leftDate = calendar.date(bySettingHour: lhs.startHour, minute: 0, second: 0, of: lhs.date) ?? lhs.date
+            let rightDate = calendar.date(bySettingHour: rhs.startHour, minute: 0, second: 0, of: rhs.date) ?? rhs.date
+            return leftDate < rightDate
+        }
+    }
+}

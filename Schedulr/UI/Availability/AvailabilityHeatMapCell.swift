@@ -58,7 +58,7 @@ struct AvailabilityHeatMapCell: View {
 struct TimeBlockRow: View {
     let block: GroupAvailabilityViewModel.TimeBlock
     let dates: [Date]
-    let viewModel: GroupAvailabilityViewModel
+    let summaryProvider: (Date, GroupAvailabilityViewModel.TimeBlock) -> GroupAvailabilityViewModel.BlockSummary
     let onTap: (Date, GroupAvailabilityViewModel.TimeBlock) -> Void
     
     @EnvironmentObject var themeManager: ThemeManager
@@ -79,7 +79,7 @@ struct TimeBlockRow: View {
             
             // Cells for each day
             ForEach(dates, id: \.self) { date in
-                let summary = viewModel.getBlockSummary(for: date, block: block)
+                let summary = summaryProvider(date, block)
                 
                 Button {
                     onTap(date, block)
@@ -223,6 +223,7 @@ struct AvailabilityDetailPopover: View {
     let date: Date
     let block: GroupAvailabilityViewModel.TimeBlock
     let freeMemberNames: [String]
+    let busyEventSummaries: [String]
     let totalMembers: Int
     let onDismiss: () -> Void
     
@@ -263,48 +264,70 @@ struct AvailabilityDetailPopover: View {
             
             Divider()
             
-            // Free members list
-            if freeMemberNames.isEmpty {
+            if freeMemberNames.isEmpty && busyEventSummaries.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "calendar.badge.exclamationmark")
                         .font(.system(size: 20))
                         .foregroundStyle(.orange)
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("No one's shared yet")
+                        Text("Everyone's busy")
                             .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        Text("Members need to share their availability")
+                        Text("No event details are available")
                             .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
                 }
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Who's free")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    
-                    ForEach(freeMemberNames, id: \.self) { name in
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 10) {
+                    if !freeMemberNames.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Who's free")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
                             
-                            Text(name)
-                                .font(.system(size: 15, weight: .medium, design: .rounded))
+                            ForEach(freeMemberNames, id: \.self) { name in
+                                HStack(spacing: 10) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(.green)
+                                    
+                                    Text(name)
+                                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                                }
+                            }
                         }
                     }
                     
-                    let busyCount = totalMembers - freeMemberNames.count
-                    if busyCount > 0 {
-                        HStack(spacing: 10) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.red.opacity(0.7))
-                            
-                            Text("\(busyCount) \(busyCount == 1 ? "person" : "people") busy")
-                                .font(.system(size: 15, weight: .medium, design: .rounded))
+                    if !busyEventSummaries.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Busy")
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.secondary)
+                            
+                            ForEach(busyEventSummaries, id: \.self) { summary in
+                                HStack(spacing: 10) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(.red.opacity(0.7))
+                                    
+                                    Text(summary)
+                                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                                }
+                            }
+                        }
+                    } else {
+                        let busyCount = totalMembers - freeMemberNames.count
+                        if busyCount > 0 {
+                            HStack(spacing: 10) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.red.opacity(0.7))
+                                
+                                Text("\(busyCount) \(busyCount == 1 ? "person" : "people") busy")
+                                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -319,5 +342,3 @@ struct AvailabilityDetailPopover: View {
         .shadow(color: Color.black.opacity(0.15), radius: 20, x: 0, y: 10)
     }
 }
-
-
