@@ -60,8 +60,6 @@
 		6744154BC05700047A96E251 /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FFAB3D7DB57802044E1E87D /* PaywallView.swift */; };
 		702C162556837ACFB5CCF665 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DED9B056507EDE9DB8F1B8D /* AuthViewModel.swift */; };
 		74135066AC09E62CAD39E3FE /* DayTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F6FD738EDDA61422CDA9F1F /* DayTimelineView.swift */; };
-		7F1A9B0C2F1234567890ABD0 /* SupportTicketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */; };
-		7F1A9B0C2F1234567890ABD1 /* SupportTicketViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */; };
 		7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */; };
 		7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */; };
 		7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */; };
@@ -102,7 +100,7 @@
 		AVAIL002BUILDFILE0002002AB /* GroupAvailabilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AVAIL002FILEREF0002002AB /* GroupAvailabilityView.swift */; };
 		AVAIL003BUILDFILE0003003AB /* GroupAvailabilityViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AVAIL003FILEREF0003003AB /* GroupAvailabilityViewModel.swift */; };
 		AVAIL004BUILDFILE0004004AB /* AvailabilityHeatMapCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = AVAIL004FILEREF0004004AB /* AvailabilityHeatMapCell.swift */; };
-		R2STORAGE01BUILDFILE0001AB /* R2StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = R2STORAGE01FILEREF00001AB /* R2StorageService.swift */; };
+		SBASTORAGE01BUILDFILE001AB /* SupabaseStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SBASTORAGE01FILEREF0001AB /* SupabaseStorageService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -186,8 +184,6 @@
 		788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthViewModePicker.swift; sourceTree = "<group>"; };
 		7D98302AF9470C2C50DFA823 /* YearlyCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YearlyCalendarView.swift; sourceTree = "<group>"; };
 		7DA078E691BEE2BD0A47A4A9 /* SubscriptionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionManager.swift; sourceTree = "<group>"; };
-		7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportTicketView.swift; sourceTree = "<group>"; };
-		7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportTicketViewModel.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveHeroView.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaHeroView.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaSpeaker.swift; sourceTree = "<group>"; };
@@ -230,7 +226,7 @@
 		AVAIL002FILEREF0002002AB /* GroupAvailabilityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupAvailabilityView.swift; sourceTree = "<group>"; };
 		AVAIL003FILEREF0003003AB /* GroupAvailabilityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupAvailabilityViewModel.swift; sourceTree = "<group>"; };
 		AVAIL004FILEREF0004004AB /* AvailabilityHeatMapCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvailabilityHeatMapCell.swift; sourceTree = "<group>"; };
-		R2STORAGE01FILEREF00001AB /* R2StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = R2StorageService.swift; sourceTree = "<group>"; };
+		SBASTORAGE01FILEREF0001AB /* SupabaseStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseStorageService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -296,7 +292,6 @@
 			children = (
 				1BA1C6F42EDF5358009C25B7 /* SettingsViewModel.swift */,
 				1BA1C6F22EDF5352009C25B7 /* SettingsView.swift */,
-				7F1A9B0C2F1234567890ABCF /* Support */,
 				1B929AD52ED05562001176EF /* Notifications */,
 				E5118D921023605E2B3CEACE /* Calendar */,
 				AVAIL005GROUPREF000000AB /* Availability */,
@@ -416,15 +411,6 @@
 			path = Config;
 			sourceTree = "<group>";
 		};
-		7F1A9B0C2F1234567890ABCF /* Support */ = {
-			isa = PBXGroup;
-			children = (
-				7F1A9B0C2F1234567890ABCD /* SupportTicketView.swift */,
-				7F1A9B0C2F1234567890ABCE /* SupportTicketViewModel.swift */,
-			);
-			path = Support;
-			sourceTree = "<group>";
-		};
 		AVAIL005GROUPREF000000AB /* Availability */ = {
 			isa = PBXGroup;
 			children = (
@@ -445,7 +431,7 @@
 				8A0750AF84C002E2A58CF33A /* EventKitEventManager.swift */,
 				29BC076B4D7B7EEC355DD8C0 /* GroupService.swift */,
 				F118A9DAF05612253B0DCD3C /* PushManager.swift */,
-				R2STORAGE01FILEREF00001AB /* R2StorageService.swift */,
+				SBASTORAGE01FILEREF0001AB /* SupabaseStorageService.swift */,
 				RECUR001FILEREF0001001AB /* RecurrenceService.swift */,
 				54EEA7587094A03A7E02AD1D /* SupabaseManager.swift */,
 				95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */,
@@ -742,8 +728,6 @@
 				93F0C606CCE9F4BD1DA4CC74 /* MonthlyCalendarView.swift in Sources */,
 				16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */,
 				9D938D4F2EB9BD8035AE2F19 /* ProfileViewModel.swift in Sources */,
-				7F1A9B0C2F1234567890ABD0 /* SupportTicketView.swift in Sources */,
-				7F1A9B0C2F1234567890ABD1 /* SupportTicketViewModel.swift in Sources */,
 				7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */,
 				1B5E97422F0A730E0083768D /* RainCheckApprovalSheet.swift in Sources */,
 				7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */,
@@ -757,7 +741,7 @@
 				AVAIL002BUILDFILE0002002AB /* GroupAvailabilityView.swift in Sources */,
 				AVAIL003BUILDFILE0003003AB /* GroupAvailabilityViewModel.swift in Sources */,
 				AVAIL004BUILDFILE0004004AB /* AvailabilityHeatMapCell.swift in Sources */,
-				R2STORAGE01BUILDFILE0001AB /* R2StorageService.swift in Sources */,
+				SBASTORAGE01BUILDFILE001AB /* SupabaseStorageService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -799,7 +783,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -812,7 +796,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.9;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -847,7 +831,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -864,7 +848,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.9;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -898,7 +882,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -911,7 +895,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.9;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.SchedulrNotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -944,7 +928,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -961,7 +945,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.9;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.SchedulrNotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -983,7 +967,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -995,7 +979,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.9;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1012,7 +996,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 47;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1024,7 +1008,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.8;
+				MARKETING_VERSION = 1.7.9;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

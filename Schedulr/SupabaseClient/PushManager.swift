@@ -233,15 +233,10 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
             }
         }
         
-        // Explicitly remove the tapped notification from delivered notifications
-        // This ensures it's removed and badge count updates correctly
-        center.removeDeliveredNotifications(withIdentifiers: [response.notification.request.identifier])
-        
-        // Sync badge count after removing notification
-        // Use a delay to ensure iOS has processed the removal
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            self.syncBadgeCountWithPendingNotifications()
-        }
+        // Note: We intentionally do NOT remove the notification when tapped.
+        // This allows users to re-read notifications in the in-app notification list
+        // even if they tapped quickly without reading. Users can manually mark
+        // notifications as read from the in-app notification list.
 
         completionHandler()
     }

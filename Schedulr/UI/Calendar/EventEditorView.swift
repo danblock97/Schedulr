@@ -1334,12 +1334,12 @@ struct CategoryCreatorView: View {
         defer { isUploadingImage = false }
         
         do {
-            // Upload to R2 via pre-signed URL (user ID is determined server-side from the auth token)
-            let filename = R2StorageService.eventCoverFilename()
-            let url = try await R2StorageService.shared.upload(
+            // Upload to Supabase Storage
+            let filename = SupabaseStorageService.eventCoverFilename()
+            let url = try await SupabaseStorageService.shared.upload(
                 data: data,
                 filename: filename,
-                folder: .eventCovers,
+                bucket: .eventCovers,
                 contentType: "image/jpeg"
             )
             

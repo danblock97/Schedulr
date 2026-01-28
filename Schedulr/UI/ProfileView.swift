@@ -25,9 +25,6 @@ struct ProfileView: View {
     @State private var headerAppeared = false
     @State private var sectionsAppeared = false
 
-    @State private var showingBugReport = false
-    @State private var showingFeatureRequest = false
-    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -127,14 +124,6 @@ struct ProfileView: View {
                 SettingsView()
                     .environmentObject(themeManager)
             }
-            .sheet(isPresented: $showingBugReport) {
-                SupportTicketView(ticketType: .bug)
-                    .environmentObject(themeManager)
-            }
-            .sheet(isPresented: $showingFeatureRequest) {
-                SupportTicketView(ticketType: .featureRequest)
-                    .environmentObject(themeManager)
-            }
             .sheet(isPresented: $viewModel.showingRenameGroupSheet) {
                 RenameGroupSheet(
                     groupName: $viewModel.newGroupName,
@@ -190,13 +179,33 @@ struct ProfileView: View {
                     .blur(radius: 4)
                 
                 if let avatarURL = viewModel.avatarURL, let url = URL(string: avatarURL) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        ProgressView()
-                            .tint(themeManager.primaryColor)
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .empty:
+                            ProgressView()
+                                .tint(themeManager.primaryColor)
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            // Show initials fallback on error
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [themeManager.primaryColor, themeManager.secondaryColor],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .overlay(
+                                    Text(viewModel.displayName.prefix(1).uppercased())
+                                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                                        .foregroundColor(.white)
+                                )
+                        @unknown default:
+                            EmptyView()
+                        }
                     }
                     .frame(width: 110, height: 110)
                     .clipShape(Circle())
@@ -479,44 +488,19 @@ struct ProfileView: View {
     }
     
     // MARK: - Feedback Section
-    
+
     private var feedbackSection: some View {
         ProfileSectionCard(title: "Feedback & Support", icon: "message.fill") {
-            VStack(spacing: 12) {
-                // Tracked Issues link
-                SupportRow(
-                    title: "Tracked Issues",
-                    subtitle: "View our public roadmap & bugs",
-                    icon: "list.bullet.rectangle.portrait",
-                    action: {
-                        Task {
-                            await openURL(urlString: "https://schedulr.co.uk/issues")
-                        }
+            SupportRow(
+                title: "Support",
+                subtitle: "Get help, report bugs, or request features",
+                icon: "questionmark.circle.fill",
+                action: {
+                    Task {
+                        await openURL(urlString: "https://schedulr.co.uk/support")
                     }
-                )
-                
-                Divider()
-                    .opacity(0.5)
-                
-                // Report a Bug button
-                SupportRow(
-                    title: "Report a bug",
-                    subtitle: "Something not working correctly?",
-                    icon: "ant.fill",
-                    action: { showingBugReport = true }
-                )
-                
-                Divider()
-                    .opacity(0.5)
-                
-                // Request a Feature button
-                SupportRow(
-                    title: "Request a feature",
-                    subtitle: "Have an idea to improve Schedulr?",
-                    icon: "wand.and.stars",
-                    action: { showingFeatureRequest = true }
-                )
-            }
+                }
+            )
         }
     }
     

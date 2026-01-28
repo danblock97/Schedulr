@@ -166,12 +166,12 @@ final class OnboardingViewModel: ObservableObject {
             _ = try await ensureUserRow()
             guard let data = pickedImageData, !data.isEmpty else { return }
             
-            // Upload to R2 via pre-signed URL (user ID is determined server-side from the auth token)
-            let filename = R2StorageService.avatarFilename()
-            let url = try await R2StorageService.shared.upload(
+            // Upload to Supabase Storage
+            let filename = SupabaseStorageService.avatarFilename()
+            let url = try await SupabaseStorageService.shared.upload(
                 data: data,
                 filename: filename,
-                folder: .avatars,
+                bucket: .avatars,
                 contentType: "image/jpeg"
             )
             
