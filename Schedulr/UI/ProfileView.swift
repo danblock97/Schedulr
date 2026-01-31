@@ -20,6 +20,7 @@ struct ProfileView: View {
     @State private var aiUsageInfo: AIUsageInfo?
     @State private var groupLimitInfo: (current: Int, max: Int)?
     @Environment(\.colorScheme) var colorScheme
+    @State private var pendingAvatarImage: SelectedUIImage? = nil
     
     // Animation states
     @State private var headerAppeared = false
@@ -112,10 +113,35 @@ struct ProfileView: View {
                     sectionsAppeared = true
                 }
             }
-            .onChange(of: viewModel.selectedPhotoItem) { _, _ in
+            .onChange(of: viewModel.selectedPhotoItem) { _, newItem in
+                guard let newItem else { return }
                 Task {
-                    await viewModel.uploadAvatar()
+                    guard let data = try? await newItem.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else { return }
+                    await MainActor.run {
+                        pendingAvatarImage = SelectedUIImage(image: image)
+                    }
                 }
+            }
+            .sheet(item: $pendingAvatarImage) { item in
+                ImageRepositionerView(
+                    image: item.image,
+                    aspectRatio: 1,
+                    cropShape: .circle,
+                    outputSize: CGSize(width: 512, height: 512),
+                    onCancel: {
+                        pendingAvatarImage = nil
+                        viewModel.selectedPhotoItem = nil
+                    },
+                    onConfirm: { cropped in
+                        guard let data = cropped.jpegData(compressionQuality: 0.85) else { return }
+                        pendingAvatarImage = nil
+                        viewModel.selectedPhotoItem = nil
+                        Task {
+                            await viewModel.uploadAvatar(imageData: data)
+                        }
+                    }
+                )
             }
             .sheet(isPresented: $showPaywall) {
                 PaywallView()

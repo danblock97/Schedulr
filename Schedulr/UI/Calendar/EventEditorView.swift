@@ -1185,6 +1185,7 @@ struct CategoryCreatorView: View {
     @State private var showingEmojiPicker = false
     @State private var showingImagePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var pendingCoverImage: SelectedUIImage? = nil
     
     var body: some View {
         NavigationStack {
@@ -1214,13 +1215,33 @@ struct CategoryCreatorView: View {
             .onChange(of: selectedPhotoItem) { _, newItem in
                 guard let newItem else { return }
                 Task {
-                    if let data = try? await newItem.loadTransferable(type: Data.self) {
-                        await MainActor.run {
-                            coverImageData = data
-                        }
-                        await uploadCoverImage(data: data)
+                    guard let data = try? await newItem.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else { return }
+                    await MainActor.run {
+                        pendingCoverImage = SelectedUIImage(image: image)
                     }
                 }
+            }
+            .sheet(item: $pendingCoverImage) { item in
+                ImageRepositionerView(
+                    image: item.image,
+                    aspectRatio: 5.0 / 3.0,
+                    cropShape: .roundedRect(cornerRadius: 16),
+                    outputSize: CGSize(width: 1200, height: 720),
+                    onCancel: {
+                        pendingCoverImage = nil
+                        selectedPhotoItem = nil
+                    },
+                    onConfirm: { cropped in
+                        guard let data = cropped.jpegData(compressionQuality: 0.85) else { return }
+                        pendingCoverImage = nil
+                        selectedPhotoItem = nil
+                        coverImageData = data
+                        Task {
+                            await uploadCoverImage(data: data)
+                        }
+                    }
+                )
             }
         }
     }
@@ -1525,6 +1546,7 @@ struct CategoryEditorView: View {
     @State private var showingEmojiPicker = false
     @State private var showingImagePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var pendingCoverImage: SelectedUIImage? = nil
     
     init(groupId: UUID, category: EventCategory, onCategoryUpdated: @escaping (EventCategory) -> Void) {
         self.groupId = groupId
@@ -1570,13 +1592,33 @@ struct CategoryEditorView: View {
             .onChange(of: selectedPhotoItem) { _, newItem in
                 guard let newItem else { return }
                 Task {
-                    if let data = try? await newItem.loadTransferable(type: Data.self) {
-                        await MainActor.run {
-                            coverImageData = data
-                        }
-                        await uploadCoverImage(data: data)
+                    guard let data = try? await newItem.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else { return }
+                    await MainActor.run {
+                        pendingCoverImage = SelectedUIImage(image: image)
                     }
                 }
+            }
+            .sheet(item: $pendingCoverImage) { item in
+                ImageRepositionerView(
+                    image: item.image,
+                    aspectRatio: 5.0 / 3.0,
+                    cropShape: .roundedRect(cornerRadius: 16),
+                    outputSize: CGSize(width: 1200, height: 720),
+                    onCancel: {
+                        pendingCoverImage = nil
+                        selectedPhotoItem = nil
+                    },
+                    onConfirm: { cropped in
+                        guard let data = cropped.jpegData(compressionQuality: 0.85) else { return }
+                        pendingCoverImage = nil
+                        selectedPhotoItem = nil
+                        coverImageData = data
+                        Task {
+                            await uploadCoverImage(data: data)
+                        }
+                    }
+                )
             }
         }
     }

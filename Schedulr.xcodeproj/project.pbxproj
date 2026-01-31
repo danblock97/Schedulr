@@ -11,6 +11,7 @@
 		06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */; };
 		0EE8623E8ED0C13BEF843DF7 /* MonthViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */; };
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
+		B0C0D0E0F0A1B2C3D4E5F607 /* ImageRepositionerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C0D0E0F0A1B2C3D4E5F608 /* ImageRepositionerView.swift */; };
 		1B5E973E2F0A715E0083768D /* RainCheckRequestSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5E973D2F0A715E0083768D /* RainCheckRequestSheet.swift */; };
 		1B5E97412F0A715E0083768D /* RainCheckedEventsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5E973C2F0A715E0083768D /* RainCheckedEventsView.swift */; };
 		1B5E97422F0A730E0083768D /* RainCheckApprovalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B5E973B2F0A715E0083768D /* RainCheckApprovalSheet.swift */; };
@@ -199,6 +200,7 @@
 		A7B439C35CC43A6C48036F2F /* CalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarModels.swift; sourceTree = "<group>"; };
 		A8D0FF9BB93970F36A562D18 /* AIAssistantViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAssistantViewModel.swift; sourceTree = "<group>"; };
 		A9EA8BB6DC91DA2B44D9C890 /* ProfileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViewModel.swift; sourceTree = "<group>"; };
+		B0C0D0E0F0A1B2C3D4E5F608 /* ImageRepositionerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components/ImageRepositionerView.swift; sourceTree = "<group>"; };
 		AE1EA9474B00225EE8CA5539 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		AEF84F5E27DA6C58E8FF871A /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
 		B2290B394B2D2DEADE88C9B5 /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
@@ -305,6 +307,7 @@
 				63855F65DF252C3B537A1A38 /* MonthlyCalendarView.swift */,
 				AE1EA9474B00225EE8CA5539 /* ProfileView.swift */,
 				A9EA8BB6DC91DA2B44D9C890 /* ProfileViewModel.swift */,
+				B0C0D0E0F0A1B2C3D4E5F608 /* ImageRepositionerView.swift */,
 				DE01386B844EAE0D3442EA6E /* SplashView.swift */,
 				76A9BD74CB648FB968299644 /* ThemePickerView.swift */,
 			);
@@ -727,6 +730,7 @@
 				208771430C71DBEE0AF55814 /* GroupManagementView.swift in Sources */,
 				93F0C606CCE9F4BD1DA4CC74 /* MonthlyCalendarView.swift in Sources */,
 				16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */,
+				B0C0D0E0F0A1B2C3D4E5F607 /* ImageRepositionerView.swift in Sources */,
 				9D938D4F2EB9BD8035AE2F19 /* ProfileViewModel.swift in Sources */,
 				7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */,
 				1B5E97422F0A730E0083768D /* RainCheckApprovalSheet.swift in Sources */,
@@ -783,7 +787,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 47;
+				CURRENT_PROJECT_VERSION = 48;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -796,7 +800,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -831,7 +835,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 47;
+				CURRENT_PROJECT_VERSION = 48;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -848,7 +852,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -882,7 +886,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 47;
+				CURRENT_PROJECT_VERSION = 48;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -895,7 +899,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.SchedulrNotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -928,7 +932,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 47;
+				CURRENT_PROJECT_VERSION = 48;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -945,7 +949,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.SchedulrNotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -967,7 +971,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 47;
+				CURRENT_PROJECT_VERSION = 48;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -979,7 +983,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -996,7 +1000,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 47;
+				CURRENT_PROJECT_VERSION = 48;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1008,7 +1012,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.9;
+				MARKETING_VERSION = 1.7.10;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

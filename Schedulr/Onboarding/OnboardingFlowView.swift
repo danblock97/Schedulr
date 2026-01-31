@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import EventKit
+import UIKit
 
 // MARK: - Main Onboarding Flow View
 
@@ -451,6 +452,7 @@ private struct AvatarStepView: View {
     @State private var pickerItem: PhotosPickerItem? = nil
     @State private var animateIn = false
     @State private var pulseRing = false
+    @State private var pendingAvatarImage: SelectedUIImage? = nil
 
     var body: some View {
         VStack(spacing: 32) {
@@ -599,11 +601,33 @@ private struct AvatarStepView: View {
             .onChange(of: pickerItem) { _, newItem in
                 guard let newItem else { return }
                 Task {
-                    if let data = try? await newItem.loadTransferable(type: Data.self) {
-                        await MainActor.run { viewModel.pickedImageData = data }
-                        await viewModel.next()
+                    guard let data = try? await newItem.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else { return }
+                    await MainActor.run {
+                        pendingAvatarImage = SelectedUIImage(image: image)
                     }
                 }
+            }
+            .sheet(item: $pendingAvatarImage) { item in
+                ImageRepositionerView(
+                    image: item.image,
+                    aspectRatio: 1,
+                    cropShape: .circle,
+                    outputSize: CGSize(width: 512, height: 512),
+                    onCancel: {
+                        pendingAvatarImage = nil
+                        pickerItem = nil
+                    },
+                    onConfirm: { cropped in
+                        guard let data = cropped.jpegData(compressionQuality: 0.85) else { return }
+                        pendingAvatarImage = nil
+                        pickerItem = nil
+                        Task {
+                            await MainActor.run { viewModel.pickedImageData = data }
+                            await viewModel.next()
+                        }
+                    }
+                )
             }
 
             // Status messages

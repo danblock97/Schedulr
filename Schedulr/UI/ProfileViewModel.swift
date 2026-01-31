@@ -126,24 +126,29 @@ class ProfileViewModel: ObservableObject {
 
     func uploadAvatar() async {
         guard let item = selectedPhotoItem else { return }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                errorMessage = "Failed to load image data"
+                return
+            }
+            await uploadAvatar(imageData: data)
+        } catch {
+            errorMessage = "Failed to load image data: \(error.localizedDescription)"
+        }
+    }
 
+    func uploadAvatar(imageData: Data) async {
         isLoading = true
         errorMessage = nil
 
         do {
-            guard let data = try await item.loadTransferable(type: Data.self) else {
-                errorMessage = "Failed to load image data"
-                isLoading = false
-                return
-            }
-
             let session = try await client.auth.session
             let uid = session.user.id
 
             // Upload to Supabase Storage
             let filename = SupabaseStorageService.avatarFilename()
             let url = try await SupabaseStorageService.shared.upload(
-                data: data,
+                data: imageData,
                 filename: filename,
                 bucket: .avatars,
                 contentType: "image/jpeg"
