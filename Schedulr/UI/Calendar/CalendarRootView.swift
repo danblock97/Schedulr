@@ -347,6 +347,7 @@ struct CalendarRootView: View {
                 }
             }
         }
+        .tabBarSafeAreaInset()
     }
     
     private var calendarHeader: some View {
@@ -764,5 +765,4 @@ extension CalendarRootView {
         }
     }
 }
-
 

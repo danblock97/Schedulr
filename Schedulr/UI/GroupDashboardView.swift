@@ -343,6 +343,7 @@ struct GroupDashboardView: View {
                 }
             }
         }
+        .tabBarSafeAreaInset()
         .task {
             await viewModel.loadInitialData()
             await viewModel.refreshCalendarIfNeeded()

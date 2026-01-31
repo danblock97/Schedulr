@@ -353,6 +353,7 @@ struct AIAssistantView: View {
                 ConversationHistorySheet(viewModel: viewModel)
             }
         }
+        .tabBarSafeAreaInset()
     }
 }
 
@@ -1228,4 +1229,3 @@ private struct ConversationRow: View {
         .buttonStyle(.plain)
     }
 }
-

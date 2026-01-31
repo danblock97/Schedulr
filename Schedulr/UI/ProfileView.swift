@@ -154,6 +154,7 @@ struct ProfileView: View {
                 }
             }
         }
+        .tabBarSafeAreaInset()
     }
     
     // MARK: - Profile Header Card
@@ -1171,4 +1172,3 @@ extension ProfileView {
         #endif
     }
 }
-

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct FloatingTabBar: View {
+    static let reservedHeight: CGFloat = 90
+
     @Binding var selectedTab: Int
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
@@ -65,6 +67,15 @@ struct FloatingTabBar: View {
             }
         }
         .ignoresSafeArea(edges: [.horizontal, .bottom])
+    }
+}
+
+extension View {
+    func tabBarSafeAreaInset() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: FloatingTabBar.reservedHeight)
+        }
     }
 }
 

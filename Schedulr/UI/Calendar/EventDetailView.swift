@@ -355,6 +355,7 @@ struct EventDetailView: View {
                     Spacer(minLength: 40)
                 }
             }
+            .tabBarSafeAreaInset()
         }
         .navigationTitle("Event Details")
         .navigationBarTitleDisplayMode(.inline)
@@ -962,5 +963,4 @@ private struct ResponseButton: View {
         }
     }
 }
-
 

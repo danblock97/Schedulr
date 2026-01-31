@@ -22,8 +22,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack {
-            // Main content area
+        ZStack(alignment: .bottom) {
             Group {
                 switch selectedTab {
                 case 0:
@@ -31,13 +30,18 @@ struct ContentView: View {
                 case 1:
                     CalendarRootView(viewModel: viewModel)
                 case 2:
-                    AIAssistantView(dashboardViewModel: viewModel, calendarManager: calendarManager, startWithVoice: startAIWithVoice, userAvatarURL: profileViewModel.avatarURL)
-                        .onAppear {
-                            // Reset voice flag after use
-                            if startAIWithVoice {
-                                startAIWithVoice = false
-                            }
+                    AIAssistantView(
+                        dashboardViewModel: viewModel,
+                        calendarManager: calendarManager,
+                        startWithVoice: startAIWithVoice,
+                        userAvatarURL: profileViewModel.avatarURL
+                    )
+                    .onAppear {
+                        // Reset voice flag after use
+                        if startAIWithVoice {
+                            startAIWithVoice = false
                         }
+                    }
                 case 3:
                     ProfileView(viewModel: profileViewModel)
                         .environmentObject(authVM)
@@ -49,13 +53,9 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(themeManager)
 
-            // Tab bar - edge to edge at bottom
-            VStack {
-                Spacer()
-                FloatingTabBar(selectedTab: $selectedTab, avatarURL: profileViewModel.avatarURL)
-                    .environmentObject(themeManager)
-            }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+            FloatingTabBar(selectedTab: $selectedTab, avatarURL: profileViewModel.avatarURL)
+                .environmentObject(themeManager)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .task {
             await loadTheme()
