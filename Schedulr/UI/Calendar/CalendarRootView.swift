@@ -73,7 +73,7 @@ struct CalendarRootView: View {
                     // Apple Calendar style header
                     calendarHeader
                     
-                    if !categories.isEmpty {
+                    if !categoriesForDisplayedMonth.isEmpty {
                         categoryFilterBar
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
@@ -346,6 +346,12 @@ struct CalendarRootView: View {
                     displayedYear = newYear
                 }
             }
+            .onChange(of: displayedMonth) { _, _ in
+                let availableIds = categoryIdsForDisplayedMonth
+                if !selectedCategoryIds.isEmpty, selectedCategoryIds != selectedCategoryIds.intersection(availableIds) {
+                    selectedCategoryIds = selectedCategoryIds.intersection(availableIds)
+                }
+            }
         }
         .tabBarSafeAreaInset()
     }
@@ -531,7 +537,7 @@ struct CalendarRootView: View {
                 }
                 
                 // Category filter buttons
-                ForEach(categories) { category in
+                ForEach(categoriesForDisplayedMonth) { category in
                     Button(action: {
                         if selectedCategoryIds.contains(category.id) {
                             selectedCategoryIds.remove(category.id)
@@ -562,6 +568,34 @@ struct CalendarRootView: View {
             .padding(.horizontal)
         }
         .padding(.vertical, 4)
+    }
+
+    private var categoriesForDisplayedMonth: [EventCategory] {
+        let availableIds = categoryIdsForDisplayedMonth
+        return categories.filter { availableIds.contains($0.id) }
+    }
+
+    private var categoryIdsForDisplayedMonth: Set<UUID> {
+        let calendar = Calendar.current
+        let monthStart = startOfMonth(for: displayedMonth)
+        let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let list = applyHolidayFilter(to: calendarSync.groupEvents)
+        return Set(list.compactMap { ev in
+            let overlapsMonth = ev.start_date < nextMonth && ev.end_date >= monthStart
+            guard overlapsMonth else { return nil }
+            return ev.category_id
+        })
+    }
+
+    private func applyHolidayFilter(to list: [CalendarEventWithUser]) -> [CalendarEventWithUser] {
+        guard preferences.hideHolidays else { return list }
+        return list.filter { ev in
+            let name = (ev.calendar_name ?? ev.title).lowercased()
+            let cal = (ev.calendar_name ?? "").lowercased()
+            let isHoliday = name.contains("holiday") || cal.contains("holiday")
+            let isBirthday = name.contains("birthday") || cal.contains("birthday")
+            return !(isHoliday || isBirthday)
+        }
     }
     
     private func loadCategories() async {
@@ -602,16 +636,7 @@ struct CalendarRootView: View {
 
     // MARK: - Event filtering/deduping
     private var filteredEvents: [CalendarEventWithUser] {
-        var list = calendarSync.groupEvents
-        if preferences.hideHolidays {
-            list = list.filter { ev in
-                let name = (ev.calendar_name ?? ev.title).lowercased()
-                let cal = (ev.calendar_name ?? "").lowercased()
-                let isHoliday = name.contains("holiday") || cal.contains("holiday")
-                let isBirthday = name.contains("birthday") || cal.contains("birthday")
-                return !(isHoliday || isBirthday)
-            }
-        }
+        var list = applyHolidayFilter(to: calendarSync.groupEvents)
         
         // Filter by selected categories
         if !selectedCategoryIds.isEmpty {
@@ -765,4 +790,3 @@ extension CalendarRootView {
         }
     }
 }
-
