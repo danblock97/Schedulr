@@ -29,6 +29,7 @@ struct EventEditorView: View {
     @State private var categories: [EventCategory] = []
     @State private var selectedCategoryId: UUID? = nil
     @State private var showingCategoryCreator = false
+    @State private var showingCategoryManager = false
     @State private var isLoadingCategories = false
     @State private var currentAttendees: [(userId: UUID?, displayName: String, status: String)] = []
     @State private var isLoadingAttendees = false
@@ -96,6 +97,11 @@ struct EventEditorView: View {
         let hasOtherMembers = !otherMembers.isEmpty
         let hasGuests = !guestNamesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return hasOtherMembers || hasGuests
+    }
+    
+    private var hasEditableCategories: Bool {
+        guard let currentUserId else { return false }
+        return categories.contains(where: { $0.user_id == currentUserId })
     }
 
     var body: some View {
@@ -234,6 +240,19 @@ struct EventEditorView: View {
                                 }
                                 .buttonStyle(.bordered)
                                 .tint(themeManager.primaryColor)
+                                
+                                Button(action: { showingCategoryManager = true }) {
+                                    Label("Edit My Categories", systemImage: "pencil")
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.secondary)
+                                .disabled(!hasEditableCategories)
+                                
+                                Text("Only categories you create can be edited.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                         }
 
@@ -400,6 +419,26 @@ struct EventEditorView: View {
             CategoryCreatorView(groupId: selectedGroupId) { category in
                 categories.append(category)
                 selectedCategoryId = category.id
+            }
+        }
+        .sheet(isPresented: $showingCategoryManager) {
+            if let currentUserId {
+                CategoryManagerView(
+                    groupId: selectedGroupId,
+                    categories: $categories,
+                    currentUserId: currentUserId
+                )
+            } else {
+                NavigationStack {
+                    Text("Unable to load user information.")
+                        .foregroundColor(.secondary)
+                        .navigationTitle("Edit Categories")
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showingCategoryManager = false }
+                            }
+                        }
+                }
             }
         }
         .alert("Add Attendees", isPresented: $showingMissingAttendeesAlert) {
@@ -1123,6 +1162,11 @@ private struct ParticipantStatusBadge: View {
 }
 
 // MARK: - Category Creator View
+private let categoryPresetColors: [Color] = [
+    .red, .orange, .yellow, .green, .mint, .teal, .cyan, .blue,
+    .indigo, .purple, .pink, .brown
+]
+
 struct CategoryCreatorView: View {
     let groupId: UUID
     let onCategoryCreated: (EventCategory) -> Void
@@ -1141,11 +1185,6 @@ struct CategoryCreatorView: View {
     @State private var showingEmojiPicker = false
     @State private var showingImagePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
-    
-    private let presetColors: [Color] = [
-        .red, .orange, .yellow, .green, .mint, .teal, .cyan, .blue,
-        .indigo, .purple, .pink, .brown
-    ]
     
     var body: some View {
         NavigationStack {
@@ -1277,7 +1316,7 @@ struct CategoryCreatorView: View {
     private var colorSection: some View {
         Section("Color") {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: 12) {
-                ForEach(presetColors, id: \.self) { color in
+                ForEach(categoryPresetColors, id: \.self) { color in
                     Circle()
                         .fill(color)
                         .frame(width: 44, height: 44)
@@ -1388,6 +1427,391 @@ struct CategoryCreatorView: View {
                 
                 let category = try await CalendarEventService.shared.createCategory(input: input, currentUserId: uid)
                 onCategoryCreated(category)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+// MARK: - Category Manager View
+struct CategoryManagerView: View {
+    let groupId: UUID
+    @Binding var categories: [EventCategory]
+    let currentUserId: UUID
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var selectedCategory: EventCategory? = nil
+    
+    private var userCategories: [EventCategory] {
+        categories.filter { $0.user_id == currentUserId }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                if userCategories.isEmpty {
+                    Text("You haven't created any categories yet.")
+                        .foregroundColor(.secondary)
+                } else {
+                    Section("Your Categories") {
+                        ForEach(userCategories) { category in
+                            Button {
+                                selectedCategory = category
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Circle()
+                                        .fill(Color(
+                                            red: category.color.red,
+                                            green: category.color.green,
+                                            blue: category.color.blue,
+                                            opacity: category.color.alpha
+                                        ))
+                                        .frame(width: 10, height: 10)
+                                    
+                                    Text(category.emoji ?? "🏷️")
+                                    
+                                    Text(category.name)
+                                        .foregroundColor(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Edit Categories")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(item: $selectedCategory) { category in
+                CategoryEditorView(groupId: groupId, category: category) { updated in
+                    if let index = categories.firstIndex(where: { $0.id == updated.id }) {
+                        categories[index] = updated
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Category Editor View
+struct CategoryEditorView: View {
+    let groupId: UUID
+    let category: EventCategory
+    let onCategoryUpdated: (EventCategory) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var calendarSync: CalendarSyncManager
+    
+    @State private var categoryName: String
+    @State private var selectedColor: Color
+    @State private var selectedEmoji: String?
+    @State private var selectedTemplate: EventThemeTemplate? = nil
+    @State private var coverImageData: Data? = nil
+    @State private var coverImageURL: String?
+    @State private var isSaving = false
+    @State private var isUploadingImage = false
+    @State private var errorMessage: String?
+    @State private var shareWithGroup: Bool
+    @State private var showingEmojiPicker = false
+    @State private var showingImagePicker = false
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    
+    init(groupId: UUID, category: EventCategory, onCategoryUpdated: @escaping (EventCategory) -> Void) {
+        self.groupId = groupId
+        self.category = category
+        self.onCategoryUpdated = onCategoryUpdated
+        _categoryName = State(initialValue: category.name)
+        _selectedColor = State(initialValue: Color(
+            red: category.color.red,
+            green: category.color.green,
+            blue: category.color.blue,
+            opacity: category.color.alpha
+        ))
+        _selectedEmoji = State(initialValue: category.emoji)
+        _coverImageURL = State(initialValue: category.cover_image_url)
+        _shareWithGroup = State(initialValue: category.group_id != nil)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                categoryDetailsSection
+                themeSection
+                colorSection
+                if let errorMessage {
+                    errorSection(message: errorMessage)
+                }
+            }
+            .navigationTitle("Edit Category")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveCategory()
+                    }
+                    .disabled(categoryName.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
+                }
+            }
+            .sheet(isPresented: $showingEmojiPicker) {
+                EmojiPickerView(selectedEmoji: $selectedEmoji)
+            }
+            .onChange(of: selectedPhotoItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    if let data = try? await newItem.loadTransferable(type: Data.self) {
+                        await MainActor.run {
+                            coverImageData = data
+                        }
+                        await uploadCoverImage(data: data)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var categoryDetailsSection: some View {
+        Section("Category Details") {
+            TextField("Name", text: $categoryName)
+            Toggle("Share with group", isOn: $shareWithGroup)
+        }
+    }
+    
+    private var themeSection: some View {
+        Section("Theme") {
+            templatePicker
+            emojiPickerRow
+            coverImagePicker
+        }
+    }
+    
+    private var templatePicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(EventThemeTemplate.allTemplates) { template in
+                    ThemeTemplateButton(
+                        template: template,
+                        isSelected: selectedTemplate?.id == template.id
+                    ) {
+                        applyTemplate(template)
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+    
+    private var emojiPickerRow: some View {
+        HStack {
+            Text("Emoji")
+            Spacer()
+            Button {
+                showingEmojiPicker = true
+            } label: {
+                HStack {
+                    Text(selectedEmoji ?? "✨")
+                        .font(.system(size: 24))
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+    
+    private var coverImagePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Cover Image")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            
+            if let coverImageData = coverImageData,
+               let uiImage = UIImage(data: coverImageData) {
+                HStack {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 100, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    
+                    Button("Remove") {
+                        self.coverImageData = nil
+                        self.coverImageURL = nil
+                    }
+                    .foregroundColor(.red)
+                    
+                    Spacer()
+                }
+            } else if let coverImageURL,
+                      let url = URL(string: coverImageURL) {
+                HStack {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        case .failure:
+                            Color(.systemGray5)
+                        case .empty:
+                            Color(.systemGray5)
+                        @unknown default:
+                            Color(.systemGray5)
+                        }
+                    }
+                    .frame(width: 100, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    
+                    Button("Remove") {
+                        self.coverImageData = nil
+                        self.coverImageURL = nil
+                    }
+                    .foregroundColor(.red)
+                    
+                    Spacer()
+                }
+            } else {
+                PhotosPicker(
+                    selection: $selectedPhotoItem,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    Label("Choose Cover Image", systemImage: "photo")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                }
+            }
+        }
+    }
+    
+    private var colorSection: some View {
+        Section("Color") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 50))], spacing: 12) {
+                ForEach(categoryPresetColors, id: \.self) { color in
+                    Circle()
+                        .fill(color)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .stroke(selectedColor == color ? Color.primary : Color.clear, lineWidth: 3)
+                        )
+                        .onTapGesture {
+                            selectedColor = color
+                        }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+    }
+    
+    private func errorSection(message: String) -> some View {
+        Section {
+            Text(message)
+                .foregroundColor(.red)
+        }
+    }
+    
+    private func applyTemplate(_ template: EventThemeTemplate) {
+        selectedTemplate = template
+        selectedEmoji = template.emoji
+        
+        #if canImport(UIKit)
+        let uiColor = UIColor(
+            red: CGFloat(template.suggestedColor.red),
+            green: CGFloat(template.suggestedColor.green),
+            blue: CGFloat(template.suggestedColor.blue),
+            alpha: CGFloat(template.suggestedColor.alpha)
+        )
+        selectedColor = Color(uiColor)
+        #else
+        selectedColor = Color(
+            red: template.suggestedColor.red,
+            green: template.suggestedColor.green,
+            blue: template.suggestedColor.blue,
+            opacity: template.suggestedColor.alpha
+        )
+        #endif
+        
+        if template.id == "custom" {
+            selectedTemplate = nil
+        }
+    }
+    
+    private func uploadCoverImage(data: Data) async {
+        guard !isUploadingImage else { return }
+        isUploadingImage = true
+        defer { isUploadingImage = false }
+        
+        do {
+            let filename = SupabaseStorageService.eventCoverFilename()
+            let url = try await SupabaseStorageService.shared.upload(
+                data: data,
+                filename: filename,
+                bucket: .eventCovers,
+                contentType: "image/jpeg"
+            )
+            
+            await MainActor.run {
+                coverImageURL = url.absoluteString
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = "Failed to upload cover image: \(error.localizedDescription)"
+            }
+        }
+    }
+    
+    private func saveCategory() {
+        Task {
+            guard !isSaving else { return }
+            isSaving = true
+            defer { isSaving = false }
+            
+            do {
+                let uid = try await SupabaseManager.shared.client.auth.session.user.id
+                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+                #if canImport(UIKit)
+                let uiColor = UIColor(selectedColor)
+                uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+                #else
+                let comps = selectedColor.cgColor?.components ?? [0, 0, 1, 1]
+                r = comps[0]; g = comps.count > 1 ? comps[1] : comps[0]; b = comps.count > 2 ? comps[2] : comps[0]; a = comps.count > 3 ? comps[3] : 1
+                #endif
+                let colorComponents = ColorComponents(
+                    red: Double(r),
+                    green: Double(g),
+                    blue: Double(b),
+                    alpha: Double(a)
+                )
+                
+                let update = EventCategoryUpdate(
+                    name: categoryName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    color: colorComponents,
+                    group_id: shareWithGroup ? groupId : nil,
+                    emoji: selectedEmoji,
+                    cover_image_url: coverImageURL
+                )
+                
+                let updated = try await CalendarEventService.shared.updateCategory(
+                    categoryId: category.id,
+                    update: update,
+                    currentUserId: uid
+                )
+                onCategoryUpdated(updated)
+                try? await calendarSync.fetchGroupEvents(groupId: groupId)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
@@ -1616,5 +2040,3 @@ extension Array {
         return indices.contains(index) ? self[index] : nil
     }
 }
-
-
