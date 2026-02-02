@@ -9,6 +9,7 @@ struct EventEditorView: View {
     @State private var members: [DashboardViewModel.MemberSummary]
     var existingEvent: CalendarEventWithUser? = nil
     var initialDate: Date? = nil
+    var initialEndDate: Date? = nil
     var recurringEditScope: RecurringEditScope? = nil
     var isRescheduling: Bool = false
     @Environment(\.dismiss) private var dismiss
@@ -46,11 +47,12 @@ struct EventEditorView: View {
     @State private var showingMissingAttendeesAlert = false
     @State private var currentUserId: UUID? = nil
 
-    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil, recurringEditScope: RecurringEditScope? = nil, isRescheduling: Bool = false) {
+    init(groupId: UUID, members: [DashboardViewModel.MemberSummary], existingEvent: CalendarEventWithUser? = nil, initialDate: Date? = nil, initialEndDate: Date? = nil, recurringEditScope: RecurringEditScope? = nil, isRescheduling: Bool = false) {
         self.groupId = groupId
         self.members = members
         self.existingEvent = existingEvent
         self.initialDate = initialDate
+        self.initialEndDate = initialEndDate
         self.recurringEditScope = recurringEditScope
         self.isRescheduling = isRescheduling
         _selectedGroupId = State(initialValue: groupId)
@@ -58,7 +60,8 @@ struct EventEditorView: View {
         // If creating a new event with an initial date, set the start and end dates
         if existingEvent == nil, let initialDate = initialDate {
             _date = State(initialValue: initialDate)
-            _endDate = State(initialValue: Calendar.current.date(byAdding: .hour, value: 1, to: initialDate) ?? initialDate)
+            let end = initialEndDate ?? Calendar.current.date(byAdding: .hour, value: 1, to: initialDate) ?? initialDate
+            _endDate = State(initialValue: end)
         }
     }
 

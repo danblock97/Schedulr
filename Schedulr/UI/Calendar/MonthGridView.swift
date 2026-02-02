@@ -7,6 +7,7 @@ struct MonthGridView: View {
     @Binding var displayedMonth: Date
     let viewMode: MonthViewMode
     var onDateSelected: ((Date) -> Void)?
+    var onDateDoubleTapped: ((Date) -> Void)?
     let currentUserId: UUID?
     
     private var weekSpacing: CGFloat {
@@ -190,15 +191,17 @@ struct MonthGridView: View {
         .frame(minHeight: viewMode == .compact ? 44 : (viewMode == .stacked ? 60 : 50))
         .contentShape(Rectangle())
         .onTapGesture {
+            let alreadySelected = Calendar.current.isDate(day, inSameDayAs: selectedDate)
             withAnimation {
                 selectedDate = day
                 // Update displayedMonth if tapping a date from different month
                 if !Calendar.current.isDate(day, equalTo: displayedMonth, toGranularity: .month) {
                     displayedMonth = startOfMonth(for: day)
                 }
-                
-                // Notify parent that a date was selected (to switch to Details mode if needed)
-                if let onDateSelected = onDateSelected {
+
+                if alreadySelected {
+                    onDateDoubleTapped?(day)
+                } else if let onDateSelected = onDateSelected {
                     onDateSelected(day)
                 }
             }

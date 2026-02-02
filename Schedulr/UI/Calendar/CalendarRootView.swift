@@ -43,6 +43,8 @@ struct CalendarRootView: View {
     @State private var pendingEventId: UUID?
     @State private var showingProposeTimes = false
     @State private var showingRainCheckedEvents = false
+    @State private var showingDayTimeline = false
+    @State private var dragEventDates: DragEventDates? = nil
 
     @State private var isViewReady = false
     
@@ -110,6 +112,9 @@ struct CalendarRootView: View {
                                             monthViewMode = .details
                                         }
                                     }
+                                },
+                                onDateDoubleTapped: { _ in
+                                    showingDayTimeline = true
                                 },
                                 currentUserId: currentUserId
                             )
@@ -256,6 +261,29 @@ struct CalendarRootView: View {
             .sheet(isPresented: $showingMonthModePicker) {
                 MonthViewModePicker(selectedMode: $monthViewMode)
                     .presentationDetents([.height(280)])
+            }
+            .navigationDestination(isPresented: $showingDayTimeline) {
+                DayTimelineView(
+                    events: filteredEvents,
+                    members: memberColorMapping,
+                    date: $selectedDate,
+                    currentUserId: currentUserId,
+                    onTimeRangeSelected: { start, end in
+                        dragEventDates = DragEventDates(start: start, end: end)
+                    }
+                )
+                .navigationTitle(dayTimelineTitle)
+                .navigationBarTitleDisplayMode(.inline)
+            }
+            .sheet(item: $dragEventDates) { dates in
+                if let gid = viewModel.selectedGroupID {
+                    EventEditorView(
+                        groupId: gid,
+                        members: viewModel.members,
+                        initialDate: dates.start,
+                        initialEndDate: dates.end
+                    )
+                }
             }
             .sheet(item: $eventToNavigate) { event in
                 NavigationStack {
@@ -727,6 +755,12 @@ struct CalendarRootView: View {
         return mapping
     }
 
+    private var dayTimelineTitle: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMM d"
+        return f.string(from: selectedDate)
+    }
+
     private func dateTitle(for date: Date) -> String {
         let f = DateFormatter()
         f.dateFormat = "EEEE, MMM d, yyyy"
@@ -789,4 +823,10 @@ extension CalendarRootView {
             try? await CalendarPreferencesManager.shared.save(preferences, for: uid)
         }
     }
+}
+
+struct DragEventDates: Identifiable {
+    let id = UUID()
+    let start: Date
+    let end: Date
 }
