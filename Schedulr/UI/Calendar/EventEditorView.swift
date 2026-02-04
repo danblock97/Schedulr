@@ -1107,12 +1107,15 @@ private struct MemberInviteChip: View {
                 ZStack(alignment: .bottomTrailing) {
                     if let url = member.avatarURL {
                         AsyncImage(url: url) { image in
-                            image.resizable()
+                            image
+                                .resizable()
+                                .scaledToFill()
                         } placeholder: {
                             Color.gray.opacity(0.2)
                         }
                         .frame(width: 50, height: 50)
                         .clipShape(Circle())
+                        .clipped()
                     } else {
                         Image(systemName: "person.circle.fill")
                             .resizable()
