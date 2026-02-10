@@ -36,6 +36,13 @@ struct MonthViewModePicker: View {
             }
             .navigationTitle("View Mode")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+            }
         }
     }
     
@@ -50,4 +57,3 @@ struct MonthViewModePicker: View {
         }
     }
 }
-

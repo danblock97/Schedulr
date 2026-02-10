@@ -414,11 +414,14 @@ final class CalendarEventService {
     func updateMyStatus(eventId: UUID, status: String, currentUserId: UUID) async throws {
         let statusLower = status.lowercased()
 
-        struct IdRow: Decodable { let id: UUID }
+        struct AttendeeRow: Decodable {
+            let id: UUID
+            let status: String
+        }
         struct UpdateStatusOnly: Encodable { let status: String }
         struct UpdateStatusAndUser: Encodable { let status: String; let user_id: UUID }
 
-        // Fetch user's display name (needed for both validation and guest row claiming)
+        // Fetch user's display name (needed for guest row claiming)
         struct UserRow: Decodable { let display_name: String? }
         let me: [UserRow] = try await client
             .from("users")
@@ -429,77 +432,75 @@ final class CalendarEventService {
             .value
         
         let myName = me.first?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        
-        // Check if user is an attendee (defense in depth - UI should prevent this, but verify server-side)
-        struct AttendeeCheck: Decodable { let id: UUID }
-        let existingAttendee: [AttendeeCheck] = try await client
+
+        // 1) Check if there's already an attendee row for this user
+        let existingForUser: [AttendeeRow] = try await client
             .from("event_attendees")
-            .select("id")
+            .select("id, status")
             .eq("event_id", value: eventId)
             .eq("user_id", value: currentUserId)
             .limit(1)
             .execute()
             .value
-        
-        // Also check for guest row with matching name
-        let hasGuestRow: Bool
-        if !myName.isEmpty {
-            let guestRows: [AttendeeCheck] = try await client
+
+        if let attendee = existingForUser.first {
+            // Idempotency: don't write or notify if the status didn't actually change.
+            if attendee.status.lowercased() == statusLower {
+                return
+            }
+
+            let updatedRows: [AttendeeRow] = try await client
                 .from("event_attendees")
-                .select("id")
+                .update(UpdateStatusOnly(status: statusLower))
                 .eq("event_id", value: eventId)
-                .is("user_id", value: nil)
-                .ilike("display_name", value: myName)
-                .limit(1)
+                .eq("user_id", value: currentUserId)
+                .select("id, status")
                 .execute()
                 .value
-            hasGuestRow = !guestRows.isEmpty
-        } else {
-            hasGuestRow = false
-        }
-        
-        // If user is not an attendee (neither as user_id nor as guest), return early
-        if existingAttendee.isEmpty && !hasGuestRow {
+
+            if !updatedRows.isEmpty {
+                NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
+            }
             return
         }
 
-        // 1) Try updating an existing attendee row for this user
-        let updatedForUser: [IdRow] = try await client
+        // 2) If no user row exists, try to claim a guest row with matching display name.
+        guard !myName.isEmpty else {
+            return
+        }
+
+        let guestRows: [AttendeeRow] = try await client
             .from("event_attendees")
-            .update(UpdateStatusOnly(status: statusLower))
+            .select("id, status")
             .eq("event_id", value: eventId)
-            .eq("user_id", value: currentUserId)
-            .select("id")
+            .is("user_id", value: nil)
+            .ilike("display_name", value: myName)
+            .limit(1)
             .execute()
             .value
 
-        // If we updated at least one row, notify and return
-        if !updatedForUser.isEmpty {
-            // Notify event creator about the RSVP response (async, don't fail if it errors)
-            NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
+        guard let guestRow = guestRows.first else {
             return
         }
 
-        // 2) Otherwise, try to claim a guest row by matching the user's display name
-        if !myName.isEmpty {
-            let updatedGuest: [IdRow] = try await client
-                .from("event_attendees")
-                .update(UpdateStatusAndUser(status: statusLower, user_id: currentUserId))
-                .eq("event_id", value: eventId)
-                .is("user_id", value: nil)
-                .ilike("display_name", value: myName)
-                .select("id")
-                .execute()
-                .value
+        let statusChanged = guestRow.status.lowercased() != statusLower
+        let updatedGuestRows: [AttendeeRow] = try await client
+            .from("event_attendees")
+            .update(UpdateStatusAndUser(status: statusLower, user_id: currentUserId))
+            .eq("event_id", value: eventId)
+            .is("user_id", value: nil)
+            .ilike("display_name", value: myName)
+            .select("id, status")
+            .execute()
+            .value
 
-            if !updatedGuest.isEmpty {
-                // Notify event creator about the RSVP response (async, don't fail if it errors)
-                NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
-                return
-            }
+        guard !updatedGuestRows.isEmpty else {
+            return
         }
 
-        // 3) If nothing was updated, do nothing (avoid insert/delete due to RLS). The UI will stay on the optimistic value.
+        if statusChanged {
+            NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
+        }
     }
 
     // Delete an event (allowed by RLS only for the event owner)
@@ -1347,5 +1348,4 @@ final class CalendarEventService {
         return events
     }
 }
-
 

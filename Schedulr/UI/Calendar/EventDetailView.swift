@@ -337,7 +337,7 @@ struct EventDetailView: View {
                                             isSelected: myStatus == status,
                                             isLoading: isUpdatingResponse && myStatus == status
                                         ) {
-                                            if !isUpdatingResponse {
+                                            if !isUpdatingResponse && myStatus != status {
                                                 let previous = myStatus
                                                 isProgrammaticStatusChange = true
                                                 myStatus = status
@@ -963,4 +963,3 @@ private struct ResponseButton: View {
         }
     }
 }
-

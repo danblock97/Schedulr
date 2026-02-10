@@ -85,6 +85,22 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
     
     // Handle notifications received in background (app is backgrounded or phone is locked)
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let aps = userInfo["aps"] as? [String: Any]
+        let alertPayload = aps?["alert"]
+        let title: String?
+        let body: String?
+        if let alert = alertPayload as? [String: Any] {
+            title = alert["title"] as? String
+            body = alert["body"] as? String
+        } else if let alert = alertPayload as? String {
+            title = nil
+            body = alert
+        } else {
+            title = nil
+            body = nil
+        }
+        InAppNotificationStore.capture(userInfo: userInfo, title: title, body: body)
+
         // When notifications arrive while app is backgrounded or phone is locked,
         // Sync badge count immediately to ensure accuracy
         // Use multiple delays to catch the notification at different stages of processing
@@ -104,23 +120,7 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
     // Sync badge count by checking pending notifications
     // This ensures badge count is accurate even if notifications arrived while app was backgrounded
     private func syncBadgeCountWithPendingNotifications() {
-        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
-            let badgeCount = notifications.count
-            DispatchQueue.main.async {
-                // Always update badge count to match delivered notifications
-                // This overrides any badge value sent in notification payload
-                UIApplication.shared.applicationIconBadgeNumber = badgeCount
-                UserDefaults.standard.set(badgeCount, forKey: "SchedulrBadgeCount")
-                #if DEBUG
-                print("[PushManager] Synced badge count to \(badgeCount) based on \(notifications.count) delivered notifications")
-                if notifications.count > 0 {
-                    print("[PushManager] Notification titles: \(notifications.map { $0.request.content.title })")
-                } else {
-                    print("[PushManager] No delivered notifications - badge cleared")
-                }
-                #endif
-            }
-        }
+        InAppNotificationStore.refreshFromDeliveredNotifications()
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -140,6 +140,8 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
 
     // Handle notifications when app is in foreground
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        InAppNotificationStore.capture(notification: notification)
+
         // Update badge count immediately and multiple times with delays
         // This ensures badge count is accurate even if notification payload had badge: 1
         // The notification may not be in delivered notifications immediately, so we sync multiple times
@@ -162,6 +164,8 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
 
     // Handle notification taps
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        InAppNotificationStore.capture(notification: response.notification)
+
         let userInfo = response.notification.request.content.userInfo
         let notificationType = userInfo["notification_type"] as? String ?? "event_invite"
         
@@ -244,23 +248,7 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
     // Update badge count when notification is received
     // This should be called from willPresent to track badge count locally
     private func updateBadgeCount() {
-        // Get current delivered notifications to calculate accurate badge count
-        // This includes the notification that just arrived
-        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
-            let badgeCount = notifications.count
-            DispatchQueue.main.async {
-                // Set badge count to match number of delivered notifications
-                // This overrides any badge value sent in the notification payload
-                UIApplication.shared.applicationIconBadgeNumber = badgeCount
-                UserDefaults.standard.set(badgeCount, forKey: "SchedulrBadgeCount")
-                #if DEBUG
-                print("[PushManager] Updated badge count to \(badgeCount) based on \(notifications.count) delivered notifications")
-                if notifications.count > 0 {
-                    print("[PushManager] Notification titles: \(notifications.map { $0.request.content.title })")
-                }
-                #endif
-            }
-        }
+        InAppNotificationStore.refreshFromDeliveredNotifications()
     }
 
     private func upload(token: String) async {
@@ -278,5 +266,3 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
         }
     }
 }
-
-

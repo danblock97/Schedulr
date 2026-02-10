@@ -292,6 +292,13 @@ struct CalendarRootView: View {
                         member: memberColorMapping[event.user_id],
                         currentUserId: currentUserId
                     )
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") {
+                                eventToNavigate = nil
+                            }
+                        }
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToEvent"))) { notification in

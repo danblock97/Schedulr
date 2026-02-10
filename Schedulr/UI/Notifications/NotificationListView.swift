@@ -6,14 +6,12 @@
 //
 
 import SwiftUI
-import UserNotifications
 
 struct NotificationListView: View {
     @ObservedObject var viewModel: NotificationViewModel
     @Environment(\.dismiss) var dismiss
     @EnvironmentObject var themeManager: ThemeManager
     @State private var eventToNavigate: CalendarEventWithUser?
-    @State private var showingEventDetail = false
     @State private var currentUserId: UUID?
     
     var body: some View {
@@ -35,6 +33,16 @@ struct NotificationListView: View {
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if !viewModel.notifications.isEmpty {
                         Button {
@@ -54,6 +62,13 @@ struct NotificationListView: View {
                         member: nil, // Member info not available in notification context
                         currentUserId: currentUserId
                     )
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") {
+                                eventToNavigate = nil
+                            }
+                        }
+                    }
                 }
             }
             .task {
@@ -95,7 +110,7 @@ struct NotificationListView: View {
     private var notificationList: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(viewModel.notifications, id: \.request.identifier) { notification in
+                ForEach(viewModel.notifications, id: \.id) { notification in
                     NotificationRow(
                         notification: notification,
                         onTap: {
@@ -111,18 +126,44 @@ struct NotificationListView: View {
         }
     }
     
-    private func handleNotificationTap(_ notification: UNNotification) {
-        let userInfo = notification.request.content.userInfo
-        
-        // If notification has event_id, navigate to event details
-        if let eventIdString = userInfo["event_id"] as? String,
-           let eventId = UUID(uuidString: eventIdString) {
-            Task {
-                await navigateToEvent(eventId: eventId)
+    private func handleNotificationTap(_ notification: InAppNotificationItem) {
+        switch notification.notificationType {
+        case "event_invite", "event_update", "event_cancellation", "rsvp_response", "event_reminder", "rain_check_requested", "rain_check_approved", "rain_check_denied", "event_rescheduled":
+            if let eventIdString = notification.eventId,
+               let eventId = UUID(uuidString: eventIdString) {
+                Task {
+                    await navigateToEvent(eventId: eventId)
+                }
             }
+
+        case "new_group_member", "group_member_left", "group_ownership_transfer", "group_renamed":
+            if let groupIdString = notification.groupId,
+               let groupId = UUID(uuidString: groupIdString) {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("NavigateToGroup"),
+                    object: nil,
+                    userInfo: ["groupId": groupId]
+                )
+            }
+
+        case "group_deleted":
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToProfile"),
+                object: nil,
+                userInfo: nil
+            )
+
+        case "subscription_change", "feature_limit_warning":
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NavigateToProfile"),
+                object: nil,
+                userInfo: ["showSubscription": true]
+            )
+
+        default:
+            break
         }
-        
-        // Mark notification as read
+
         viewModel.markAsRead(notification)
     }
     
@@ -141,7 +182,7 @@ struct NotificationListView: View {
 }
 
 struct NotificationRow: View {
-    let notification: UNNotification
+    let notification: InAppNotificationItem
     let onTap: () -> Void
     let onDismiss: () -> Void
     @EnvironmentObject var themeManager: ThemeManager
@@ -173,7 +214,7 @@ struct NotificationRow: View {
                         )
                         .frame(width: 44, height: 44)
                     
-                    Image(systemName: "calendar.badge.plus")
+                    Image(systemName: iconName)
                         .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(
                             LinearGradient(
@@ -186,12 +227,12 @@ struct NotificationRow: View {
                 
                 // Content
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(notification.request.content.title)
+                    Text(notification.title)
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(.primary)
                         .multilineTextAlignment(.leading)
                     
-                    Text(notification.request.content.body)
+                    Text(notification.body)
                         .font(.system(size: 14, weight: .regular, design: .rounded))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
@@ -220,10 +261,40 @@ struct NotificationRow: View {
         }
         .buttonStyle(.plain)
     }
+
+    private var iconName: String {
+        switch notification.notificationType {
+        case "event_invite":
+            return "calendar.badge.plus"
+        case "event_update":
+            return "calendar.badge.clock"
+        case "event_cancellation":
+            return "calendar.badge.exclamationmark"
+        case "rsvp_response":
+            return "person.crop.circle.badge.checkmark"
+        case "event_reminder":
+            return "bell.badge"
+        case "new_group_member":
+            return "person.badge.plus"
+        case "group_member_left":
+            return "person.crop.circle.badge.minus"
+        case "group_ownership_transfer":
+            return "person.2.badge.key.fill"
+        case "group_renamed":
+            return "textformat.abc"
+        case "group_deleted":
+            return "trash.circle.fill"
+        case "subscription_change":
+            return "crown.fill"
+        case "feature_limit_warning":
+            return "exclamationmark.triangle.fill"
+        default:
+            return "bell.fill"
+        }
+    }
 }
 
 #Preview {
     NotificationListView(viewModel: NotificationViewModel())
         .environmentObject(ThemeManager.shared)
 }
-
