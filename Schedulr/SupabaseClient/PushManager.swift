@@ -47,21 +47,6 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             self.syncBadgeCountWithPendingNotifications()
         }
-        
-        // Check for pending navigation event ID (from notification tap when app was in background)
-        if let eventIdString = UserDefaults.standard.string(forKey: "PendingNavigationEventId"),
-           let eventId = UUID(uuidString: eventIdString) {
-            // Clear it first to prevent duplicate navigation
-            UserDefaults.standard.removeObject(forKey: "PendingNavigationEventId")
-            // Post navigation notification with delay to ensure views are ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("NavigateToEvent"),
-                    object: nil,
-                    userInfo: ["eventId": eventId]
-                )
-            }
-        }
     }
     
     func applicationWillEnterForeground(_ application: UIApplication) {
@@ -167,15 +152,14 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
         InAppNotificationStore.capture(notification: response.notification)
 
         let userInfo = response.notification.request.content.userInfo
-        let notificationType = userInfo["notification_type"] as? String ?? "event_invite"
+        let notificationType = stringValue(for: "notification_type", in: userInfo) ?? "event_invite"
         
         // Handle navigation based on notification type
         switch notificationType {
-        case "event_invite", "event_update", "event_cancellation", "rsvp_response", "event_reminder":
+        case "event_invite", "event_update", "event_cancellation", "rsvp_response", "event_reminder", "rain_check_requested", "rain_check_approved", "rain_check_denied", "event_rescheduled":
             // Event-related notifications - navigate to event detail
-            if let eventIdString = userInfo["event_id"] as? String,
-               let eventId = UUID(uuidString: eventIdString) {
-                UserDefaults.standard.set(eventIdString, forKey: "PendingNavigationEventId")
+            if let eventId = extractEventId(from: userInfo) {
+                UserDefaults.standard.set(eventId.uuidString, forKey: "PendingNavigationEventId")
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     NotificationCenter.default.post(
@@ -188,9 +172,8 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
             
         case "new_group_member", "group_member_left", "group_ownership_transfer", "group_renamed":
             // Group-related notifications - navigate to group dashboard
-            if let groupIdString = userInfo["group_id"] as? String,
-               let groupId = UUID(uuidString: groupIdString) {
-                UserDefaults.standard.set(groupIdString, forKey: "PendingNavigationGroupId")
+            if let groupId = extractUUID(forKeys: ["group_id"], from: userInfo) {
+                UserDefaults.standard.set(groupId.uuidString, forKey: "PendingNavigationGroupId")
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     NotificationCenter.default.post(
@@ -222,10 +205,9 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
             }
             
         default:
-            // Fallback: try to navigate to event if event_id is present
-            if let eventIdString = userInfo["event_id"] as? String,
-               let eventId = UUID(uuidString: eventIdString) {
-                UserDefaults.standard.set(eventIdString, forKey: "PendingNavigationEventId")
+            // Fallback: navigate to event if any event identifier is present
+            if let eventId = extractEventId(from: userInfo) {
+                UserDefaults.standard.set(eventId.uuidString, forKey: "PendingNavigationEventId")
                 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     NotificationCenter.default.post(
@@ -249,6 +231,58 @@ final class PushManager: NSObject, UNUserNotificationCenterDelegate, UIApplicati
     // This should be called from willPresent to track badge count locally
     private func updateBadgeCount() {
         InAppNotificationStore.refreshFromDeliveredNotifications()
+    }
+
+    private func extractEventId(from userInfo: [AnyHashable: Any]) -> UUID? {
+        extractUUID(forKeys: ["event_id", "new_event_id", "old_event_id", "eventId", "newEventId", "oldEventId"], from: userInfo)
+    }
+
+    private func extractUUID(forKeys keys: [String], from userInfo: [AnyHashable: Any]) -> UUID? {
+        for key in keys {
+            if let value = value(for: key, in: userInfo),
+               let uuid = parseUUID(from: value) {
+                return uuid
+            }
+        }
+        return nil
+    }
+
+    private func stringValue(for key: String, in userInfo: [AnyHashable: Any]) -> String? {
+        guard let value = value(for: key, in: userInfo) else { return nil }
+        if let string = value as? String {
+            return string
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
+    }
+
+    private func value(for key: String, in userInfo: [AnyHashable: Any]) -> Any? {
+        if let value = userInfo[key] {
+            return value
+        }
+        if let data = userInfo["data"] as? [AnyHashable: Any],
+           let value = data[key] {
+            return value
+        }
+        return nil
+    }
+
+    private func parseUUID(from value: Any) -> UUID? {
+        if let uuid = value as? UUID {
+            return uuid
+        }
+        if let value = value as? String {
+            return UUID(uuidString: value.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if let value = value as? NSString {
+            return UUID(uuidString: value.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if let value = value as? NSNumber {
+            return UUID(uuidString: value.stringValue)
+        }
+        return nil
     }
 
     private func upload(token: String) async {

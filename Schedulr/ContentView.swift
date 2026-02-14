@@ -65,13 +65,25 @@ struct ContentView: View {
             await profileViewModel.loadUserProfile()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToEvent"))) { notification in
-            if let eventId = notification.userInfo?["eventId"] as? UUID {
-                // Switch to calendar tab (index 1) when notification is tapped
-                // Use a longer delay when app is launching from background to ensure views are ready
-                // This is especially important when app launches from a cold start
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self.selectedTab = 1
+            let eventId: UUID? = {
+                if let uuid = notification.userInfo?["eventId"] as? UUID {
+                    return uuid
                 }
+                if let value = notification.userInfo?["eventId"] as? String {
+                    return UUID(uuidString: value)
+                }
+                return nil
+            }()
+            if let eventId {
+                // Persist this so CalendarRootView can route to details even if
+                // it mounts after this notification is posted.
+                UserDefaults.standard.set(eventId.uuidString, forKey: "PendingNavigationEventId")
+            }
+
+            // Switch to calendar tab (index 1) when notification is tapped.
+            // The detail routing is handled by CalendarRootView once it appears.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.selectedTab = 1
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToAIChat"))) { notification in

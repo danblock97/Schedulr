@@ -29,6 +29,7 @@ enum InAppNotificationStore {
     private static let storageKey = "SchedulrInAppNotificationsV1"
     private static let badgeKey = "SchedulrBadgeCount"
     private static let maxStoredItems = 200
+    private static let likelyDuplicateWindow: TimeInterval = 30
 
     static func load() -> [InAppNotificationItem] {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
@@ -131,7 +132,7 @@ enum InAppNotificationStore {
                 body: content.body,
                 date: content.date,
                 notificationType: normalizedUserInfo["notification_type"] ?? "general",
-                eventId: normalizedUserInfo["event_id"],
+                eventId: normalizedUserInfo["event_id"] ?? normalizedUserInfo["new_event_id"] ?? normalizedUserInfo["old_event_id"],
                 groupId: normalizedUserInfo["group_id"],
                 userInfo: normalizedUserInfo
             )
@@ -141,7 +142,29 @@ enum InAppNotificationStore {
                 continue
             }
 
-            if existing.contains(where: { isLikelyDuplicate($0, incoming) }) {
+            if let duplicateIndex = existing.firstIndex(where: { isLikelyDuplicate($0, incoming) }) {
+                let current = existing[duplicateIndex]
+                let mergedRemoteIdentifier = current.remoteIdentifier ?? incoming.remoteIdentifier
+                let mergedEventId = current.eventId ?? incoming.eventId
+                let mergedGroupId = current.groupId ?? incoming.groupId
+                let mergedUserInfo = current.userInfo.merging(incoming.userInfo) { old, new in
+                    old.isEmpty ? new : old
+                }
+                let merged = InAppNotificationItem(
+                    id: current.id,
+                    remoteIdentifier: mergedRemoteIdentifier,
+                    title: current.title,
+                    body: current.body,
+                    date: max(current.date, incoming.date),
+                    notificationType: current.notificationType,
+                    eventId: mergedEventId,
+                    groupId: mergedGroupId,
+                    userInfo: mergedUserInfo
+                )
+                if merged != current {
+                    existing[duplicateIndex] = merged
+                    changed = true
+                }
                 continue
             }
 
@@ -157,14 +180,30 @@ enum InAppNotificationStore {
     }
 
     private static func isLikelyDuplicate(_ lhs: InAppNotificationItem, _ rhs: InAppNotificationItem) -> Bool {
-        lhs.remoteIdentifier == nil &&
-        rhs.remoteIdentifier == nil &&
-        lhs.notificationType == rhs.notificationType &&
-        lhs.eventId == rhs.eventId &&
-        lhs.groupId == rhs.groupId &&
-        lhs.title == rhs.title &&
-        lhs.body == rhs.body &&
-        abs(lhs.date.timeIntervalSince(rhs.date)) < 2
+        if let lhsRemote = lhs.remoteIdentifier, !lhsRemote.isEmpty,
+           let rhsRemote = rhs.remoteIdentifier, !rhsRemote.isEmpty {
+            return lhsRemote == rhsRemote
+        }
+        return duplicateKey(for: lhs) == duplicateKey(for: rhs) &&
+        abs(lhs.date.timeIntervalSince(rhs.date)) < likelyDuplicateWindow
+    }
+
+    private static func duplicateKey(for item: InAppNotificationItem) -> String {
+        let actorIdentifier =
+            item.userInfo["responder_user_id"] ??
+            item.userInfo["requester_user_id"] ??
+            item.userInfo["member_user_id"] ??
+            item.userInfo["actor_user_id"] ??
+            item.userInfo["target_user_id"] ??
+            ""
+        return [
+            item.notificationType,
+            item.eventId ?? "",
+            item.groupId ?? "",
+            actorIdentifier,
+            item.title,
+            item.body
+        ].joined(separator: "|")
     }
 
     private static func persist(_ items: [InAppNotificationItem], notifyChange: Bool) {

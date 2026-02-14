@@ -302,7 +302,16 @@ struct CalendarRootView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToEvent"))) { notification in
-                if let eventId = notification.userInfo?["eventId"] as? UUID {
+                let eventId: UUID? = {
+                    if let uuid = notification.userInfo?["eventId"] as? UUID {
+                        return uuid
+                    }
+                    if let value = notification.userInfo?["eventId"] as? String {
+                        return UUID(uuidString: value)
+                    }
+                    return nil
+                }()
+                if let eventId {
                     // Always store pending event ID as fallback
                     pendingEventId = eventId
                     
