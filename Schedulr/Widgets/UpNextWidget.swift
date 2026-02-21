@@ -103,12 +103,19 @@ struct UpNextProvider: TimelineProvider {
             if let data = userDefaults.data(forKey: dataKey),
                let decodedEvents = try? JSONDecoder().decode([WidgetEvent].self, from: data) {
                 // Filter: only current/future events within the next 30 days
-                widgetEvents = decodedEvents.filter { event in
-                    // Event must not have ended yet
-                    guard event.endDate > now else { return false }
-                    // Event must start within the lookahead window
-                    guard event.startDate < lookaheadEnd else { return false }
-                    return true
+                widgetEvents = decodedEvents
+                    .filter { event in
+                        // Event must not have ended yet
+                        guard event.endDate > now else { return false }
+                        // Event must start within the lookahead window
+                        guard event.startDate < lookaheadEnd else { return false }
+                        return true
+                    }
+                    .sorted { lhs, rhs in
+                        if lhs.startDate == rhs.startDate {
+                            return lhs.endDate < rhs.endDate
+                        }
+                        return lhs.startDate < rhs.startDate
                 }
             }
             
@@ -169,17 +176,18 @@ struct UpNextProvider: TimelineProvider {
             return
             
         case .rolling:
-            // Rolling mode: rotate through top 3 events every 10 minutes
+            // Rolling mode: rotate through all upcoming events (next 30 days) every 10 minutes.
             let rotationInterval: TimeInterval = 10 * 60 // 10 minutes
-            let timelineDuration: TimeInterval = 2 * 60 * 60 // 2 hours
-            let topEvents = Array(widgetEvents.prefix(3)) // Take top 3 for rotation
+            let timelineDuration: TimeInterval = 24 * 60 * 60 // Build 24 hours; system requests a new timeline at end.
+            let rotationEvents = widgetEvents
             
             for offset in stride(from: 0, to: timelineDuration, by: rotationInterval) {
                 let entryDate = now.addingTimeInterval(offset)
                 
-                // Determine which event to show based on the rotation index
-                let index = Int(offset / rotationInterval) % topEvents.count
-                let rotatedEvent = topEvents[index]
+                // Use a time-based index so rotation continues smoothly across timeline refreshes.
+                let slot = Int(floor(entryDate.timeIntervalSinceReferenceDate / rotationInterval))
+                let index = ((slot % rotationEvents.count) + rotationEvents.count) % rotationEvents.count
+                let rotatedEvent = rotationEvents[index]
                 
                 let entry = UpNextEntry(
                     date: entryDate,

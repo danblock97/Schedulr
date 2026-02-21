@@ -721,7 +721,7 @@ struct GroupDashboardView: View {
             } else if calendarSync.groupEvents.isEmpty {
                 PremiumEmptyState(
                     title: "All Clear",
-                    subheadline: "No upcoming events scheduled for this group in the next few weeks.",
+                    subheadline: "No upcoming events scheduled for this group in the next 30 days.",
                     icon: "sparkles"
                 )
             } else {
@@ -907,14 +907,11 @@ struct GroupDashboardView: View {
     }
     
     private var upcomingMonthEvents: [DashboardDisplayEvent] {
-        guard let firstEvent = upcomingDashboardDisplayEvents.first else { return [] }
+        let now = Date()
         let calendar = Calendar.current
-        let firstEventMonth = calendar.component(.month, from: firstEvent.base.start_date)
-        let firstEventYear = calendar.component(.year, from: firstEvent.base.start_date)
+        let lookaheadEnd = calendar.date(byAdding: .day, value: 30, to: now) ?? Date.distantFuture
         let filtered = upcomingDashboardDisplayEvents.filter { event in
-            let eventMonth = calendar.component(.month, from: event.base.start_date)
-            let eventYear = calendar.component(.year, from: event.base.start_date)
-            return eventMonth == firstEventMonth && eventYear == firstEventYear
+            event.base.end_date >= now && event.base.start_date < lookaheadEnd
         }
         return Array(filtered.prefix(10))
     }

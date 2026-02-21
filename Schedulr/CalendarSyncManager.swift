@@ -919,12 +919,12 @@ final class CalendarSyncManager: ObservableObject {
             groupEvents = sortedEvents
 
             // Save to shared container for Widget (Embedded logic to avoid file issues)
-            saveEventsToWidget(sortedEvents, currentGroupId: groupId)
+            saveEventsToWidget(sortedEvents)
         }
     }
     
     // MARK: - Widget Data Sharing (Embedded)
-    private func saveEventsToWidget(_ events: [CalendarEventWithUser], currentGroupId: UUID) {
+    private func saveEventsToWidget(_ events: [CalendarEventWithUser]) {
         let appGroupId = "group.uk.co.schedulr.Schedulr"
         let dataKey = "upcoming_widget_events"
         
@@ -951,20 +951,34 @@ final class CalendarSyncManager: ObservableObject {
                 }
             }
             
-            // Filter to only show relevant events for the widget:
-            // - Group events from the current group (user is a member)
-            // - Group events from other groups where the user is an attendee
+            // Filter to only show events relevant to the current user:
+            // - Group events where the user is invited/attending (or they created it)
             // - The user's own personal events
             filteredEvents = filteredEvents.filter { event in
                 if event.event_type == "group" {
-                    // Show group events from the current group OR where user is an attendee
-                    return event.group_id == currentGroupId || event.isCurrentUserAttendee == true
+                    let isInvitedOrOwner = event.isCurrentUserAttendee == true || event.user_id == userId
+                    return isInvitedOrOwner
                 } else if event.event_type == "personal" {
                     // Only show the current user's own personal events
                     return event.user_id == userId
                 }
                 return false
             }
+
+            // Keep only active/upcoming events in the next 30 days, sorted chronologically.
+            // This avoids truncating to old historical events before widget-side filtering runs.
+            let now = Date()
+            let lookaheadEnd = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? Date.distantFuture
+            filteredEvents = filteredEvents
+                .filter { event in
+                    event.end_date > now && event.start_date < lookaheadEnd
+                }
+                .sorted { lhs, rhs in
+                    if lhs.start_date == rhs.start_date {
+                        return lhs.end_date < rhs.end_date
+                    }
+                    return lhs.start_date < rhs.start_date
+                }
             
             struct SharedEvent: Codable {
                 let id: String
@@ -977,7 +991,7 @@ final class CalendarSyncManager: ObservableObject {
                 let isAllDay: Bool
             }
             
-            let sharedEvents = filteredEvents.prefix(10).map { event in
+            let sharedEvents = filteredEvents.map { event in
                 let uiColor: UIColor
                 if let cc = event.calendar_color {
                     uiColor = UIColor(red: cc.red, green: cc.green, blue: cc.blue, alpha: cc.alpha)
