@@ -418,8 +418,22 @@ final class CalendarEventService {
             let id: UUID
             let status: String
         }
+        struct EventOwnerRow: Decodable {
+            let user_id: UUID
+        }
         struct UpdateStatusOnly: Encodable { let status: String }
         struct UpdateStatusAndUser: Encodable { let status: String; let user_id: UUID }
+
+        let ownerRows: [EventOwnerRow] = try await client
+            .from("calendar_events")
+            .select("user_id")
+            .eq("id", value: eventId)
+            .limit(1)
+            .execute()
+            .value
+        
+        let eventOwnerId = ownerRows.first?.user_id
+        let shouldNotifyEventOwner = eventOwnerId != nil && eventOwnerId != currentUserId
 
         // Fetch user's display name (needed for guest row claiming)
         struct UserRow: Decodable { let display_name: String? }
@@ -458,8 +472,13 @@ final class CalendarEventService {
                 .execute()
                 .value
 
-            if !updatedRows.isEmpty {
-                NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
+            if !updatedRows.isEmpty, shouldNotifyEventOwner {
+                NotificationService.shared.notifyRSVPResponse(
+                    eventId: eventId,
+                    responderUserId: currentUserId,
+                    status: statusLower,
+                    creatorUserId: eventOwnerId
+                )
             }
             return
         }
@@ -498,8 +517,13 @@ final class CalendarEventService {
             return
         }
 
-        if statusChanged {
-            NotificationService.shared.notifyRSVPResponse(eventId: eventId, responderUserId: currentUserId, status: statusLower)
+        if statusChanged, shouldNotifyEventOwner {
+            NotificationService.shared.notifyRSVPResponse(
+                eventId: eventId,
+                responderUserId: currentUserId,
+                status: statusLower,
+                creatorUserId: eventOwnerId
+            )
         }
     }
 
@@ -1348,4 +1372,3 @@ final class CalendarEventService {
         return events
     }
 }
-

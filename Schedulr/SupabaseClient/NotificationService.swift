@@ -52,15 +52,22 @@ final class NotificationService {
     ///   - eventId: The event that received the RSVP
     ///   - responderUserId: The user who responded
     ///   - status: The RSVP status (going, maybe, declined)
-    func notifyRSVPResponse(eventId: UUID, responderUserId: UUID, status: String) {
+    ///   - creatorUserId: Optional creator ID to help the edge function avoid self-notifications
+    func notifyRSVPResponse(eventId: UUID, responderUserId: UUID, status: String, creatorUserId: UUID? = nil) {
         Task {
+            var payload: [String: String] = [
+                "event_id": eventId.uuidString,
+                "responder_user_id": responderUserId.uuidString,
+                "rsvp_status": status
+            ]
+            
+            if let creatorUserId {
+                payload["creator_user_id"] = creatorUserId.uuidString
+            }
+            
             await sendNotification(
                 type: "rsvp_response",
-                payload: [
-                    "event_id": eventId.uuidString,
-                    "responder_user_id": responderUserId.uuidString,
-                    "rsvp_status": status
-                ]
+                payload: payload
             )
         }
     }
@@ -352,4 +359,3 @@ private struct DynamicCodingKeys: CodingKey {
         self.intValue = intValue
     }
 }
-
