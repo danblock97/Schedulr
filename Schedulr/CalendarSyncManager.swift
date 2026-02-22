@@ -919,23 +919,24 @@ final class CalendarSyncManager: ObservableObject {
             groupEvents = sortedEvents
 
             // Save to shared container for Widget (Embedded logic to avoid file issues)
-            saveEventsToWidget(sortedEvents)
+            saveEventsToWidget(sortedEvents, currentGroupId: groupId)
         }
     }
     
     // MARK: - Widget Data Sharing (Embedded)
-    private func saveEventsToWidget(_ events: [CalendarEventWithUser]) {
+    private func saveEventsToWidget(_ events: [CalendarEventWithUser], currentGroupId: UUID) {
         let appGroupId = "group.uk.co.schedulr.Schedulr"
         let dataKey = "upcoming_widget_events"
         
-        // Fetch current user ID to load preferences
-        // Since we are in an async context (Task in refreshEvents), we can try to get it
-        // However, this function is synchronous. We'll launch a Task.
         Task {
-            guard let userId = try? await client?.auth.session.user.id else { return }
-            
-            // Load preferences
-            let prefs = try? await CalendarPreferencesManager.shared.load(for: userId)
+            // Best-effort preference load. Still write widget data even if auth/session is unavailable.
+            let currentUserId = try? await client?.auth.session.user.id
+            let prefs: CalendarPreferences?
+            if let currentUserId {
+                prefs = try? await CalendarPreferencesManager.shared.load(for: currentUserId)
+            } else {
+                prefs = nil
+            }
             let hideHolidays = prefs?.hideHolidays ?? true
             
             // Filter events
@@ -951,18 +952,10 @@ final class CalendarSyncManager: ObservableObject {
                 }
             }
             
-            // Filter to only show events relevant to the current user:
-            // - Group events where the user is invited/attending (or they created it)
-            // - The user's own personal events
+            // Match the Group Dashboard "Upcoming" section source:
+            // only group events for the currently selected group.
             filteredEvents = filteredEvents.filter { event in
-                if event.event_type == "group" {
-                    let isInvitedOrOwner = event.isCurrentUserAttendee == true || event.user_id == userId
-                    return isInvitedOrOwner
-                } else if event.event_type == "personal" {
-                    // Only show the current user's own personal events
-                    return event.user_id == userId
-                }
-                return false
+                event.event_type == "group" && event.group_id == currentGroupId
             }
 
             // Keep only active/upcoming events in the next 30 days, sorted chronologically.
@@ -971,7 +964,7 @@ final class CalendarSyncManager: ObservableObject {
             let lookaheadEnd = Calendar.current.date(byAdding: .day, value: 30, to: now) ?? Date.distantFuture
             filteredEvents = filteredEvents
                 .filter { event in
-                    event.end_date > now && event.start_date < lookaheadEnd
+                    event.end_date >= now && event.start_date < lookaheadEnd
                 }
                 .sorted { lhs, rhs in
                     if lhs.start_date == rhs.start_date {
@@ -979,6 +972,9 @@ final class CalendarSyncManager: ObservableObject {
                     }
                     return lhs.start_date < rhs.start_date
                 }
+            
+            // Match the dashboard's "Upcoming" window size (top 10 within 30 days).
+            filteredEvents = Array(filteredEvents.prefix(10))
             
             struct SharedEvent: Codable {
                 let id: String
