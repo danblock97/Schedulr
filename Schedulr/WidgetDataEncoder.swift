@@ -16,7 +16,7 @@ enum WidgetDisplayMode: String, Codable, CaseIterable {
     var displayName: String {
         switch self {
         case .rolling: return "Rolling Events"
-        case .staticNextUp: return "Next Up Only"
+        case .staticNextUp: return "Next Up nly"
         }
     }
 }

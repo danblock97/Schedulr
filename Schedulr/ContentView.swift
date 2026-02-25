@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 struct ContentView: View {
     @EnvironmentObject private var authVM: AuthViewModel
@@ -13,8 +16,10 @@ struct ContentView: View {
     @StateObject private var viewModel: DashboardViewModel
     @StateObject private var profileViewModel = ProfileViewModel()
     @StateObject private var themeManager = ThemeManager.shared
+    @StateObject private var appIssueAlertService = AppIssueAlertService()
     @State private var selectedTab: Int = 0
     @State private var startAIWithVoice: Bool = false
+    @State private var appIssueAlertDetail: AppIssueAlert?
 
     init(calendarManager: CalendarSyncManager) {
         _calendarManager = ObservedObject(initialValue: calendarManager)
@@ -57,12 +62,47 @@ struct ContentView: View {
                 .environmentObject(themeManager)
                 .ignoresSafeArea(.keyboard, edges: .bottom)
         }
+        .overlay(alignment: .top) {
+            GeometryReader { proxy in
+                VStack(spacing: 0) {
+                    if let alert = appIssueAlertService.currentAlert {
+                        AppIssueBanner(alert: alert) {
+                            appIssueAlertDetail = alert
+                        } onDismiss: {
+                            appIssueAlertService.dismissCurrentAlert()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, max(8, resolvedTopSafeInset(proxyTopInset: proxy.safeAreaInsets.top) + 6))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(2)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.88), value: appIssueAlertService.currentAlert?.displayInstanceKey)
+        .sheet(item: $appIssueAlertDetail) { alert in
+            AppIssueAlertDetailSheet(alert: alert)
+        }
         .task {
             await loadTheme()
             // Initialize locale for date formatting in notifications
             await initializeLocale()
             // Load user profile to get avatar
             await profileViewModel.loadUserProfile()
+            await appIssueAlertService.start()
+        }
+        .onDisappear {
+            Task { await appIssueAlertService.stop() }
+        }
+        .onChange(of: authVM.phase) { _, phase in
+            Task {
+                if phase == .authenticated {
+                    await appIssueAlertService.start()
+                } else {
+                    await appIssueAlertService.stop()
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("NavigateToEvent"))) { notification in
             let eventId: UUID? = {
@@ -107,6 +147,19 @@ struct ContentView: View {
             }
         }
     }
+
+    private func resolvedTopSafeInset(proxyTopInset: CGFloat) -> CGFloat {
+        #if os(iOS)
+        if proxyTopInset > 0 {
+            return proxyTopInset
+        }
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap(\.windows)
+        return windows.first(where: \.isKeyWindow)?.safeAreaInsets.top ?? 0
+        #else
+        return proxyTopInset
+        #endif
+    }
     
     private func loadTheme() async {
         do {
@@ -135,6 +188,77 @@ struct ContentView: View {
             print("⚠️ Could not initialize locale: \(error)")
             #endif
             // Non-critical error, continue without locale update
+        }
+    }
+}
+
+private struct AppIssueAlertDetailSheet: View {
+    let alert: AppIssueAlert
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 10) {
+                        Image(systemName: iconName)
+                            .foregroundStyle(accentColor)
+                            .font(.system(size: 18, weight: .semibold))
+                        Text(alert.title)
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                    }
+
+                    Text(alert.message)
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let startsAt = alert.startsAt {
+                        detailRow(title: "Starts", value: startsAt.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    if let endsAt = alert.endsAt {
+                        detailRow(title: "Ends", value: endsAt.formatted(date: .abbreviated, time: .shortened))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+            }
+            .navigationTitle("Issue Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func detailRow(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(.primary)
+        }
+    }
+
+    private var iconName: String {
+        switch alert.severity {
+        case .info: return "info.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .critical: return "bolt.horizontal.circle.fill"
+        }
+    }
+
+    private var accentColor: Color {
+        switch alert.severity {
+        case .info: return .blue
+        case .warning: return Color(red: 0.95, green: 0.55, blue: 0.10)
+        case .critical: return .red
         }
     }
 }

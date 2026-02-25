@@ -448,6 +448,9 @@ private struct AuthFormCard: View {
                     title: viewModel.authMode == .signIn ? "Sign In" : "Create Account",
                     isLoading: viewModel.isLoadingEmail,
                     action: {
+                        #if DEBUG
+                        print("[AuthView] Primary auth button tapped. mode=\(viewModel.authMode == .signIn ? "signIn" : "signUp"), isLoadingEmail=\(viewModel.isLoadingEmail)")
+                        #endif
                         Task {
                             if viewModel.authMode == .signIn {
                                 await viewModel.signInWithEmail()

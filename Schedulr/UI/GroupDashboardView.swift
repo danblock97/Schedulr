@@ -258,7 +258,6 @@ struct GroupDashboardView: View {
     @StateObject private var notificationViewModel = NotificationViewModel()
     @State private var animateIn = false
     @State private var showEventEditor = false
-    @State private var showProfile = false
     @State private var showInviteSheet = false
     @State private var showAvailabilityView = false
 
@@ -451,19 +450,6 @@ struct GroupDashboardView: View {
                 EventEditorView(groupId: groupId, members: viewModel.members)
             }
         }
-        .sheet(isPresented: $showProfile) {
-            // ProfileView placeholder
-            NavigationStack {
-                Text("Profile Settings")
-                    .navigationTitle("Profile")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") { showProfile = false }
-                        }
-                    }
-            }
-        }
         .sheet(isPresented: $showInviteSheet) {
             if let selected = currentGroup {
                 NavigationStack {
@@ -535,7 +521,7 @@ struct GroupDashboardView: View {
             Spacer()
             
             Button {
-                showProfile = true
+                NotificationCenter.default.post(name: NSNotification.Name("NavigateToProfile"), object: nil)
             } label: {
                 if let currentUser = viewModel.members.first(where: { $0.id == currentUserId }),
                    let avatarURL = currentUser.avatarURL {

@@ -482,35 +482,75 @@ If it's already on, try signing out of iCloud and back in, then retry or contact
     #endif
 
     func signInWithEmail() async {
-        guard !isLoadingEmail else { return }
+        #if DEBUG
+        print("[Auth] signInWithEmail() invoked. isLoadingEmail=\(isLoadingEmail)")
+        #endif
+        guard !isLoadingEmail else {
+            #if DEBUG
+            print("[Auth] signInWithEmail() ignored because isLoadingEmail is already true")
+            #endif
+            return
+        }
         isLoadingEmail = true
         errorMessage = nil
-        defer { isLoadingEmail = false }
+        defer {
+            #if DEBUG
+            print("[Auth] signInWithEmail() finishing. isLoadingEmail -> false")
+            #endif
+            isLoadingEmail = false
+        }
 
-        guard let client else { return }
+        guard let client else {
+            #if DEBUG
+            print("[Auth] signInWithEmail() aborted: Supabase client is nil (check app init)")
+            #endif
+            errorMessage = "App configuration not ready. Please try again."
+            return
+        }
         do {
             let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+            #if DEBUG
+            print("[Auth] signInWithEmail() validation start. email=\(trimmedEmail), passwordLength=\(trimmedPassword.count)")
+            #endif
             
             guard !trimmedEmail.isEmpty else {
+                #if DEBUG
+                print("[Auth] signInWithEmail() validation failed: empty email")
+                #endif
                 errorMessage = "Please enter your email."
                 return
             }
             guard !trimmedPassword.isEmpty else {
+                #if DEBUG
+                print("[Auth] signInWithEmail() validation failed: empty password")
+                #endif
                 errorMessage = "Please enter your password."
                 return
             }
             guard trimmedPassword.count >= 6 else {
+                #if DEBUG
+                print("[Auth] signInWithEmail() validation failed: password too short")
+                #endif
                 errorMessage = "Password must be at least 6 characters."
                 return
             }
             
+            #if DEBUG
+            print("[Auth] signInWithEmail() calling Supabase auth.signIn(email:password:)")
+            #endif
             _ = try await client.auth.signIn(email: trimmedEmail, password: trimmedPassword)
+            #if DEBUG
+            print("[Auth] signInWithEmail() Supabase signIn returned successfully; refreshing auth state")
+            #endif
             refreshAuthState()
             // Identify user with RevenueCat and fetch subscription status
             await SubscriptionManager.shared.identifyUser()
             await SubscriptionManager.shared.fetchSubscriptionStatus()
         } catch {
+            #if DEBUG
+            print("[Auth] signInWithEmail() error: \(error.localizedDescription)")
+            #endif
             errorMessage = error.localizedDescription
         }
     }
