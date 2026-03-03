@@ -177,6 +177,10 @@ final class AuthViewModel: ObservableObject {
                 }
             }
             
+            // Detect email confirmation before handling so we can show a fallback notice
+            let isEmailConfirmation = url.fragment?.contains("type=signup") == true ||
+                URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "type" })?.value == "signup"
+
             // Regular OAuth flow - proceed with normal handling
             // First let the SDK try to handle PKCE or token fragments.
             try await client.auth.handle(url)
@@ -227,6 +231,11 @@ final class AuthViewModel: ObservableObject {
             // Identify user with RevenueCat and fetch subscription status after authentication
             await SubscriptionManager.shared.identifyUser()
             await SubscriptionManager.shared.fetchSubscriptionStatus()
+            // If this was an email confirmation but we couldn't establish a session
+            // (e.g. tokens not in URL), prompt the user to sign in manually
+            if isEmailConfirmation, (try? await client.auth.session) == nil {
+                showNotice("Email confirmed! Please sign in.", duration: 6.0)
+            }
         } catch {
             errorMessage = error.localizedDescription
             #if DEBUG
@@ -579,7 +588,7 @@ If it's already on, try signing out of iCloud and back in, then retry or contact
                 return
             }
             
-            _ = try await client.auth.signUp(email: trimmedEmail, password: trimmedPassword)
+            _ = try await client.auth.signUp(email: trimmedEmail, password: trimmedPassword, redirectTo: URL(string: "schedulr://auth-callback"))
             // Show success message for email confirmation
             showNotice("Confirmation email sent! Please check your inbox to confirm your account.", duration: 5.0)
             refreshAuthState()
