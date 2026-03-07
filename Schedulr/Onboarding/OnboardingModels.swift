@@ -22,6 +22,7 @@ struct DBGroup: Codable, Identifiable, Equatable {
     let id: UUID
     var name: String
     var invite_slug: String
+    var group_avatar_url: String?
     var created_by: UUID
     var created_at: Date?
 }

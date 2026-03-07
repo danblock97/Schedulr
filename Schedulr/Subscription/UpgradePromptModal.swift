@@ -28,9 +28,9 @@ struct UpgradePromptModal: View {
         var message: String {
             switch self {
             case .groups:
-                return "You've reached your group limit. Upgrade to Pro to create up to 5 groups!"
+                return "You've reached your group limit. Upgrade to Pro for unlimited groups!"
             case .members:
-                return "You've reached your member limit. Upgrade to Pro to add up to 10 members per group!"
+                return "You've reached your member limit. Upgrade to Pro for unlimited members per group!"
             case .ai:
                 return "You've used up your AI requests this month. Upgrade to Pro for AI-assisted propose times, Scheduly, and 300 requests per month!"
             }
@@ -78,11 +78,11 @@ struct UpgradePromptModal: View {
                 FeatureRow(icon: "person.3.fill", 
                           feature: "Groups", 
                           freeValue: "1", 
-                          proValue: "5")
+                          proValue: "Unlimited")
                 FeatureRow(icon: "person.2.fill", 
                           feature: "Members per group", 
                           freeValue: "5", 
-                          proValue: "10")
+                          proValue: "Unlimited")
                 FeatureRow(icon: "sparkles", 
                           feature: "AI requests/month", 
                           freeValue: "0", 
@@ -169,4 +169,3 @@ private struct FeatureRow: View {
         )
     }
 }
-

@@ -51,219 +51,89 @@ struct AIAssistantView: View {
                 
                 if subscriptionManager.isPro {
                     // Pro users: Full chat interface
-                    VStack(spacing: 0) {
-                        // Messages list
-                        ScrollViewReader { proxy in
-                            ScrollView {
-                                LazyVStack(spacing: isPad ? 16 : 20) {
-                                    ForEach(viewModel.messages) { message in
-                                        MessageBubble(
-                                            message: message,
-                                            isPad: isPad,
-                                            userAvatarURL: userAvatarURL,
-                                            onFollowUp: { option in
-                                                Task {
-                                                    await viewModel.sendFollowUp(option: option, sourceMessageId: message.id)
-                                                }
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: isPad ? 16 : 20) {
+                                ForEach(viewModel.messages) { message in
+                                    MessageBubble(
+                                        message: message,
+                                        isPad: isPad,
+                                        userAvatarURL: userAvatarURL,
+                                        onFollowUp: { option in
+                                            Task {
+                                                await viewModel.sendFollowUp(option: option, sourceMessageId: message.id)
                                             }
-                                        )
-                                            .id(message.id)
-                                            .transition(.asymmetric(
-                                                insertion: .scale(scale: 0.8).combined(with: .opacity),
-                                                removal: .opacity
-                                            ))
-                                    }
-                                    
-                                    // Context hint - show only when there's just the welcome message
-                                    if viewModel.messages.count == 1, 
-                                       let welcomeMessage = viewModel.messages.first,
-                                       welcomeMessage.role == .assistant {
-                                        VStack(spacing: isPad ? 6 : 4) {
-                                            Text("I remember our conversation, so feel free to ask follow-up questions like \"what's next?\" or \"what about tomorrow?\"")
-                                                .font(.system(size: isPad ? 15 : 14, weight: .medium, design: .rounded))
-                                                .foregroundColor(.secondary)
-                                                .multilineTextAlignment(.center)
-                                            
-                                            Text("Note: My context is limited and I may occasionally make mistakes. Please verify important information.")
-                                                .font(.system(size: isPad ? 13 : 12, weight: .regular, design: .rounded))
-                                                .foregroundColor(.secondary.opacity(0.7))
-                                                .multilineTextAlignment(.center)
                                         }
-                                        .padding(.horizontal, isPad ? 60 : 40)
-                                        .padding(.top, isPad ? 8 : 4)
-                                        .frame(maxWidth: isPad ? 600 : .infinity, alignment: .center)
-                                    }
-                                    
-                                    // Loading indicator
-                                    if viewModel.isLoading {
-                                        LoadingBubble(isPad: isPad)
-                                            .id("loading")
-                                    }
+                                    )
+                                        .id(message.id)
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.8).combined(with: .opacity),
+                                            removal: .opacity
+                                        ))
                                 }
-                                .frame(maxWidth: isPad ? 600 : .infinity, alignment: .leading)
-                                .padding(.horizontal, isPad ? 60 : 20)
-                                .padding(.vertical, isPad ? 24 : 12)
-                                .padding(.bottom, isPad ? 80 : 60) // Space for input area + tab bar, avoid navbar overlap
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                            }
-                            .simultaneousGesture(
-                                TapGesture()
-                                    .onEnded { _ in
-                                        // Dismiss keyboard when tapping on scroll view
-                                        isInputFocused = false
+                                
+                                // Context hint - show only when there's just the welcome message
+                                if viewModel.messages.count == 1,
+                                   let welcomeMessage = viewModel.messages.first,
+                                   welcomeMessage.role == .assistant {
+                                    VStack(spacing: isPad ? 6 : 4) {
+                                        Text("I remember our conversation, so feel free to ask follow-up questions like \"what's next?\" or \"what about tomorrow?\"")
+                                            .font(.system(size: isPad ? 15 : 14, weight: .medium, design: .rounded))
+                                            .foregroundColor(.secondary)
+                                            .multilineTextAlignment(.center)
+                                        
+                                        Text("Note: My context is limited and I may occasionally make mistakes. Please verify important information.")
+                                            .font(.system(size: isPad ? 13 : 12, weight: .regular, design: .rounded))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                            .multilineTextAlignment(.center)
                                     }
-                            )
-                            .onAppear {
-                                // Scroll to bottom on initial load
-                                if let lastMessage = viewModel.messages.last {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        withAnimation {
-                                            proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                                        }
-                                    }
+                                    .padding(.horizontal, isPad ? 60 : 40)
+                                    .padding(.top, isPad ? 8 : 4)
+                                    .frame(maxWidth: isPad ? 600 : .infinity, alignment: .center)
+                                }
+                                
+                                // Loading indicator
+                                if viewModel.isLoading {
+                                    LoadingBubble(isPad: isPad)
+                                        .id("loading")
                                 }
                             }
-                            .onChange(of: viewModel.messages.count) { _, _ in
-                                if let lastMessage = viewModel.messages.last {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
+                            .frame(maxWidth: isPad ? 600 : .infinity, alignment: .leading)
+                            .padding(.horizontal, isPad ? 60 : 20)
+                            .padding(.vertical, isPad ? 24 : 12)
+                            .padding(.bottom, isPad ? 24 : 20)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .simultaneousGesture(
+                            TapGesture()
+                                .onEnded { _ in
+                                    // Dismiss keyboard when tapping on scroll view
+                                    isInputFocused = false
+                                }
+                        )
+                        .onAppear {
+                            // Scroll to bottom on initial load
+                            if let lastMessage = viewModel.messages.last {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    withAnimation {
                                         proxy.scrollTo(lastMessage.id, anchor: .bottom)
                                     }
                                 }
                             }
-                            .onChange(of: viewModel.isLoading) { _, isLoading in
-                                if isLoading {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        proxy.scrollTo("loading", anchor: .bottom)
-                                    }
+                        }
+                        .onChange(of: viewModel.messages.count) { _, _ in
+                            if let lastMessage = viewModel.messages.last {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
                                 }
                             }
                         }
-                        
-                        // Input area
-                        VStack(spacing: 0) {
-                            if let draftPrompt = viewModel.availableDraftPrompt {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "doc.text.fill")
-                                        .foregroundStyle(themeManager.primaryColor)
-                                    Text("Draft available")
-                                        .font(.system(size: isPad ? 15 : 14, weight: .semibold, design: .rounded))
-                                    Spacer()
-                                    Button("Discard") {
-                                        viewModel.discardAvailableDraft()
-                                    }
-                                    .font(.system(size: isPad ? 14 : 13, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                    
-                                    Button("Resume") {
-                                        viewModel.resumeAvailableDraft()
-                                        isInputFocused = true
-                                    }
-                                    .font(.system(size: isPad ? 14 : 13, weight: .bold, design: .rounded))
-                                    .foregroundStyle(themeManager.secondaryColor)
+                        .onChange(of: viewModel.isLoading) { _, isLoading in
+                            if isLoading {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    proxy.scrollTo("loading", anchor: .bottom)
                                 }
-                                .padding(.horizontal, isPad ? 24 : 16)
-                                .padding(.vertical, 10)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                .padding(.horizontal, isPad ? 24 : 16)
-                                .padding(.top, 10)
-                            }
-                            
-                            // Quick prompts - only show when input is empty and no messages yet
-                            if viewModel.inputText.isEmpty && viewModel.messages.count <= 1 {
-                                QuickPromptsView(isPad: isPad) { prompt in
-                                    viewModel.inputText = prompt
-                                    Task {
-                                        await viewModel.sendMessage()
-                                    }
-                                }
-                                .padding(.bottom, 8)
-                            }
-                            
-                            Divider()
-                                .opacity(0.3)
-                            
-                            HStack(spacing: 12) {
-                                // Microphone button
-                                VoiceInputButton(
-                                    isRecording: speechManager.isRecording,
-                                    isPad: isPad
-                                ) {
-                                    Task {
-                                        await speechManager.toggleRecording()
-                                    }
-                                }
-                                
-                                HStack {
-                                    TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
-                                        .textFieldStyle(.plain)
-                                        .font(.system(size: isPad ? 17 : 16, weight: .medium, design: .rounded))
-                                        .focused($isInputFocused)
-                                        .onSubmit {
-                                            Task {
-                                                await viewModel.sendMessage()
-                                            }
-                                        }
-                                }
-                                .padding(.horizontal, isPad ? 20 : 18)
-                                .padding(.vertical, isPad ? 12 : 10)
-                                .background(
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                            .fill(.thinMaterial)
-                                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [.white.opacity(0.5), .white.opacity(0.2)],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                ),
-                                                lineWidth: 1
-                                            )
-                                    }
-                                )
-                                .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
-                                
-                                Button {
-                                    Task {
-                                        await viewModel.sendMessage()
-                                    }
-                                } label: {
-                                    ZStack {
-                                        Circle()
-                                            .fill(
-                                                viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                                ? AnyShapeStyle(Color.secondary.opacity(0.2))
-                                                : AnyShapeStyle(themeManager.primaryColor)
-                                            )
-                                            .frame(width: isPad ? 48 : 44, height: isPad ? 48 : 44)
-                                        
-                                        Image(systemName: "arrow.up")
-                                            .font(.system(size: isPad ? 19 : 18, weight: .bold))
-                                            .foregroundStyle(
-                                                viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                                ? Color.secondary.opacity(0.6)
-                                                : Color.white
-                                            )
-                                    }
-                                }
-                                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLoading)
-                                .buttonStyle(ScaleButtonStyle())
-                            }
-                            .frame(maxWidth: isPad ? 600 : .infinity)
-                            .padding(.horizontal, isPad ? 24 : 16)
-                            .padding(.vertical, isPad ? 18 : 16)
-                            .padding(.bottom, isPad ? 50 : 40)
-                            .frame(maxWidth: .infinity)
-                            .background {
-                                Rectangle()
-                                    .fill(.ultraThinMaterial)
-                                    .overlay(
-                                        VStack {
-                                            Divider()
-                                            Spacer()
-                                        }
-                                    )
                             }
                         }
                     }
@@ -353,7 +223,139 @@ struct AIAssistantView: View {
                 ConversationHistorySheet(viewModel: viewModel)
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if subscriptionManager.isPro {
+                composerView
+            }
+        }
         .tabBarSafeAreaInset()
+    }
+
+    @ViewBuilder
+    private var composerView: some View {
+        VStack(spacing: 0) {
+            if let draftPrompt = viewModel.availableDraftPrompt {
+                HStack(spacing: 10) {
+                    Image(systemName: "doc.text.fill")
+                        .foregroundStyle(themeManager.primaryColor)
+                    Text("Draft available")
+                        .font(.system(size: isPad ? 15 : 14, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Button("Discard") {
+                        viewModel.discardAvailableDraft()
+                    }
+                    .font(.system(size: isPad ? 14 : 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                    Button("Resume") {
+                        viewModel.resumeAvailableDraft()
+                        isInputFocused = true
+                    }
+                    .font(.system(size: isPad ? 14 : 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(themeManager.secondaryColor)
+                }
+                .padding(.horizontal, isPad ? 24 : 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, isPad ? 24 : 16)
+                .padding(.top, 10)
+            }
+
+            if viewModel.inputText.isEmpty && viewModel.messages.count <= 1 {
+                QuickPromptsView(isPad: isPad) { prompt in
+                    viewModel.inputText = prompt
+                    Task {
+                        await viewModel.sendMessage()
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+
+            Divider()
+                .opacity(0.3)
+
+            HStack(spacing: 12) {
+                VoiceInputButton(
+                    isRecording: speechManager.isRecording,
+                    isPad: isPad
+                ) {
+                    Task {
+                        await speechManager.toggleRecording()
+                    }
+                }
+
+                HStack {
+                    TextField("Ask me anything...", text: $viewModel.inputText, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: isPad ? 17 : 16, weight: .medium, design: .rounded))
+                        .focused($isInputFocused)
+                        .onSubmit {
+                            Task {
+                                await viewModel.sendMessage()
+                            }
+                        }
+                }
+                .padding(.horizontal, isPad ? 20 : 18)
+                .padding(.vertical, isPad ? 12 : 10)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(.thinMaterial)
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.5), .white.opacity(0.2)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    }
+                )
+                .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
+
+                Button {
+                    Task {
+                        await viewModel.sendMessage()
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? AnyShapeStyle(Color.secondary.opacity(0.2))
+                                : AnyShapeStyle(themeManager.primaryColor)
+                            )
+                            .frame(width: isPad ? 48 : 44, height: isPad ? 48 : 44)
+
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: isPad ? 19 : 18, weight: .bold))
+                            .foregroundStyle(
+                                viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? Color.secondary.opacity(0.6)
+                                : Color.white
+                            )
+                    }
+                }
+                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isLoading)
+                .buttonStyle(ScaleButtonStyle())
+            }
+            .frame(maxWidth: isPad ? 600 : .infinity)
+            .padding(.horizontal, isPad ? 24 : 16)
+            .padding(.vertical, isPad ? 16 : 14)
+            .padding(.bottom, isPad ? 10 : 6)
+            .frame(maxWidth: .infinity)
+            .background {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        VStack {
+                            Divider()
+                            Spacer()
+                        }
+                    )
+            }
+        }
     }
 }
 
@@ -409,41 +411,7 @@ private struct MessageBubble: View {
     }
     
     private var aiAvatar: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.15),
-                            Color(red: 0.58, green: 0.41, blue: 0.87).opacity(0.15)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: isPad ? 40 : 36, height: isPad ? 40 : 36)
-                .overlay(
-                    Circle()
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.98, green: 0.29, blue: 0.55),
-                                    Color(red: 0.58, green: 0.41, blue: 0.87)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 2
-                        )
-                )
-            
-            Image("schedulr-logo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: isPad ? 26 : 24, height: isPad ? 26 : 24)
-                .clipShape(Circle())
-        }
-        .shadow(color: Color(red: 0.98, green: 0.29, blue: 0.55).opacity(0.3), radius: 8, x: 0, y: 4)
+        SchedulyIllustrationView(style: .avatar)
     }
     
     private var userAvatar: some View {
@@ -627,41 +595,7 @@ private struct LoadingBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: isPad ? 14 : 12) {
             // AI avatar (Scheduly)
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                themeManager.primaryColor.opacity(0.15),
-                                themeManager.secondaryColor.opacity(0.15)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: isPad ? 40 : 36, height: isPad ? 40 : 36)
-                    .overlay(
-                        Circle()
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        themeManager.primaryColor,
-                                        themeManager.secondaryColor
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 2
-                            )
-                    )
-                
-                Image("schedulr-logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: isPad ? 26 : 24, height: isPad ? 26 : 24)
-                    .clipShape(Circle())
-            }
-            .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 8, x: 0, y: 4)
+            SchedulyIllustrationView(style: .avatar)
             
             // Loading dots
             HStack(spacing: 8) {
@@ -692,8 +626,8 @@ private struct LoadingBubble: View {
             .padding(.vertical, isPad ? 16 : 14)
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(.systemBackground))
-                    .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
+                    .fill(Color(.secondarySystemGroupedBackground).opacity(0.98))
+                    .shadow(color: Color(red: 0.54, green: 0.36, blue: 0.30).opacity(0.14), radius: 10, x: 0, y: 6)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -726,30 +660,27 @@ private struct BubblyAIBackground: View {
     
     var body: some View {
         ZStack {
-            // Large primary bubble
-            Circle()
+            RoundedRectangle(cornerRadius: 56, style: .continuous)
                 .fill(
-                    RadialGradient(
+                    LinearGradient(
                         colors: [
-                            themeManager.primaryColor.opacity(0.08),
-                            themeManager.primaryColor.opacity(0.02)
+                            Color(red: 0.99, green: 0.95, blue: 0.91).opacity(0.96),
+                            Color(red: 0.97, green: 0.91, blue: 0.87).opacity(0.84)
                         ],
-                        center: .center,
-                        startRadius: 80,
-                        endRadius: 200
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 300, height: 300)
-                .offset(x: -150, y: -300)
-                .blur(radius: 40)
+                .frame(width: 420, height: 260)
+                .offset(x: -100, y: -310)
+                .blur(radius: 48)
             
-            // Secondary bubble
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            themeManager.secondaryColor.opacity(0.08),
-                            themeManager.secondaryColor.opacity(0.02)
+                            Color(red: 0.96, green: 0.75, blue: 0.65).opacity(0.22),
+                            Color(red: 0.96, green: 0.75, blue: 0.65).opacity(0.01)
                         ],
                         center: .center,
                         startRadius: 60,
@@ -760,21 +691,28 @@ private struct BubblyAIBackground: View {
                 .offset(x: 160, y: 200)
                 .blur(radius: 35)
             
-            // Small decorative sparkles
-            Image(systemName: "sparkles")
-                .font(.system(size: 40, weight: .ultraLight))
-                .foregroundStyle(
-                    LinearGradient(
+            Circle()
+                .fill(
+                    RadialGradient(
                         colors: [
-                            themeManager.primaryColor.opacity(0.3),
-                            themeManager.secondaryColor.opacity(0.3)
+                            themeManager.secondaryColor.opacity(0.12),
+                            themeManager.secondaryColor.opacity(0.01)
                         ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        center: .center,
+                        startRadius: 40,
+                        endRadius: 160
                     )
                 )
-                .offset(x: 100, y: -200)
-                .blur(radius: 20)
+                .frame(width: 240, height: 240)
+                .offset(x: -170, y: 220)
+                .blur(radius: 30)
+
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color.white.opacity(0.26))
+                .frame(width: 140, height: 88)
+                .rotationEffect(.degrees(-18))
+                .offset(x: 120, y: -240)
+                .blur(radius: 10)
         }
     }
 }
@@ -887,10 +825,8 @@ private struct AIInlineUpgradePrompt: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 48, weight: .medium))
-                .foregroundStyle(themeManager.gradient)
-                .symbolRenderingMode(.hierarchical)
+            SchedulyIllustrationView(style: .hero, showsBadge: true)
+                .frame(height: 200)
             
             Text("Unlock AI Scheduling Assistant")
                 .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -926,23 +862,25 @@ private struct AIInlineUpgradePrompt: View {
             .padding(.top, 8)
         }
         .padding(24)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
+        .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(
+                .fill(
                     LinearGradient(
                         colors: [
-                            themeManager.primaryColor.opacity(0.3),
-                            themeManager.secondaryColor.opacity(0.3)
+                            Color(.systemBackground),
+                            Color(red: 0.99, green: 0.96, blue: 0.93)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
+                    )
                 )
         )
-        .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.8), lineWidth: 1.2)
+        )
+        .shadow(color: Color(red: 0.54, green: 0.36, blue: 0.30).opacity(0.12), radius: 16, x: 0, y: 8)
     }
 }
 

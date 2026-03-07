@@ -33,6 +33,8 @@ final class CalendarSyncManager: ObservableObject {
     private let defaults = UserDefaults.standard
     private static let syncPreferenceKey = "CalendarSyncEnabled"
     private static let syncedGroupEventsKey = "SyncedGroupEventsMapping"
+    private static let localSyncLookbackDays = 30
+    private static let localSyncFutureYears = 1
 
     // Track if syncPendingGroupEventsToAppleCalendar is currently running to prevent concurrent execution
     private var isSyncingPendingEvents: Bool = false
@@ -72,13 +74,17 @@ final class CalendarSyncManager: ObservableObject {
     private var client: SupabaseClient? {
         SupabaseManager.shared.client
     }
+    
+    private var hasReadableEventAccess: Bool {
+        Self.hasReadableEventAccess(status: authorizationStatus)
+    }
 
     init() {
         let status = EKEventStore.authorizationStatus(for: .event)
         authorizationStatus = status
 
         let storedPreference = defaults.object(forKey: Self.syncPreferenceKey) as? Bool ?? false
-        if status == .authorized {
+        if Self.hasReadableEventAccess(status: status) {
             syncEnabled = storedPreference
         } else {
             syncEnabled = false
@@ -87,7 +93,7 @@ final class CalendarSyncManager: ObservableObject {
             }
         }
 
-        if status == .authorized {
+        if Self.hasReadableEventAccess(status: status) {
             observeEventStoreChanges()
             if syncEnabled {
                 Task { await refreshEvents() }
@@ -103,7 +109,8 @@ final class CalendarSyncManager: ObservableObject {
 
     func enableSyncFlow() async -> Bool {
         lastSyncError = nil
-        if authorizationStatus == .authorized {
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        if hasReadableEventAccess {
             if !syncEnabled {
                 syncEnabled = true
                 persistPreference()
@@ -150,7 +157,8 @@ final class CalendarSyncManager: ObservableObject {
     }
 
     func refreshEvents() async {
-        guard syncEnabled, authorizationStatus == .authorized else {
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard syncEnabled, hasReadableEventAccess else {
             upcomingEvents = []
             return
         }
@@ -158,8 +166,8 @@ final class CalendarSyncManager: ObservableObject {
         lastSyncError = nil
         defer { isRefreshing = false }
 
-        let start = Date()
-        let end = Calendar.current.date(byAdding: .day, value: 14, to: start) ?? start
+        let start = Calendar.current.date(byAdding: .day, value: -Self.localSyncLookbackDays, to: Date()) ?? Date()
+        let end = Calendar.current.date(byAdding: .year, value: Self.localSyncFutureYears, to: Date()) ?? Date()
         let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
         let events = eventStore.events(matching: predicate)
             .sorted { lhs, rhs in
@@ -185,7 +193,7 @@ final class CalendarSyncManager: ObservableObject {
 
     func resetAuthorizationStatus() {
         authorizationStatus = EKEventStore.authorizationStatus(for: .event)
-        if authorizationStatus != .authorized {
+        if !hasReadableEventAccess {
             syncEnabled = false
             persistPreference()
             upcomingEvents = []
@@ -197,11 +205,21 @@ final class CalendarSyncManager: ObservableObject {
 
     private func requestEventKitAccess() async throws -> Bool {
         try await withCheckedThrowingContinuation { continuation in
-            eventStore.requestAccess(to: .event) { granted, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: granted)
+            if #available(iOS 17.0, *) {
+                eventStore.requestFullAccessToEvents { granted, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: granted)
+                    }
+                }
+            } else {
+                eventStore.requestAccess(to: .event) { granted, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: granted)
+                    }
                 }
             }
         }
@@ -252,6 +270,49 @@ final class CalendarSyncManager: ObservableObject {
         let alpha = comps.count >= 4 ? Double(comps[3]) : Double(converted.alpha)
         return ColorComponents(red: red, green: green, blue: blue, alpha: alpha)
     }
+    
+    private static func hasReadableEventAccess(status: EKAuthorizationStatus) -> Bool {
+        if #available(iOS 17.0, *) {
+            return status == .fullAccess || status == .authorized
+        }
+        return status == .authorized
+    }
+    
+    private func removeHiddenHolidayPersonalEventsFromDatabase(
+        userId: UUID,
+        startDate: Date,
+        endDate: Date
+    ) async throws {
+        guard let client = client else { return }
+        
+        struct ExistingPersonalEventRow: Decodable {
+            let id: UUID
+            let title: String
+            let calendar_name: String?
+        }
+        
+        let existingRows: [ExistingPersonalEventRow] = try await client
+            .from("calendar_events")
+            .select("id, title, calendar_name")
+            .eq("user_id", value: userId)
+            .eq("event_type", value: "personal")
+            .gte("end_date", value: startDate)
+            .lte("start_date", value: endDate)
+            .execute()
+            .value
+        
+        let idsToDelete = existingRows
+            .filter { isPublicHolidayEvent(title: $0.title, calendarName: $0.calendar_name) }
+            .map(\.id)
+        
+        if !idsToDelete.isEmpty {
+            _ = try await client
+                .from("calendar_events")
+                .delete()
+                .in("id", values: idsToDelete)
+                .execute()
+        }
+    }
 
     // MARK: - Supabase Sync Methods
 
@@ -261,15 +322,27 @@ final class CalendarSyncManager: ObservableObject {
             throw NSError(domain: "CalendarSyncManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Supabase client not available"])
         }
 
-        guard syncEnabled, authorizationStatus == .authorized else {
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard syncEnabled, hasReadableEventAccess else {
             throw NSError(domain: "CalendarSyncManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Calendar sync not enabled"])
         }
 
         // Fetch events from EventKit
-        let start = Date()
-        let end = Calendar.current.date(byAdding: .day, value: 14, to: start) ?? start
+        let start = Calendar.current.date(byAdding: .day, value: -Self.localSyncLookbackDays, to: Date()) ?? Date()
+        let end = Calendar.current.date(byAdding: .year, value: Self.localSyncFutureYears, to: Date()) ?? Date()
         let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
         let events = eventStore.events(matching: predicate)
+        
+        let prefs = (try? await CalendarPreferencesManager.shared.load(for: userId))
+            ?? CalendarPreferences(hideHolidays: true, dedupAllDay: true)
+        
+        if prefs.hideHolidays {
+            try await removeHiddenHolidayPersonalEventsFromDatabase(
+                userId: userId,
+                startDate: start,
+                endDate: end
+            )
+        }
 
         // Fetch all apple_calendar_event_id values from event_attendees for this user
         // These represent group events that were synced FROM Supabase TO Apple Calendar
@@ -293,7 +366,11 @@ final class CalendarSyncManager: ObservableObject {
         let eventsToUpload = events.filter { event in
             guard let eventId = event.eventIdentifier else { return false }
             // Skip if this event is a group event that was synced FROM Supabase
-            return !syncedGroupEventIds.contains(eventId)
+            guard !syncedGroupEventIds.contains(eventId) else { return false }
+            if prefs.hideHolidays && isPublicHolidayEvent(title: event.title ?? "Busy", calendarName: event.calendar.title) {
+                return false
+            }
+            return true
         }
 
         // Convert to database format
@@ -944,11 +1021,7 @@ final class CalendarSyncManager: ObservableObject {
             
             if hideHolidays {
                 filteredEvents = filteredEvents.filter { ev in
-                    let title = ev.title.lowercased()
-                    let calendarName = (ev.calendar_name ?? "").lowercased()
-                    let isHoliday = title.contains("holiday") || calendarName.contains("holiday")
-                    let isBirthday = title.contains("birthday") || calendarName.contains("birthday")
-                    return !(isHoliday || isBirthday)
+                    !isPublicHolidayEvent(title: ev.title, calendarName: ev.calendar_name)
                 }
             }
             
@@ -1163,11 +1236,12 @@ final class CalendarSyncManager: ObservableObject {
         
         // Sync each pending event to Apple Calendar
         // First check if the event already exists in Apple Calendar to avoid duplicates
-        guard authorizationStatus == .authorized else { return }
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard hasReadableEventAccess else { return }
         
         // Refresh Apple Calendar events to get the latest state
-        let start = Date()
-        let end = Calendar.current.date(byAdding: .day, value: 14, to: start) ?? start
+        let start = Calendar.current.date(byAdding: .day, value: -Self.localSyncLookbackDays, to: Date()) ?? Date()
+        let end = Calendar.current.date(byAdding: .year, value: Self.localSyncFutureYears, to: Date()) ?? Date()
         let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
         var existingAppleEvents = eventStore.events(matching: predicate)
         
@@ -1309,7 +1383,8 @@ final class CalendarSyncManager: ObservableObject {
     /// This handles the case where the event creator updates an event that the invited user already has synced
     private func updateSyncedGroupEventsInAppleCalendar(userId: UUID) async throws {
         guard let client = client else { return }
-        guard authorizationStatus == .authorized else { return }
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard hasReadableEventAccess else { return }
 
         // Fetch all attendee records where user has an apple_calendar_event_id (already synced)
         // Join with calendar_events to get the current event details and updated_at timestamp
@@ -1428,7 +1503,8 @@ final class CalendarSyncManager: ObservableObject {
     /// This handles the case where the creator modifies or deletes a single occurrence
     private func syncRecurrenceExceptionsToAppleCalendar(userId: UUID) async throws {
         guard let client = client else { return }
-        guard authorizationStatus == .authorized else { return }
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard hasReadableEventAccess else { return }
         // Fetch all recurrence exceptions that this user might need to sync
         // These are events where is_recurrence_exception = true
         struct ExceptionRow: Decodable {
@@ -1580,7 +1656,8 @@ final class CalendarSyncManager: ObservableObject {
     /// This handles the case where another user (e.g., event creator) deleted a group event
     private func cleanupDeletedGroupEventsFromAppleCalendar(userId: UUID) async throws {
         guard let client = client else { return }
-        guard authorizationStatus == .authorized else { return }
+        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        guard hasReadableEventAccess else { return }
         // APPROACH 1: Check local storage for synced group events and verify they still exist and are active
         // This is the most reliable method as it doesn't depend on server-side records
         // Also handles rain-checked events which should be removed from Apple Calendar

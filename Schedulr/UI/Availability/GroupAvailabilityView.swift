@@ -383,11 +383,7 @@ struct GroupAvailabilityView: View {
         
         if calendarPrefs.hideHolidays {
             events = events.filter { ev in
-                let name = (ev.calendar_name ?? ev.title).lowercased()
-                let cal = (ev.calendar_name ?? "").lowercased()
-                let isHoliday = name.contains("holiday") || cal.contains("holiday")
-                let isBirthday = name.contains("birthday") || cal.contains("birthday")
-                return !(isHoliday || isBirthday)
+                !isPublicHolidayEvent(title: ev.title, calendarName: ev.calendar_name)
             }
         }
         
@@ -419,63 +415,56 @@ struct AvailabilityPreviewCard: View {
         highlights.prefix(2).map { $0.friendlyDescription }.joined(separator: " • ")
     }
     
+    private var memberSummary: String {
+        let count = members.count
+        if count == 0 { return "No members loaded yet" }
+        return count == 1 ? "1 member synced" : "\(count) members synced"
+    }
+    
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 14) {
-                // Icon
-                ZStack {
-                    Circle()
-                        .fill(themeManager.primaryColor.opacity(0.12))
-                        .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(themeManager.gradient.opacity(0.18))
+                            .frame(width: 56, height: 56)
+                        
+                        Image(systemName: "clock.badge.checkmark.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(themeManager.gradient)
+                    }
                     
-                    Image(systemName: "clock.badge.checkmark.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(themeManager.gradient)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(!highlights.isEmpty ? "Everyone's free!" : "See when everyone's free")
+                            .font(.system(size: 18, weight: .medium, design: .rounded))
+                            .foregroundStyle(.primary)
+                        
+                        Text(!highlights.isEmpty ? highlightSummary : memberSummary)
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "arrow.up.right.circle.fill")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(.tertiary)
                 }
                 
-                VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    availabilityPill(text: memberSummary, icon: "person.2.fill")
+                    availabilityPill(text: "Next 7 days", icon: "calendar")
                     if !highlights.isEmpty {
-                        Text("Everyone's free!")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
-                        
-                        Text(highlightSummary)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("See when everyone's free")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
-                        
-                        Text("Find a time that works for all")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
+                        availabilityPill(text: "\(highlights.count) slots", icon: "sparkles")
                     }
                 }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.tertiary)
             }
-            .padding(14)
+            .padding(18)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        !highlights.isEmpty ?
-                        AnyShapeStyle(LinearGradient(
-                            colors: [themeManager.primaryColor.opacity(0.25), themeManager.secondaryColor.opacity(0.15)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )) :
-                            AnyShapeStyle(Color.primary.opacity(0.04)),
-                        lineWidth: 1
-                    )
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(Color(.secondarySystemBackground).opacity(0.5))
             )
         }
         .buttonStyle(ScaleButtonStyle())
@@ -515,6 +504,20 @@ struct AvailabilityPreviewCard: View {
             let rightDate = calendar.date(bySettingHour: rhs.startHour, minute: 0, second: 0, of: rhs.date) ?? rhs.date
             return leftDate < rightDate
         }
+    }
+    
+    private func availabilityPill(text: String, icon: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .medium))
+            Text(text)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.45), in: Capsule())
     }
 }
 

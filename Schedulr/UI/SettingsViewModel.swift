@@ -14,12 +14,18 @@ final class SettingsViewModel: ObservableObject {
     
     // MARK: - Widget Preferences
     @Published var widgetDisplayMode: WidgetDisplayMode = .rolling
+
+    // MARK: - AI Communication Preferences
+    @Published var aiCommunicationPrefs = AICommunicationPreferences.default
+    @Published var isLoadingAICommunicationPrefs = false
     
     // MARK: - Loading States
     @Published var isLoadingCalendarPrefs = false
     @Published var isLoadingNotificationPrefs = false
     @Published var isSaving = false
     @Published var errorMessage: String?
+    @Published var aiCommunicationErrorMessage: String?
+    @Published var aiCommunicationSuccessMessage: String?
     
     private var userId: UUID?
     
@@ -35,6 +41,7 @@ final class SettingsViewModel: ObservableObject {
             await loadCalendarPrefs()
             await loadNotificationPrefs()
             await loadWidgetDisplayMode()
+            await loadAICommunicationPrefs()
         } catch {
             errorMessage = "Failed to load settings: \(error.localizedDescription)"
         }
@@ -166,7 +173,71 @@ final class SettingsViewModel: ObservableObject {
             await saveWidgetDisplayMode(mode)
         }
     }
+
+    // MARK: - AI Communication Preferences
+
+    func loadAICommunicationPrefs() async {
+        guard let userId else { return }
+        isLoadingAICommunicationPrefs = true
+        defer { isLoadingAICommunicationPrefs = false }
+
+        do {
+            aiCommunicationPrefs = try await AICommunicationPreferencesManager.shared.load(for: userId)
+            aiCommunicationErrorMessage = nil
+            aiCommunicationSuccessMessage = nil
+        } catch {
+            #if DEBUG
+            print("[SettingsViewModel] Failed to load AI communication prefs: \(error)")
+            #endif
+            aiCommunicationPrefs = .default
+        }
+    }
+
+    func saveAICommunicationPrefs() async {
+        guard let userId else { return }
+        guard SubscriptionManager.shared.isPro else {
+            aiCommunicationErrorMessage = "AI communication preferences are available to Pro users only."
+            return
+        }
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            let validated = try AICommunicationPreferencesManager.shared.validate(aiCommunicationPrefs)
+            aiCommunicationPrefs = validated
+            try await AICommunicationPreferencesManager.shared.save(validated, for: userId)
+            aiCommunicationErrorMessage = nil
+            aiCommunicationSuccessMessage = "Preferences saved."
+        } catch {
+            aiCommunicationErrorMessage = error.localizedDescription
+            aiCommunicationSuccessMessage = nil
+        }
+    }
+
+    func resetAICommunicationPrefs() async {
+        aiCommunicationPrefs = .default
+        await saveAICommunicationPrefs()
+    }
+
+    func markAICommunicationPrefsDirty() {
+        aiCommunicationSuccessMessage = nil
+    }
+
+    func toggleAICommunicationTrait(_ trait: AIPersonalityTrait) {
+        if aiCommunicationPrefs.personalityTraits.contains(trait) {
+            aiCommunicationPrefs.personalityTraits.removeAll { $0 == trait }
+            aiCommunicationSuccessMessage = nil
+            return
+        }
+
+        guard aiCommunicationPrefs.personalityTraits.count < AICommunicationPreferences.maxPersonalityTraits else {
+            aiCommunicationErrorMessage = AICommunicationPreferencesValidationError.tooManyTraits.localizedDescription
+            aiCommunicationSuccessMessage = nil
+            return
+        }
+
+        aiCommunicationPrefs.personalityTraits.append(trait)
+    }
     
     // toggleLiquidGlass removed in favor of system settings
 }
-

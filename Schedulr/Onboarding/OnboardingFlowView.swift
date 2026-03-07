@@ -1210,7 +1210,7 @@ private struct CalendarStepView: View {
                 switch calendarSync.authorizationStatus {
                 case .notDetermined:
                             StatusBadge(text: "We'll ask for permission", icon: "hand.raised", color: .secondary)
-                case .authorized:
+                case .authorized, .fullAccess:
                     if calendarSync.syncEnabled && !calendarSync.upcomingEvents.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                                     Text("UPCOMING EVENTS")
@@ -1575,8 +1575,8 @@ private struct ProUpgradeCard: View {
             // Features
             VStack(spacing: 6) {
                 ProFeatureItem(text: "AI scheduling assistant", icon: "brain")
-                ProFeatureItem(text: "5 groups instead of 1", icon: "person.3")
-                ProFeatureItem(text: "10 members per group", icon: "person.crop.circle.badge.plus")
+                ProFeatureItem(text: "Unlimited groups", icon: "person.3")
+                ProFeatureItem(text: "Unlimited members per group", icon: "person.crop.circle.badge.plus")
             }
             
             // Upgrade button

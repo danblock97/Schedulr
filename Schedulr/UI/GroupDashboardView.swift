@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
+import PhotosUI
 import Supabase
+import UIKit
 
 // MARK: - ViewModel (Preserved - Same Logic)
 
@@ -11,6 +13,7 @@ final class DashboardViewModel: ObservableObject {
         let name: String
         let role: String
         let inviteSlug: String
+        let avatarURL: URL?
         let createdAt: Date?
         let joinedAt: Date?
     }
@@ -68,7 +71,7 @@ final class DashboardViewModel: ObservableObject {
             let uid = try await currentUID()
             let rows: [GroupMembershipRow] = try await client.database
                 .from("group_members")
-                .select("group_id, role, joined_at, groups(id,name,invite_slug,created_at,created_by)")
+                .select("group_id, role, joined_at, groups(id,name,invite_slug,group_avatar_url,created_at,created_by)")
                 .eq("user_id", value: uid)
                 .order("joined_at", ascending: true)
                 .execute()
@@ -81,6 +84,7 @@ final class DashboardViewModel: ObservableObject {
                     name: group.name,
                     role: row.role ?? "member",
                     inviteSlug: group.invite_slug,
+                    avatarURL: group.group_avatar_url.flatMap(URL.init(string:)),
                     createdAt: group.created_at,
                     joinedAt: row.joined_at
                 )
@@ -234,6 +238,7 @@ struct GroupDashboardView: View {
     @EnvironmentObject private var calendarSync: CalendarSyncManager
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     var onSignOut: (() -> Void)?
     
@@ -244,6 +249,7 @@ struct GroupDashboardView: View {
     @State private var showUpgradePrompt = false
     @State private var upgradePromptType: UpgradePromptModal.LimitType?
     @State private var showGroupManagement = false
+    @State private var showGroupSettings = false
     @State private var showTransferOwnershipConfirmation = false
     @State private var showKickMemberConfirmation = false
     @State private var showDeleteGroupConfirmation = false
@@ -264,18 +270,14 @@ struct GroupDashboardView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Animated background
                 DashboardBackground()
                     .ignoresSafeArea()
                 
-                // Main scrollable content
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
-                        // Hero section
                         heroSection
                         
-                        // Main content sections
-                        VStack(spacing: 28) {
+                        VStack(spacing: sectionSpacing) {
                             welcomeSection
                             
                             if viewModel.selectedGroupID != nil {
@@ -292,8 +294,10 @@ struct GroupDashboardView: View {
                             upcomingEventsSection
                             membersSection
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 120)
+                        .frame(maxWidth: contentMaxWidth)
+                        .padding(.horizontal, horizontalPadding)
+                        .padding(.top, 12)
+                        .padding(.bottom, bottomPadding)
                     }
                 }
             }
@@ -311,8 +315,14 @@ struct GroupDashboardView: View {
                             Label("Create New Group", systemImage: "plus.circle.fill")
                         }
                         
-                        if let _ = currentGroup, isOwner {
+                        if currentGroup != nil, isOwner {
                             Divider()
+                            Button {
+                                showGroupSettings = true
+                            } label: {
+                                Label("Group Settings", systemImage: "person.3.sequence.fill")
+                            }
+
                             if memberCount == 1 {
                                 Button(role: .destructive) {
                                     showDeleteGroupConfirmation = true
@@ -365,6 +375,13 @@ struct GroupDashboardView: View {
         }
         .sheet(isPresented: $showPaywall) { PaywallView() }
         .sheet(isPresented: $showGroupManagement) { GroupManagementView(dashboardVM: viewModel) }
+        .sheet(isPresented: $showGroupSettings) {
+            if let group = currentGroup {
+                GroupSettingsSheet(group: group) {
+                    Task { await refreshCurrentGroup() }
+                }
+            }
+        }
         .alert("Upgrade Required", isPresented: $showUpgradePrompt, presenting: upgradePromptType) { type in
             Button("Upgrade") { showPaywall = true }
             Button("Maybe Later", role: .cancel) {}
@@ -493,53 +510,43 @@ struct GroupDashboardView: View {
     // MARK: - Hero Section
     
     private var heroSection: some View {
-        ZStack(alignment: .bottom) {
-            PersonaHeroView(
-                upcomingEvents: upcomingMonthEvents.map { $0.base },
-                userName: viewModel.members.first(where: { $0.id == currentUserId })?.displayName
-            )
-            .frame(maxWidth: .infinity)
-        }
-        .padding(.top, 0) // Reduced gap
+        PersonaHeroView(
+            upcomingEvents: upcomingMonthEvents.map { $0.base },
+            userName: viewModel.members.first(where: { $0.id == currentUserId })?.displayName
+        )
+        .frame(maxWidth: .infinity)
     }
     
     // MARK: - Welcome Section
     
     private var welcomeSection: some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 18) {
+            if let group = currentGroup {
+                GroupAvatarView(
+                    name: group.name,
+                    avatarURL: group.avatarURL,
+                    size: isPadLayout ? 68 : 56
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
                 Text(greeting)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                 
                 Text(currentGroupName)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: isPadLayout ? 28 : 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-            }
-            
-            Spacer()
-            
-            Button {
-                NotificationCenter.default.post(name: NSNotification.Name("NavigateToProfile"), object: nil)
-            } label: {
-                if let currentUser = viewModel.members.first(where: { $0.id == currentUserId }),
-                   let avatarURL = currentUser.avatarURL {
-                    AsyncImage(url: avatarURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        AvatarPlaceholder(initials: initials(for: currentUser.displayName))
-                    }
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 1))
-                } else {
-                    AvatarPlaceholder(initials: "??")
-                        .frame(width: 44, height: 44)
+                    .lineLimit(2)
+                
+                if let welcomeMetaText {
+                    Text(welcomeMetaText)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.top, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .opacity(animateIn ? 1 : 0)
         .offset(y: animateIn ? 0 : 20)
     }
@@ -566,12 +573,14 @@ struct GroupDashboardView: View {
         VStack(alignment: .leading, spacing: 16) {
             if viewModel.memberships.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         ForEach(viewModel.memberships) { membership in
                             GroupPill(
                                 name: membership.name,
-                                isSelected: viewModel.selectedGroupID == membership.id,
-                                themeManager: themeManager
+                                detail: membership.role.capitalized,
+                                avatarURL: membership.avatarURL,
+                                accent: groupAccent(for: membership),
+                                isSelected: viewModel.selectedGroupID == membership.id
                             ) {
                                 withAnimation(.spring(response: 0.3)) {
                                     viewModel.selectGroup(membership.id)
@@ -602,7 +611,10 @@ struct GroupDashboardView: View {
     private var availabilitySection: some View {
         VStack(alignment: .leading, spacing: 14) {
             if viewModel.selectedGroupID != nil && calendarSync.syncEnabled {
-                DashboardSectionHeader(title: "When's good?", icon: "clock.badge.checkmark.fill")
+                DashboardSectionHeader(
+                    title: "When's good?",
+                    icon: "clock.badge.checkmark.fill"
+                )
                 
                 AvailabilityPreviewCard(
                     groupId: viewModel.selectedGroupID!,
@@ -621,7 +633,10 @@ struct GroupDashboardView: View {
     private var upcomingEventsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                DashboardSectionHeader(title: "Upcoming", icon: "calendar.badge.clock")
+                DashboardSectionHeader(
+                    title: "Upcoming",
+                    icon: "calendar.badge.clock"
+                )
                 Spacer()
                 if calendarSync.syncEnabled && viewModel.selectedGroupID != nil {
                     Button {
@@ -661,7 +676,7 @@ struct GroupDashboardView: View {
                     icon: "calendar.badge.plus"
                 )
             } else if !calendarSync.syncEnabled {
-                DashboardCard {
+                DashboardFeatureCard {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Let your friends see when you're free")
                             .font(.system(size: 14, weight: .medium, design: .rounded))
@@ -694,7 +709,7 @@ struct GroupDashboardView: View {
                     }
                 }
             } else if calendarSync.isRefreshing {
-                DashboardCard {
+                DashboardFeatureCard {
                     HStack(spacing: 12) {
                         ProgressView()
                         Text("Checking your schedule...")
@@ -704,14 +719,14 @@ struct GroupDashboardView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 }
-            } else if calendarSync.groupEvents.isEmpty {
+            } else if upcomingMonthEvents.isEmpty {
                 PremiumEmptyState(
                     title: "All Clear",
                     subheadline: "No upcoming events scheduled for this group in the next 30 days.",
                     icon: "sparkles"
                 )
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: 14) {
                     ForEach(upcomingMonthEvents) { event in
                         NavigationLink(destination: EventDetailView(event: event.base, member: memberColorMapping[event.base.user_id], currentUserId: currentUserId)) {
                             EventCard(
@@ -746,7 +761,10 @@ struct GroupDashboardView: View {
     
     private var membersSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            DashboardSectionHeader(title: "Members", icon: "person.2.fill")
+            DashboardSectionHeader(
+                title: "Members",
+                icon: "person.2.fill"
+            )
             
             if viewModel.selectedGroupID == nil {
                 PremiumEmptyState(
@@ -755,7 +773,7 @@ struct GroupDashboardView: View {
                     icon: "person.2.badge.key.fill"
                 )
             } else if viewModel.isLoadingMembers {
-                DashboardCard {
+                DashboardFeatureCard {
                     HStack(spacing: 12) {
                         ProgressView()
                         Text("Loading members...")
@@ -766,7 +784,7 @@ struct GroupDashboardView: View {
                     .padding(.vertical, 12)
                 }
             } else if let error = viewModel.membersError {
-                DashboardCard {
+                DashboardFeatureCard {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Couldn't load members")
                             .font(.system(size: 15, weight: .semibold, design: .rounded))
@@ -782,7 +800,7 @@ struct GroupDashboardView: View {
                     icon: "person.badge.plus"
                 )
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     ForEach(viewModel.members) { member in
                         MemberCard(
                             member: member,
@@ -809,7 +827,10 @@ struct GroupDashboardView: View {
     private var inviteSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let selected = currentGroup {
-                DashboardSectionHeader(title: "Invite Friends", icon: "link.circle.fill")
+                DashboardSectionHeader(
+                    title: "Invite Friends",
+                    icon: "link.circle.fill"
+                )
                 InviteCard(inviteSlug: selected.inviteSlug, groupName: selected.name)
             }
         }
@@ -831,20 +852,53 @@ struct GroupDashboardView: View {
         guard let id = viewModel.selectedGroupID else { return nil }
         return viewModel.memberships.first(where: { $0.id == id })
     }
+
+    private var isPadLayout: Bool {
+        horizontalSizeClass == .regular
+    }
+
+    private var contentMaxWidth: CGFloat {
+        isPadLayout ? 1120 : .infinity
+    }
+
+    private var horizontalPadding: CGFloat {
+        isPadLayout ? 32 : 20
+    }
+
+    private var sectionSpacing: CGFloat {
+        isPadLayout ? 32 : 24
+    }
+
+    private var bottomPadding: CGFloat {
+        isPadLayout ? 160 : 120
+    }
+
+    private var welcomeHighlights: [String] {
+        var items: [String] = []
+        let totalMembers = max(memberCount, viewModel.members.count)
+        if totalMembers > 0 {
+            items.append(totalMembers == 1 ? "1 member" : "\(totalMembers) members")
+        }
+        if !upcomingMonthEvents.isEmpty {
+            items.append("\(upcomingMonthEvents.count) plans ahead")
+        }
+        return Array(items.prefix(4))
+    }
+
+    private var welcomeMetaText: String? {
+        guard !welcomeHighlights.isEmpty else { return nil }
+        return welcomeHighlights.joined(separator: " • ")
+    }
     
     private var filteredEvents: [CalendarEventWithUser] {
         let now = Date()
         guard let currentGroupId = viewModel.selectedGroupID else { return [] }
         var list = calendarSync.groupEvents.filter { event in
-            event.end_date >= now && event.event_type == "group" && event.group_id == currentGroupId
+            event.end_date >= now && event.group_id == currentGroupId
         }
         if calendarPrefs.hideHolidays {
             list = list.filter { ev in
-                let name = (ev.calendar_name ?? ev.title).lowercased()
-                let cal = (ev.calendar_name ?? "").lowercased()
-                let isHoliday = name.contains("holiday") || cal.contains("holiday")
-                let isBirthday = name.contains("birthday") || cal.contains("birthday")
-                return !(isHoliday || isBirthday)
+                !isPublicHolidayEvent(title: ev.title, calendarName: ev.calendar_name)
             }
         }
         return list.sorted { lhs, rhs in
@@ -948,22 +1002,14 @@ struct GroupDashboardView: View {
     private func transferOwnership(groupId: UUID, newOwnerId: UUID) async {
         do {
             try await GroupService.shared.transferOwnership(groupId: groupId, newOwnerId: newOwnerId)
-            await viewModel.reloadMemberships()
-            if let groupID = viewModel.selectedGroupID {
-                await viewModel.fetchMembers(for: groupID)
-            }
-            await updateOwnerStatusAndMemberCount()
+            await refreshCurrentGroup()
         } catch { }
     }
     
     private func kickMember(groupId: UUID, memberUserId: UUID) async {
         do {
             try await GroupService.shared.kickMember(groupId: groupId, memberUserId: memberUserId)
-            await viewModel.reloadMemberships()
-            if let groupID = viewModel.selectedGroupID {
-                await viewModel.fetchMembers(for: groupID)
-            }
-            await updateOwnerStatusAndMemberCount()
+            await refreshCurrentGroup()
         } catch { }
     }
     
@@ -987,6 +1033,36 @@ struct GroupDashboardView: View {
             }
         } catch { }
     }
+
+    private func formattedShortDate(_ date: Date) -> String {
+        date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+    }
+
+    private func isPrivateEvent(_ event: CalendarEventWithUser) -> Bool {
+        event.event_type == "personal" && event.user_id != currentUserId
+    }
+
+    private func refreshCurrentGroup() async {
+        await viewModel.reloadMemberships()
+        if let groupID = viewModel.selectedGroupID {
+            await viewModel.fetchMembers(for: groupID)
+        }
+        await updateOwnerStatusAndMemberCount()
+    }
+
+    private func groupAccent(for membership: DashboardViewModel.GroupSummary) -> [Color] {
+        if membership.id == viewModel.selectedGroupID {
+            return [themeManager.primaryColor, themeManager.secondaryColor]
+        }
+        let palette: [[Color]] = [
+            [themeManager.primaryColor.opacity(0.85), themeManager.secondaryColor.opacity(0.7)],
+            [themeManager.secondaryColor.opacity(0.85), Color(hex: "f9a8d4")],
+            [Color(hex: "fb7185"), Color(hex: "fdba74")],
+            [Color(hex: "60a5fa"), Color(hex: "5eead4")]
+        ]
+        let index = abs(membership.id.uuidString.hashValue) % palette.count
+        return palette[index]
+    }
 }
 
 
@@ -997,36 +1073,15 @@ private struct DashboardBackground: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        ZStack {
-            Color(.systemGroupedBackground)
-            
-            // Animated gradient orbs
-            TimelineView(.animation(minimumInterval: 1/20)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                
-                Canvas { context, size in
-                    let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
-                        (themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.06), 0.1, 0.1, 0.35),
-                        (themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.06 : 0.05), 0.9, 0.2, 0.3),
-                        (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.05 : 0.04), 0.5, 0.6, 0.25)
-                    ]
-                    
-                    for (index, (color, baseX, baseY, baseRadius)) in blobs.enumerated() {
-                        let offset = Double(index) * 0.8
-                        let x = size.width * (baseX + 0.05 * sin(time * 0.15 + offset))
-                        let y = size.height * (baseY + 0.04 * cos(time * 0.12 + offset))
-                        let radius = min(size.width, size.height) * baseRadius
-                        
-                        let gradient = Gradient(colors: [color, color.opacity(0)])
-                        context.fill(
-                            Path(ellipseIn: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)),
-                            with: .radialGradient(gradient, center: CGPoint(x: x, y: y), startRadius: 0, endRadius: radius)
-                        )
-                    }
-                }
-            }
-            .blur(radius: 60)
-        }
+        LinearGradient(
+            colors: [
+                Color(.systemGroupedBackground),
+                themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.04),
+                Color(.systemGroupedBackground)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 }
 
@@ -1038,19 +1093,13 @@ private struct DashboardSectionHeader: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(themeManager.primaryColor.opacity(0.08))
-                    .frame(width: 36, height: 36)
-                
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(themeManager.gradient)
-            }
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(themeManager.secondaryColor)
             
             Text(title)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
         }
     }
@@ -1058,22 +1107,40 @@ private struct DashboardSectionHeader: View {
 
 // MARK: - Dashboard Card
 
-private struct DashboardCard<Content: View>: View {
+private struct DashboardFeatureCard<Content: View>: View {
     @ViewBuilder let content: Content
+    var padding: CGFloat = 18
     @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    init(padding: CGFloat = 18, @ViewBuilder content: () -> Content) {
+        self.padding = padding
+        self.content = content()
+    }
     
     var body: some View {
         content
-            .padding(18)
+            .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.58 : 0.92))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.65), lineWidth: 1)
+                    )
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-            )
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.12 : 0.04), radius: 12, x: 0, y: 6)
+    }
+}
+
+private struct DashboardCard<Content: View>: View {
+    @ViewBuilder let content: Content
+    
+    var body: some View {
+        DashboardFeatureCard(padding: 18) {
+            content
+        }
     }
 }
 
@@ -1088,7 +1155,7 @@ private struct FilterPill: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Color.secondary.opacity(0.1), in: Capsule())
+            .background(Color.white.opacity(0.65), in: Capsule())
     }
 }
 
@@ -1134,6 +1201,108 @@ private struct PremiumEmptyState: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.04), lineWidth: 1)
         )
+    }
+}
+
+private struct FlowLayout<Content: View>: View {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+    @ViewBuilder var content: () -> Content
+    
+    init(spacing: CGFloat = 8, lineSpacing: CGFloat = 8, @ViewBuilder content: @escaping () -> Content) {
+        self.spacing = spacing
+        self.lineSpacing = lineSpacing
+        self.content = content
+    }
+    
+    var body: some View {
+        FlowLayoutContainer(spacing: spacing, lineSpacing: lineSpacing) {
+            content()
+        }
+    }
+}
+
+private struct FlowLayoutContainer: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? 320
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > maxWidth, currentX > 0 {
+                currentX = 0
+                currentY += rowHeight + lineSpacing
+                rowHeight = 0
+            }
+            rowHeight = max(rowHeight, size.height)
+            currentX += size.width + spacing
+        }
+        
+        return CGSize(width: maxWidth, height: currentY + rowHeight)
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var currentX = bounds.minX
+        var currentY = bounds.minY
+        var rowHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > bounds.maxX, currentX > bounds.minX {
+                currentX = bounds.minX
+                currentY += rowHeight + lineSpacing
+                rowHeight = 0
+            }
+            
+            subview.place(
+                at: CGPoint(x: currentX, y: currentY),
+                proposal: ProposedViewSize(size)
+            )
+            
+            currentX += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+private struct HighlightBubble: View {
+    let text: String
+    @EnvironmentObject private var themeManager: ThemeManager
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(themeManager.gradient.opacity(0.1))
+            )
+    }
+}
+
+private struct DashboardFeatureCardBackground: View {
+    let accent: Color
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        RoundedRectangle(cornerRadius: 26, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(.secondarySystemBackground).opacity(0.45),
+                        accent.opacity(colorScheme == .dark ? 0.16 : 0.08)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
     }
 }
 
@@ -1183,32 +1352,24 @@ private struct QuickActionButton: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(color.opacity(0.12))
+                        .fill(color.opacity(0.14))
                         .frame(width: 48, height: 48)
-                    
+                
                     Image(systemName: icon)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(color)
                 }
-                
+
                 Text(title)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.03), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.02), radius: 8, x: 0, y: 4)
+            .padding(16)
+            .background(DashboardFeatureCardBackground(accent: color))
         }
         .buttonStyle(ScaleButtonStyle())
     }
@@ -1282,74 +1443,66 @@ private struct EventCard: View {
         event.event_type == "personal" && event.user_id != currentUserId
     }
     
+    private var accentColors: [Color] {
+        if event.is_all_day {
+            return [Color(hex: "fb7185"), Color(hex: "f59e0b")]
+        }
+        return [themeManager.primaryColor, themeManager.secondaryColor]
+    }
+    
     var body: some View {
-        HStack(spacing: 16) {
-            // Time capsule
-            VStack(spacing: 4) {
-                Text(event.start_date.formatted(.dateTime.day()))
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                Text(event.start_date.formatted(.dateTime.month(.abbreviated)))
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .textCase(.uppercase)
-            }
-            .foregroundStyle(.white)
-            .frame(width: 50, height: 50)
-            .background(themeManager.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: themeManager.primaryColor.opacity(0.3), radius: 6, x: 0, y: 3)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 10, weight: .medium))
-                    Text(formatTimeOnly(event))
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+        DashboardFeatureCard(padding: 16) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(spacing: 4) {
+                        Text(event.start_date.formatted(.dateTime.day()))
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        Text(event.start_date.formatted(.dateTime.month(.abbreviated)))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .textCase(.uppercase)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 62, height: 64)
+                    .background(
+                        LinearGradient(colors: accentColors, startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    )
                     
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(isPrivate ? "Busy" : (event.title.isEmpty ? "Busy" : event.title))
+                            .font(.system(size: 18, weight: .medium, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        
+                        if let memberName {
+                            Text(memberName)
+                                .font(.system(size: 13, weight: .regular, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "arrow.up.right.circle.fill")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                }
+                
+                HStack(spacing: 8) {
+                    EventTag(text: formatTimeOnly(event), icon: "clock")
                     if let name = memberName {
-                        Text("•")
-                        Text(name)
-                            .lineLimit(1)
+                        EventTag(text: name, icon: "person.fill")
+                    }
+                    if sharedCount > 1 && !isPrivate {
+                        EventTag(text: "\(sharedCount) synced", icon: "person.2.fill")
+                    }
+                    if event.is_all_day {
+                        EventTag(text: "All day", icon: "sun.max.fill")
                     }
                 }
-                .foregroundStyle(.secondary)
-            }
-            
-            Spacer()
-            
-            if sharedCount > 1 && !isPrivate {
-                HStack(spacing: -8) {
-                    ForEach(0..<min(sharedCount, 3), id: \.self) { _ in
-                        Circle()
-                            .fill(Color(.secondarySystemBackground))
-                            .frame(width: 24, height: 24)
-                            .overlay(
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.secondary)
-                            )
-                            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 1))
-                    }
-                }
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.tertiary)
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.04), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.02), radius: 10, x: 0, y: 5)
     }
     
     private func formatTimeOnly(_ e: CalendarEventWithUser) -> String {
@@ -1358,6 +1511,24 @@ private struct EventCard: View {
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: e.start_date)
+    }
+}
+
+private struct EventTag: View {
+    let text: String
+    let icon: String
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .medium))
+            Text(text)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.45), in: Capsule())
     }
 }
 
@@ -1372,102 +1543,94 @@ private struct MemberCard: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        HStack(spacing: 16) {
-            // Avatar
-            ZStack {
-                if let url = member.avatarURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        case .empty:
-                            ProgressView()
-                        case .failure:
-                            AvatarPlaceholder(initials: initials)
-                        @unknown default:
-                            AvatarPlaceholder(initials: initials)
-                        }
-                    }
-                    .frame(width: 50, height: 50)
-                    .clipShape(Circle())
-                } else {
-                    AvatarPlaceholder(initials: initials)
-                        .frame(width: 50, height: 50)
-                }
-            }
-            .overlay(
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [themeManager.primaryColor.opacity(0.3), themeManager.secondaryColor.opacity(0.2)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 3)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(member.displayName)
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+        DashboardFeatureCard(padding: 16) {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(themeManager.gradient.opacity(0.18))
+                        .frame(width: 64, height: 64)
                     
-                    if member.role == "owner" {
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color(hex: "f59e0b"))
-                            .padding(4)
-                            .background(Color(hex: "f59e0b").opacity(0.1))
-                            .clipShape(Circle())
+                    if let url = member.avatarURL {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().scaledToFill()
+                            case .empty:
+                                ProgressView()
+                            case .failure:
+                                AvatarPlaceholder(initials: initials)
+                            @unknown default:
+                                AvatarPlaceholder(initials: initials)
+                            }
+                        }
+                        .frame(width: 56, height: 56)
+                        .clipShape(Circle())
+                    } else {
+                        AvatarPlaceholder(initials: initials)
+                            .frame(width: 56, height: 56)
                     }
                 }
                 
-                Text(member.role.capitalized)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            
-            Spacer()
-            
-            if isOwner && member.role != "owner" {
-                Menu {
-                    Button(role: .destructive) {
-                        onKickMember()
-                    } label: {
-                        Label("Remove from Group", systemImage: "person.crop.circle.badge.minus")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(member.displayName)
+                            .font(.system(size: 18, weight: .medium, design: .rounded))
+                            .foregroundStyle(.primary)
+                        
+                        if member.role == "owner" {
+                            Label("Owner", systemImage: "crown.fill")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(Color(hex: "f59e0b"))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color(hex: "f59e0b").opacity(0.14), in: Capsule())
+                        }
                     }
                     
-                    Button {
-                        onTransferOwnership()
-                    } label: {
-                        Label("Transfer Ownership", systemImage: "person.crop.circle.badge.checkmark")
+                    HStack(spacing: 8) {
+                        EventTag(text: member.role.capitalized, icon: "person.fill")
+                        if let joinedAt = member.joinedAt {
+                            EventTag(text: "Joined \(relativeLabel(joinedAt))", icon: "clock.arrow.circlepath")
+                        }
                     }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .background(Color.primary.opacity(0.05), in: Circle())
+                }
+                
+                Spacer()
+                
+                if isOwner && member.role != "owner" {
+                    Menu {
+                        Button(role: .destructive) {
+                            onKickMember()
+                        } label: {
+                            Label("Remove from Group", systemImage: "person.crop.circle.badge.minus")
+                        }
+                        
+                        Button {
+                            onTransferOwnership()
+                        } label: {
+                            Label("Transfer Ownership", systemImage: "person.crop.circle.badge.checkmark")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 40, height: 40)
+                            .background(Color.white.opacity(0.45), in: Circle())
+                    }
                 }
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.03), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.02), radius: 8, x: 0, y: 4)
     }
     
     private var initials: String {
         let parts = member.displayName.split(separator: " ")
         return parts.prefix(2).compactMap { $0.first.map(String.init) }.joined()
+    }
+    
+    private func relativeLabel(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
@@ -1475,31 +1638,269 @@ private struct MemberCard: View {
 
 private struct GroupPill: View {
     let name: String
+    let detail: String
+    let avatarURL: URL?
+    let accent: [Color]
     let isSelected: Bool
-    let themeManager: ThemeManager
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            Text(name)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(
-                    isSelected ? AnyShapeStyle(themeManager.gradient) : AnyShapeStyle(Color(.secondarySystemBackground)),
-                    in: Capsule()
-                )
-                .foregroundColor(isSelected ? .white : .primary)
-                .overlay(
-                    Capsule()
-                        .strokeBorder(
-                            isSelected ? Color.white.opacity(0.2) : Color.primary.opacity(0.05),
-                            lineWidth: 1
-                        )
-                )
-                .shadow(color: isSelected ? themeManager.primaryColor.opacity(0.3) : Color.clear, radius: 8, x: 0, y: 4)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    GroupAvatarView(name: name, avatarURL: avatarURL, size: 28, accent: accent)
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundStyle(.white)
+                            .padding(6)
+                            .background(Color.white.opacity(0.2), in: Circle())
+                    }
+                }
+                
+                Text(name)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(isSelected ? .white : .primary)
+                    .lineLimit(1)
+                
+                Text(detail)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
+            }
+            .frame(width: 158, alignment: .leading)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        isSelected ?
+                        AnyShapeStyle(LinearGradient(colors: accent, startPoint: .topLeading, endPoint: .bottomTrailing)) :
+                        AnyShapeStyle(Color(.secondarySystemBackground))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(isSelected ? Color.white.opacity(0.14) : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Group Avatar
+
+private struct GroupAvatarView: View {
+    let name: String
+    let avatarURL: URL?
+    var size: CGFloat
+    var accent: [Color] = [Color(hex: "fb7185"), Color(hex: "60a5fa")]
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(colors: accent, startPoint: .topLeading, endPoint: .bottomTrailing))
+
+            if let avatarURL {
+                AsyncImage(url: avatarURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty:
+                        ProgressView()
+                    case .failure:
+                        fallbackContent
+                    @unknown default:
+                        fallbackContent
+                    }
+                }
+            } else {
+                fallbackContent
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+
+    private var fallbackContent: some View {
+        Image(systemName: "person.3.fill")
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.95))
+    }
+}
+
+// MARK: - Group Settings
+
+private struct GroupSettingsSheet: View {
+    let group: DashboardViewModel.GroupSummary
+    let onSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var groupName: String
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var pendingAvatarImage: SelectedUIImage?
+    @State private var avatarURL: URL?
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(group: DashboardViewModel.GroupSummary, onSave: @escaping () -> Void) {
+        self.group = group
+        self.onSave = onSave
+        _groupName = State(initialValue: group.name)
+        _avatarURL = State(initialValue: group.avatarURL)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    VStack(spacing: 14) {
+                        GroupAvatarView(name: groupName, avatarURL: avatarURL, size: 112)
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(10)
+                                    .background(Color.black.opacity(0.7), in: Circle())
+                            }
+
+                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                            Text(avatarURL == nil ? "Add Group Picture" : "Change Group Picture")
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 12)
+                                .background(Color(.secondarySystemBackground), in: Capsule())
+                        }
+
+                        if avatarURL != nil {
+                            Button("Use Default Avatar") {
+                                Task { await clearAvatar() }
+                            }
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .disabled(isSaving)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Group Name")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+
+                        TextField("Group name", text: $groupName)
+                            .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                    }
+                    .padding(18)
+                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                    if isSaving {
+                        ProgressView("Saving...")
+                    }
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("Group Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSaving)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        Task { await saveSettings() }
+                    }
+                    .disabled(isSaving || groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                guard let data = try? await newItem.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else { return }
+                await MainActor.run {
+                    pendingAvatarImage = SelectedUIImage(image: image)
+                }
+            }
+        }
+        .sheet(item: $pendingAvatarImage) { item in
+            ImageRepositionerView(
+                image: item.image,
+                aspectRatio: 1,
+                cropShape: .circle,
+                outputSize: CGSize(width: 512, height: 512),
+                onCancel: {
+                    pendingAvatarImage = nil
+                    selectedPhotoItem = nil
+                },
+                onConfirm: { cropped in
+                    guard let data = cropped.jpegData(compressionQuality: 0.85) else { return }
+                    pendingAvatarImage = nil
+                    selectedPhotoItem = nil
+                    Task { await uploadAvatar(data) }
+                }
+            )
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func saveSettings() async {
+        let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            if trimmedName != group.name {
+                try await GroupService.shared.renameGroup(groupId: group.id, newName: trimmedName)
+            }
+            onSave()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func uploadAvatar(_ data: Data) async {
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            avatarURL = try await GroupService.shared.uploadGroupAvatar(groupId: group.id, imageData: data)
+            onSave()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func clearAvatar() async {
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            try await GroupService.shared.setGroupAvatar(groupId: group.id, avatarURL: nil)
+            avatarURL = nil
+            onSave()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -1521,7 +1922,7 @@ private struct AvatarPlaceholder: View {
                 )
             
             Text(initials.isEmpty ? "?" : initials.uppercased())
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .medium, design: .rounded))
                 .foregroundStyle(themeManager.primaryColor.opacity(0.8))
         }
     }
@@ -1537,82 +1938,64 @@ private struct InviteCard: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Share \(groupName)")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.primary)
-                    Text("Tap to copy invite link")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                
-                Spacer()
-                
-                if showCopied {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Copied!")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+        DashboardFeatureCard(padding: 18) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Share \(groupName)")
+                            .font(.system(size: 18, weight: .medium, design: .rounded))
+                            .foregroundStyle(.primary)
                     }
-                    .foregroundStyle(Color(hex: "10b981"))
-                    .transition(.scale.combined(with: .opacity))
-                }
-            }
-            
-            Button {
-                UIPasteboard.general.string = inviteSlug
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    showCopied = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    withAnimation { showCopied = false }
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "link")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(themeManager.secondaryColor)
-                    
-                    Text(inviteSlug)
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
                     
                     Spacer()
                     
-                    Image(systemName: "doc.on.doc.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [themeManager.primaryColor, themeManager.secondaryColor],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                    if showCopied {
+                        Label("Copied", systemImage: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color(hex: "10b981"))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color(hex: "10b981").opacity(0.12), in: Capsule())
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
-                .padding(14)
-                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                
+                Button {
+                    UIPasteboard.general.string = inviteSlug
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        showCopied = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        withAnimation { showCopied = false }
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(themeManager.gradient.opacity(0.16))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "link")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(themeManager.gradient)
+                        }
+                        
+                        Text(inviteSlug)
+                            .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "doc.on.doc.fill")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(themeManager.gradient)
+                    }
+                    .padding(16)
+                    .background(Color.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [themeManager.primaryColor.opacity(0.15), themeManager.secondaryColor.opacity(0.1)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
+    @ObservedObject private var subscriptionManager = SubscriptionManager.shared
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
@@ -78,6 +79,9 @@ struct SettingsView: View {
                         
                         // Widgets Section
                         widgetsSection
+
+                        // AI Communication Section
+                        aiCommunicationSection
                         
                         // Appearance Section
                         appearanceSection
@@ -174,8 +178,8 @@ struct SettingsView: View {
         SettingsSectionCard(title: "Calendar", icon: "calendar") {
             VStack(spacing: 14) {
                 SettingsToggleRow(
-                    title: "Hide holidays & birthdays",
-                    subtitle: "Filters common holiday and birthday calendars",
+                    title: "Hide public holidays",
+                    subtitle: "Filters calendars such as UK bank holidays",
                     isOn: Binding(
                         get: { viewModel.calendarPrefs.hideHolidays },
                         set: { newVal in
@@ -231,7 +235,175 @@ struct SettingsView: View {
     }
     
     // MARK: - Appearance Section
-    
+
+    private var aiCustomNoteBinding: Binding<String> {
+        Binding(
+            get: { viewModel.aiCommunicationPrefs.customNote ?? "" },
+            set: { newValue in
+                viewModel.aiCommunicationPrefs.customNote = newValue
+                viewModel.markAICommunicationPrefsDirty()
+            }
+        )
+    }
+
+    private var aiCommunicationSection: some View {
+        SettingsSectionCard(title: "AI Communication", icon: "text.bubble.fill") {
+            if subscriptionManager.isPro {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Tone")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        Picker("Tone", selection: $viewModel.aiCommunicationPrefs.tone) {
+                            ForEach(AIResponseTone.allCases) { tone in
+                                Text(tone.displayName).tag(tone)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(themeManager.primaryColor)
+                        .onChange(of: viewModel.aiCommunicationPrefs.tone) { _, _ in
+                            viewModel.markAICommunicationPrefsDirty()
+                        }
+                    }
+
+                    Divider().opacity(0.5)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Response Style")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        Picker("Response Style", selection: $viewModel.aiCommunicationPrefs.communicationStyle) {
+                            ForEach(AIResponseStyle.allCases) { style in
+                                Text(style.displayName).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: viewModel.aiCommunicationPrefs.communicationStyle) { _, _ in
+                            viewModel.markAICommunicationPrefsDirty()
+                        }
+                    }
+
+                    Divider().opacity(0.5)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Formality")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        Picker("Formality", selection: $viewModel.aiCommunicationPrefs.formality) {
+                            ForEach(AIResponseFormality.allCases) { formality in
+                                Text(formality.displayName).tag(formality)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: viewModel.aiCommunicationPrefs.formality) { _, _ in
+                            viewModel.markAICommunicationPrefsDirty()
+                        }
+                    }
+
+                    Divider().opacity(0.5)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Personality Traits")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+
+                        ForEach(AIPersonalityTrait.allCases) { trait in
+                            SettingsToggleRow(
+                                title: trait.displayName,
+                                subtitle: "Presentation only",
+                                isOn: Binding(
+                                    get: { viewModel.aiCommunicationPrefs.personalityTraits.contains(trait) },
+                                    set: { newValue in
+                                        let isEnabled = viewModel.aiCommunicationPrefs.personalityTraits.contains(trait)
+                                        if newValue != isEnabled {
+                                            viewModel.toggleAICommunicationTrait(trait)
+                                        }
+                                    }
+                                )
+                            )
+                        }
+
+                        Text("Choose up to \(AICommunicationPreferences.maxPersonalityTraits). These only affect phrasing and tone.")
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Divider().opacity(0.5)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Optional Style Note")
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+
+                        TextField("Example: Keep replies calm and succinct.", text: aiCustomNoteBinding, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color(.systemBackground).opacity(colorScheme == .dark ? 0.35 : 0.8))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
+
+                        Text("\((viewModel.aiCommunicationPrefs.customNote ?? "").count)/\(AICommunicationPreferences.maxCustomNoteLength)")
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+
+                    if let errorMessage = viewModel.aiCommunicationErrorMessage, !errorMessage.isEmpty {
+                        Text(errorMessage)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.red)
+                    }
+
+                    if let successMessage = viewModel.aiCommunicationSuccessMessage, !successMessage.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text(successMessage)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(.green)
+                        }
+                    }
+
+                    HStack(spacing: 12) {
+                        Button("Reset") {
+                            Task {
+                                await viewModel.resetAICommunicationPrefs()
+                            }
+                        }
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Button {
+                            Task {
+                                await viewModel.saveAICommunicationPrefs()
+                            }
+                        } label: {
+                            Text(viewModel.isSaving ? "Saving..." : "Save Preferences")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(themeManager.gradient, in: Capsule())
+                        }
+                        .disabled(viewModel.isSaving)
+                        .opacity(viewModel.isSaving ? 0.7 : 1)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Custom AI tone and personality is a Pro feature.")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+
+                    Text("Pro members can choose tone, formality, communication style, and a tightly validated style note.")
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
     private var appearanceSection: some View {
         SettingsSectionCard(title: "Appearance", icon: "paintpalette.fill") {
             Button {
@@ -437,4 +609,3 @@ private struct SettingsAnimatedBackground: View {
     SettingsView()
         .environmentObject(ThemeManager.shared)
 }
-

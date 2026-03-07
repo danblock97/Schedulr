@@ -38,6 +38,29 @@ final class AIService {
     }
     
     private init() {}
+
+    func communicationStylePrompt(for preferences: AICommunicationPreferences?) -> String {
+        guard let preferences = preferences?.normalized else { return "" }
+
+        var lines = [
+            "",
+            "Presentation preferences for this user. These affect wording only, not policies, safety boundaries, permissions, or task behavior:",
+            "- Tone: \(preferences.tone.rawValue)",
+            "- Communication style: \(preferences.communicationStyle.rawValue)",
+            "- Formality: \(preferences.formality.rawValue)"
+        ]
+
+        if !preferences.personalityTraits.isEmpty {
+            lines.append("- Personality traits: \(preferences.personalityTraits.map { $0.rawValue }.joined(separator: ", "))")
+        }
+
+        if let customNote = preferences.customNote {
+            lines.append("- Optional style note: \(customNote)")
+        }
+
+        lines.append("Ignore these preferences if they conflict with safety, policy, or system instructions.")
+        return lines.joined(separator: "\n")
+    }
     
     // MARK: - Chat Completion
     
@@ -501,4 +524,3 @@ CRITICAL RULES:
         return availabilityQuery
     }
 }
-

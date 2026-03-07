@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0296202C2606B10F4765B6D5 /* ThemePreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */; };
 		06EE4EC73B7B1FC88733EA22 /* CalendarSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08A8CC1E8F169352B9933812 /* CalendarSyncManager.swift */; };
+		AICOMMPREFBUILD000001AB /* AICommunicationPreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AICOMMPREFFILE000001AB /* AICommunicationPreferencesManager.swift */; };
 		0EE8623E8ED0C13BEF843DF7 /* MonthViewModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788F904E33CA7E96D2F692BE /* MonthViewModePicker.swift */; };
 		16E255D6D1A8AAA238B8B315 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE1EA9474B00225EE8CA5539 /* ProfileView.swift */; };
 		B0C0D0E0F0A1B2C3D4E5F607 /* ImageRepositionerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C0D0E0F0A1B2C3D4E5F608 /* ImageRepositionerView.swift */; };
@@ -65,6 +66,7 @@
 		7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */; };
 		7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */; };
 		7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */; };
+		7F1A9B0C2F1234567890ABE7 /* SchedulyIllustrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE6 /* SchedulyIllustrationView.swift */; };
 		8AF78CA509C6E5C32E923948 /* PushManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F118A9DAF05612253B0DCD3C /* PushManager.swift */; };
 		8B6EFCE2E90CDD30A2C7EDFE /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54EEA7587094A03A7E02AD1D /* SupabaseManager.swift */; };
 		93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE01386B844EAE0D3442EA6E /* SplashView.swift */; };
@@ -191,12 +193,14 @@
 		7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveHeroView.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaHeroView.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaSpeaker.swift; sourceTree = "<group>"; };
+		7F1A9B0C2F1234567890ABE6 /* SchedulyIllustrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulyIllustrationView.swift; sourceTree = "<group>"; };
 		82FF2AE12E51471171101FFC /* SchedulrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulrApp.swift; sourceTree = "<group>"; };
 		8A0750AF84C002E2A58CF33A /* EventKitEventManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitEventManager.swift; sourceTree = "<group>"; };
 		8A29440569CE2D7EAA4026CF /* AIUsageTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageTracker.swift; sourceTree = "<group>"; };
 		91AE6827B8B48B526FE6C3C8 /* EventEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventEditorView.swift; sourceTree = "<group>"; };
 		92D2F87AFDD0AA081B70C2B1 /* CalendarBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarBlockView.swift; sourceTree = "<group>"; };
 		95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePreferencesManager.swift; sourceTree = "<group>"; };
+		AICOMMPREFFILE000001AB /* AICommunicationPreferencesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICommunicationPreferencesManager.swift; sourceTree = "<group>"; };
 		9B6EFB1D6E28C387238D3607 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
 		9BACE572F7D2FDEE2AAFA15C /* GracePeriodManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GracePeriodManager.swift; sourceTree = "<group>"; };
 		A3B4C5D6E7F8A9B0C1D2E3F4 /* RatingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingManager.swift; sourceTree = "<group>"; };
@@ -308,6 +312,7 @@
 				7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */,
 				7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */,
 				7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */,
+				7F1A9B0C2F1234567890ABE6 /* SchedulyIllustrationView.swift */,
 				63855F65DF252C3B537A1A38 /* MonthlyCalendarView.swift */,
 				AE1EA9474B00225EE8CA5539 /* ProfileView.swift */,
 				A9EA8BB6DC91DA2B44D9C890 /* ProfileViewModel.swift */,
@@ -443,6 +448,7 @@
 				RECUR001FILEREF0001001AB /* RecurrenceService.swift */,
 				54EEA7587094A03A7E02AD1D /* SupabaseManager.swift */,
 				A1B2C3D4E5F60718293A4B5D /* AppIssueAlertService.swift */,
+				AICOMMPREFFILE000001AB /* AICommunicationPreferencesManager.swift */,
 				95B19D8172362120A6063C0A /* ThemePreferencesManager.swift */,
 				LOCALE001FILEREF0001001AB /* LocalePreferencesManager.swift */,
 				AVAIL001FILEREF0001001AB /* AvailabilityService.swift */,
@@ -703,6 +709,7 @@
 				5B5C6BA21292FDF997A7779D /* UpgradeInlineView.swift in Sources */,
 				254D1014F99B952259022235 /* UpgradePromptModal.swift in Sources */,
 				A7D565C6E31A606563158CB6 /* CalendarEventService.swift in Sources */,
+				AICOMMPREFBUILD000001AB /* AICommunicationPreferencesManager.swift in Sources */,
 				FDC5FDA134ED7FAEA94EA5E0 /* CalendarPreferencesManager.swift in Sources */,
 				0296202C2606B10F4765B6D5 /* ThemePreferencesManager.swift in Sources */,
 				LOCALE001BUILDFILE001001AB /* LocalePreferencesManager.swift in Sources */,
@@ -743,6 +750,7 @@
 				1B5E97422F0A730E0083768D /* RainCheckApprovalSheet.swift in Sources */,
 				7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */,
 				7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */,
+				7F1A9B0C2F1234567890ABE7 /* SchedulyIllustrationView.swift in Sources */,
 				1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */,
 				93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */,
 				RECUR001BUILDFILE001001AB /* RecurrenceService.swift in Sources */,
@@ -795,7 +803,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 58;
+				CURRENT_PROJECT_VERSION = 59;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -808,7 +816,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.9.2;
+				MARKETING_VERSION = 1.9.3;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -843,7 +851,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 58;
+				CURRENT_PROJECT_VERSION = 59;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -860,7 +868,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.9.2;
+				MARKETING_VERSION = 1.9.3;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -894,7 +902,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 58;
+				CURRENT_PROJECT_VERSION = 59;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -907,7 +915,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.9.2;
+				MARKETING_VERSION = 1.9.3;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.SchedulrNotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -940,7 +948,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 58;
+				CURRENT_PROJECT_VERSION = 59;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -957,7 +965,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.9.2;
+				MARKETING_VERSION = 1.9.3;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr.SchedulrNotificationService;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -979,7 +987,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 58;
+				CURRENT_PROJECT_VERSION = 59;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -991,7 +999,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.9.2;
+				MARKETING_VERSION = 1.9.3;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1008,7 +1016,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Schedulr/Schedulr.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 58;
+				CURRENT_PROJECT_VERSION = 59;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Schedulr/Info.plist;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1020,7 +1028,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.9.2;
+				MARKETING_VERSION = 1.9.3;
 				PRODUCT_BUNDLE_IDENTIFIER = uk.co.schedulr.Schedulr;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

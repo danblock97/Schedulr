@@ -71,7 +71,7 @@ class ProfileViewModel: ObservableObject {
 
                 let groupRows: [GroupMemberRow] = try await client.database
                     .from("group_members")
-                    .select("group_id, role, joined_at, groups(id,name,invite_slug,created_at,created_by)")
+                    .select("group_id, role, joined_at, groups(id,name,invite_slug,group_avatar_url,created_at,created_by)")
                     .eq("user_id", value: uid)
                     .execute()
                     .value
