@@ -168,6 +168,43 @@ final class GroupService {
         // Notify group members about the rename
         NotificationService.shared.notifyGroupRenamed(groupId: groupId, newName: trimmedName, renamedByUserId: currentUserId)
     }
+
+    /// Set or clear a group's avatar (only allowed by owner)
+    /// - Parameters:
+    ///   - groupId: The group ID
+    ///   - avatarURL: The public avatar URL, or nil to clear it
+    nonisolated func setGroupAvatar(groupId: UUID, avatarURL: URL?) async throws {
+        struct SetGroupAvatarParams: Encodable {
+            let p_group_id: UUID
+            let p_avatar_url: String?
+        }
+
+        try await client.database.rpc(
+            "set_group_avatar",
+            params: SetGroupAvatarParams(
+                p_group_id: groupId,
+                p_avatar_url: avatarURL?.absoluteString
+            )
+        ).execute()
+    }
+
+    /// Upload and persist a group's avatar URL (only allowed by owner)
+    /// - Parameters:
+    ///   - groupId: The group ID
+    ///   - imageData: JPEG image data
+    /// - Returns: The uploaded public URL
+    nonisolated func uploadGroupAvatar(groupId: UUID, imageData: Data) async throws -> URL {
+        let filename = SupabaseStorageService.groupAvatarFilename()
+        let url = try await SupabaseStorageService.shared.uploadGroupAvatar(
+            data: imageData,
+            groupId: groupId,
+            filename: filename,
+            contentType: "image/jpeg"
+        )
+
+        try await setGroupAvatar(groupId: groupId, avatarURL: url)
+        return url
+    }
     
     /// Delete a group and notify members (only allowed if owner is the sole member)
     /// Note: For groups with multiple members, use the regular deleteGroup method
@@ -187,4 +224,3 @@ final class GroupService {
         try await deleteGroup(groupId: groupId)
     }
 }
-

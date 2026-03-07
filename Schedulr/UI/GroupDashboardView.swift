@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
+import PhotosUI
 import Supabase
+import UIKit
 
 // MARK: - ViewModel (Preserved - Same Logic)
 
@@ -11,6 +13,7 @@ final class DashboardViewModel: ObservableObject {
         let name: String
         let role: String
         let inviteSlug: String
+        let avatarURL: URL?
         let createdAt: Date?
         let joinedAt: Date?
     }
@@ -68,7 +71,7 @@ final class DashboardViewModel: ObservableObject {
             let uid = try await currentUID()
             let rows: [GroupMembershipRow] = try await client.database
                 .from("group_members")
-                .select("group_id, role, joined_at, groups(id,name,invite_slug,created_at,created_by)")
+                .select("group_id, role, joined_at, groups(id,name,invite_slug,group_avatar_url,created_at,created_by)")
                 .eq("user_id", value: uid)
                 .order("joined_at", ascending: true)
                 .execute()
@@ -81,6 +84,7 @@ final class DashboardViewModel: ObservableObject {
                     name: group.name,
                     role: row.role ?? "member",
                     inviteSlug: group.invite_slug,
+                    avatarURL: group.group_avatar_url.flatMap(URL.init(string:)),
                     createdAt: group.created_at,
                     joinedAt: row.joined_at
                 )
@@ -245,6 +249,7 @@ struct GroupDashboardView: View {
     @State private var showUpgradePrompt = false
     @State private var upgradePromptType: UpgradePromptModal.LimitType?
     @State private var showGroupManagement = false
+    @State private var showGroupSettings = false
     @State private var showTransferOwnershipConfirmation = false
     @State private var showKickMemberConfirmation = false
     @State private var showDeleteGroupConfirmation = false
@@ -311,8 +316,14 @@ struct GroupDashboardView: View {
                             Label("Create New Group", systemImage: "plus.circle.fill")
                         }
                         
-                        if let _ = currentGroup, isOwner {
+                        if currentGroup != nil, isOwner {
                             Divider()
+                            Button {
+                                showGroupSettings = true
+                            } label: {
+                                Label("Group Settings", systemImage: "person.3.sequence.fill")
+                            }
+
                             if memberCount == 1 {
                                 Button(role: .destructive) {
                                     showDeleteGroupConfirmation = true
@@ -365,6 +376,13 @@ struct GroupDashboardView: View {
         }
         .sheet(isPresented: $showPaywall) { PaywallView() }
         .sheet(isPresented: $showGroupManagement) { GroupManagementView(dashboardVM: viewModel) }
+        .sheet(isPresented: $showGroupSettings) {
+            if let group = currentGroup {
+                GroupSettingsSheet(group: group) {
+                    Task { await refreshCurrentGroup() }
+                }
+            }
+        }
         .alert("Upgrade Required", isPresented: $showUpgradePrompt, presenting: upgradePromptType) { type in
             Button("Upgrade") { showPaywall = true }
             Button("Maybe Later", role: .cancel) {}
@@ -517,13 +535,21 @@ struct GroupDashboardView: View {
     
     private var welcomeSection: some View {
         HStack(alignment: .top, spacing: 18) {
+            if let group = currentGroup {
+                GroupAvatarView(
+                    name: group.name,
+                    avatarURL: group.avatarURL,
+                    size: isPadLayout ? 68 : 56
+                )
+            }
+
             VStack(alignment: .leading, spacing: 10) {
                 Text(greeting)
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                 
                 Text(currentGroupName)
-                    .font(.system(size: isPadLayout ? 34 : 29, weight: .semibold, design: .rounded))
+                    .font(.system(size: isPadLayout ? 28 : 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                 
@@ -574,6 +600,7 @@ struct GroupDashboardView: View {
                             GroupPill(
                                 name: membership.name,
                                 detail: membership.role.capitalized,
+                                avatarURL: membership.avatarURL,
                                 accent: groupAccent(for: membership),
                                 isSelected: viewModel.selectedGroupID == membership.id
                             ) {
@@ -1007,22 +1034,14 @@ struct GroupDashboardView: View {
     private func transferOwnership(groupId: UUID, newOwnerId: UUID) async {
         do {
             try await GroupService.shared.transferOwnership(groupId: groupId, newOwnerId: newOwnerId)
-            await viewModel.reloadMemberships()
-            if let groupID = viewModel.selectedGroupID {
-                await viewModel.fetchMembers(for: groupID)
-            }
-            await updateOwnerStatusAndMemberCount()
+            await refreshCurrentGroup()
         } catch { }
     }
     
     private func kickMember(groupId: UUID, memberUserId: UUID) async {
         do {
             try await GroupService.shared.kickMember(groupId: groupId, memberUserId: memberUserId)
-            await viewModel.reloadMemberships()
-            if let groupID = viewModel.selectedGroupID {
-                await viewModel.fetchMembers(for: groupID)
-            }
-            await updateOwnerStatusAndMemberCount()
+            await refreshCurrentGroup()
         } catch { }
     }
     
@@ -1053,6 +1072,14 @@ struct GroupDashboardView: View {
 
     private func isPrivateEvent(_ event: CalendarEventWithUser) -> Bool {
         event.event_type == "personal" && event.user_id != currentUserId
+    }
+
+    private func refreshCurrentGroup() async {
+        await viewModel.reloadMemberships()
+        if let groupID = viewModel.selectedGroupID {
+            await viewModel.fetchMembers(for: groupID)
+        }
+        await updateOwnerStatusAndMemberCount()
     }
 
     private func groupAccent(for membership: DashboardViewModel.GroupSummary) -> [Color] {
@@ -1374,7 +1401,7 @@ private struct ProfileOrb: View {
             ZStack {
                 Circle()
                     .fill(Color.white.opacity(0.72))
-                    .frame(width: 82, height: 82)
+                    .frame(width: 68, height: 68)
                 
                 if let member, let avatarURL = member.avatarURL {
                     AsyncImage(url: avatarURL) { image in
@@ -1382,18 +1409,18 @@ private struct ProfileOrb: View {
                     } placeholder: {
                         AvatarPlaceholder(initials: initials(for: member.displayName))
                     }
-                    .frame(width: 70, height: 70)
+                    .frame(width: 56, height: 56)
                     .clipShape(Circle())
                 } else {
                     AvatarPlaceholder(initials: member.map { initials(for: $0.displayName) } ?? "??")
-                        .frame(width: 70, height: 70)
+                        .frame(width: 56, height: 56)
                 }
             }
             
             Image(systemName: "sparkles")
-                .font(.system(size: 14, weight: .black))
+                .font(.system(size: 12, weight: .black))
                 .foregroundStyle(.white)
-                .padding(9)
+                .padding(7)
                 .background(Color(hex: "f472b6"), in: Circle())
         }
     }
@@ -1772,6 +1799,7 @@ private struct MemberCard: View {
 private struct GroupPill: View {
     let name: String
     let detail: String
+    let avatarURL: URL?
     let accent: [Color]
     let isSelected: Bool
     let action: () -> Void
@@ -1780,9 +1808,7 @@ private struct GroupPill: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Circle()
-                        .fill(LinearGradient(colors: accent, startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 14, height: 14)
+                    GroupAvatarView(name: name, avatarURL: avatarURL, size: 28, accent: accent)
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark")
@@ -1818,6 +1844,223 @@ private struct GroupPill: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Group Avatar
+
+private struct GroupAvatarView: View {
+    let name: String
+    let avatarURL: URL?
+    var size: CGFloat
+    var accent: [Color] = [Color(hex: "fb7185"), Color(hex: "60a5fa")]
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(colors: accent, startPoint: .topLeading, endPoint: .bottomTrailing))
+
+            if let avatarURL {
+                AsyncImage(url: avatarURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty:
+                        ProgressView()
+                    case .failure:
+                        fallbackContent
+                    @unknown default:
+                        fallbackContent
+                    }
+                }
+            } else {
+                fallbackContent
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+
+    private var fallbackContent: some View {
+        Image(systemName: "person.3.fill")
+            .font(.system(size: size * 0.42, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.95))
+    }
+}
+
+// MARK: - Group Settings
+
+private struct GroupSettingsSheet: View {
+    let group: DashboardViewModel.GroupSummary
+    let onSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var groupName: String
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var pendingAvatarImage: SelectedUIImage?
+    @State private var avatarURL: URL?
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(group: DashboardViewModel.GroupSummary, onSave: @escaping () -> Void) {
+        self.group = group
+        self.onSave = onSave
+        _groupName = State(initialValue: group.name)
+        _avatarURL = State(initialValue: group.avatarURL)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    VStack(spacing: 14) {
+                        GroupAvatarView(name: groupName, avatarURL: avatarURL, size: 112)
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(10)
+                                    .background(Color.black.opacity(0.7), in: Circle())
+                            }
+
+                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                            Text(avatarURL == nil ? "Add Group Picture" : "Change Group Picture")
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 12)
+                                .background(Color(.secondarySystemBackground), in: Capsule())
+                        }
+
+                        if avatarURL != nil {
+                            Button("Use Default Avatar") {
+                                Task { await clearAvatar() }
+                            }
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .disabled(isSaving)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Group Name")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+
+                        TextField("Group name", text: $groupName)
+                            .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.words)
+                            .disableAutocorrection(true)
+                    }
+                    .padding(18)
+                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                    if isSaving {
+                        ProgressView("Saving...")
+                    }
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(20)
+            }
+            .navigationTitle("Group Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSaving)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        Task { await saveSettings() }
+                    }
+                    .disabled(isSaving || groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                guard let data = try? await newItem.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else { return }
+                await MainActor.run {
+                    pendingAvatarImage = SelectedUIImage(image: image)
+                }
+            }
+        }
+        .sheet(item: $pendingAvatarImage) { item in
+            ImageRepositionerView(
+                image: item.image,
+                aspectRatio: 1,
+                cropShape: .circle,
+                outputSize: CGSize(width: 512, height: 512),
+                onCancel: {
+                    pendingAvatarImage = nil
+                    selectedPhotoItem = nil
+                },
+                onConfirm: { cropped in
+                    guard let data = cropped.jpegData(compressionQuality: 0.85) else { return }
+                    pendingAvatarImage = nil
+                    selectedPhotoItem = nil
+                    Task { await uploadAvatar(data) }
+                }
+            )
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func saveSettings() async {
+        let trimmedName = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            if trimmedName != group.name {
+                try await GroupService.shared.renameGroup(groupId: group.id, newName: trimmedName)
+            }
+            onSave()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func uploadAvatar(_ data: Data) async {
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            avatarURL = try await GroupService.shared.uploadGroupAvatar(groupId: group.id, imageData: data)
+            onSave()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func clearAvatar() async {
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            try await GroupService.shared.setGroupAvatar(groupId: group.id, avatarURL: nil)
+            avatarURL = nil
+            onSave()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 

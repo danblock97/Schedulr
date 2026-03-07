@@ -490,7 +490,7 @@ struct EventEditorView: View {
             
             let rows: [GroupMembershipRow] = try await client.database
                 .from("group_members")
-                .select("group_id, role, joined_at, groups(id,name,invite_slug,created_at,created_by)")
+                .select("group_id, role, joined_at, groups(id,name,invite_slug,group_avatar_url,created_at,created_by)")
                 .eq("user_id", value: uid)
                 .order("joined_at", ascending: true)
                 .execute()
@@ -503,6 +503,7 @@ struct EventEditorView: View {
                     name: group.name,
                     role: row.role ?? "member",
                     inviteSlug: group.invite_slug,
+                    avatarURL: group.group_avatar_url.flatMap(URL.init(string:)),
                     createdAt: group.created_at,
                     joinedAt: row.joined_at
                 )

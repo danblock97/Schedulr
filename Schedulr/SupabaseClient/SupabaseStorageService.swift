@@ -10,6 +10,7 @@ actor SupabaseStorageService {
     enum Bucket: String {
         case avatars
         case eventCovers = "event-covers"
+        case groupAvatars = "group-avatars"
     }
 
     /// Errors that can occur during upload
@@ -103,6 +104,46 @@ actor SupabaseStorageService {
             .from(bucket.rawValue)
             .remove(paths: [filePath])
     }
+
+    /// Uploads a group avatar keyed by group ID. Policies restrict writes to group owners.
+    func uploadGroupAvatar(
+        data: Data,
+        groupId: UUID,
+        filename: String,
+        contentType: String = "image/jpeg"
+    ) async throws -> URL {
+        guard (try? await SupabaseManager.shared.client.auth.session) != nil else {
+            print("❌ [SupabaseStorage] Group avatar upload failed: not authenticated")
+            throw UploadError.notAuthenticated
+        }
+
+        let groupPath = "\(groupId.uuidString.lowercased())/\(filename)"
+
+        print("📤 [SupabaseStorage] Uploading group avatar to path: \(groupPath)")
+
+        do {
+            _ = try await SupabaseManager.shared.client.storage
+                .from(Bucket.groupAvatars.rawValue)
+                .upload(
+                    groupPath,
+                    data: data,
+                    options: FileOptions(
+                        contentType: contentType,
+                        upsert: true
+                    )
+                )
+
+            let publicURL = try SupabaseManager.shared.client.storage
+                .from(Bucket.groupAvatars.rawValue)
+                .getPublicURL(path: groupPath)
+
+            print("✅ [SupabaseStorage] Group avatar upload successful, URL: \(publicURL)")
+            return publicURL
+        } catch {
+            print("❌ [SupabaseStorage] Group avatar upload failed: \(error)")
+            throw UploadError.uploadFailed(error.localizedDescription)
+        }
+    }
 }
 
 // MARK: - Convenience Extensions
@@ -118,5 +159,11 @@ extension SupabaseStorageService {
     /// - Returns: A unique filename like "cover_TIMESTAMP.jpg"
     static func eventCoverFilename() -> String {
         return "cover_\(Int(Date().timeIntervalSince1970)).jpg"
+    }
+
+    /// Generates a unique filename for a group avatar upload
+    /// - Returns: A unique filename like "group-avatar_TIMESTAMP.jpg"
+    static func groupAvatarFilename() -> String {
+        return "group-avatar_\(Int(Date().timeIntervalSince1970)).jpg"
     }
 }
