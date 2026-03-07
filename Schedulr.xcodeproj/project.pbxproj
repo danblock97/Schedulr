@@ -66,6 +66,7 @@
 		7F1A9B0C2F1234567890ABD2 /* InteractiveHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */; };
 		7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */; };
 		7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */; };
+		7F1A9B0C2F1234567890ABE7 /* SchedulyIllustrationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F1A9B0C2F1234567890ABE6 /* SchedulyIllustrationView.swift */; };
 		8AF78CA509C6E5C32E923948 /* PushManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F118A9DAF05612253B0DCD3C /* PushManager.swift */; };
 		8B6EFCE2E90CDD30A2C7EDFE /* SupabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54EEA7587094A03A7E02AD1D /* SupabaseManager.swift */; };
 		93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE01386B844EAE0D3442EA6E /* SplashView.swift */; };
@@ -192,6 +193,7 @@
 		7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractiveHeroView.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaHeroView.swift; sourceTree = "<group>"; };
 		7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaSpeaker.swift; sourceTree = "<group>"; };
+		7F1A9B0C2F1234567890ABE6 /* SchedulyIllustrationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulyIllustrationView.swift; sourceTree = "<group>"; };
 		82FF2AE12E51471171101FFC /* SchedulrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulrApp.swift; sourceTree = "<group>"; };
 		8A0750AF84C002E2A58CF33A /* EventKitEventManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitEventManager.swift; sourceTree = "<group>"; };
 		8A29440569CE2D7EAA4026CF /* AIUsageTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageTracker.swift; sourceTree = "<group>"; };
@@ -310,6 +312,7 @@
 				7F1A9B0C2F1234567890ABE1 /* InteractiveHeroView.swift */,
 				7F1A9B0C2F1234567890ABE2 /* PersonaHeroView.swift */,
 				7F1A9B0C2F1234567890ABE4 /* PersonaSpeaker.swift */,
+				7F1A9B0C2F1234567890ABE6 /* SchedulyIllustrationView.swift */,
 				63855F65DF252C3B537A1A38 /* MonthlyCalendarView.swift */,
 				AE1EA9474B00225EE8CA5539 /* ProfileView.swift */,
 				A9EA8BB6DC91DA2B44D9C890 /* ProfileViewModel.swift */,
@@ -747,6 +750,7 @@
 				1B5E97422F0A730E0083768D /* RainCheckApprovalSheet.swift in Sources */,
 				7F1A9B0C2F1234567890ABE3 /* PersonaHeroView.swift in Sources */,
 				7F1A9B0C2F1234567890ABE5 /* PersonaSpeaker.swift in Sources */,
+				7F1A9B0C2F1234567890ABE7 /* SchedulyIllustrationView.swift in Sources */,
 				1BB3B7772ED4E4D40042CB9C /* WidgetDataEncoder.swift in Sources */,
 				93331F7A19BDFC914AE3058D /* SplashView.swift in Sources */,
 				RECUR001BUILDFILE001001AB /* RecurrenceService.swift in Sources */,

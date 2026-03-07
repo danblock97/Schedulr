@@ -293,7 +293,6 @@ struct GroupDashboardView: View {
                             availabilitySection
                             upcomingEventsSection
                             membersSection
-                            inviteSection
                         }
                         .frame(maxWidth: contentMaxWidth)
                         .padding(.horizontal, horizontalPadding)
@@ -511,24 +510,11 @@ struct GroupDashboardView: View {
     // MARK: - Hero Section
     
     private var heroSection: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 8) {
-                PersonaHeroView(
-                    upcomingEvents: upcomingMonthEvents.map { $0.base },
-                    userName: viewModel.members.first(where: { $0.id == currentUserId })?.displayName
-                )
-                .frame(maxWidth: .infinity)
-                
-                DashboardHeroSummary(
-                    metrics: heroMetrics
-                )
-                .frame(maxWidth: contentMaxWidth)
-                .padding(.horizontal, horizontalPadding)
-                .offset(y: -34)
-                .zIndex(1)
-            }
-        }
-        .padding(.top, 0)
+        PersonaHeroView(
+            upcomingEvents: upcomingMonthEvents.map { $0.base },
+            userName: viewModel.members.first(where: { $0.id == currentUserId })?.displayName
+        )
+        .frame(maxWidth: .infinity)
     }
     
     // MARK: - Welcome Section
@@ -553,22 +539,14 @@ struct GroupDashboardView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                 
-                FlowLayout(spacing: 10, lineSpacing: 10) {
-                    ForEach(welcomeHighlights, id: \.self) { item in
-                        HighlightBubble(text: item)
-                    }
+                if let welcomeMetaText {
+                    Text(welcomeMetaText)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
                 }
             }
-            
-            Spacer(minLength: 0)
-            
-            Button {
-                NotificationCenter.default.post(name: NSNotification.Name("NavigateToProfile"), object: nil)
-            } label: {
-                ProfileOrb(member: viewModel.members.first(where: { $0.id == currentUserId }))
-            }
-            .buttonStyle(.plain)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .opacity(animateIn ? 1 : 0)
         .offset(y: animateIn ? 0 : 20)
     }
@@ -907,19 +885,9 @@ struct GroupDashboardView: View {
         return Array(items.prefix(4))
     }
 
-    private var heroMetrics: [DashboardHeroMetric] {
-        [
-            DashboardHeroMetric(
-                label: "People",
-                value: "\(max(memberCount, viewModel.members.count))",
-                icon: "person.2.fill"
-            ),
-            DashboardHeroMetric(
-                label: "Plans",
-                value: "\(upcomingMonthEvents.count)",
-                icon: "calendar"
-            )
-        ]
+    private var welcomeMetaText: String? {
+        guard !welcomeHighlights.isEmpty else { return nil }
+        return welcomeHighlights.joined(separator: " • ")
     }
     
     private var filteredEvents: [CalendarEventWithUser] {
@@ -1105,79 +1073,15 @@ private struct DashboardBackground: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(.systemGroupedBackground),
-                    themeManager.primaryColor.opacity(colorScheme == .dark ? 0.18 : 0.08),
-                    themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.14 : 0.06),
-                    Color(.systemGroupedBackground)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            
-            TimelineView(.animation(minimumInterval: 1/20)) { timeline in
-                let time = timeline.date.timeIntervalSinceReferenceDate
-                
-                Canvas { context, size in
-                    let blobs: [(Color, CGFloat, CGFloat, CGFloat)] = [
-                        (themeManager.primaryColor.opacity(colorScheme == .dark ? 0.14 : 0.1), 0.12, 0.12, 0.42),
-                        (themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.12 : 0.08), 0.88, 0.2, 0.34),
-                        (Color(hex: "06b6d4").opacity(colorScheme == .dark ? 0.1 : 0.07), 0.5, 0.62, 0.3),
-                        (Color(hex: "f9a8d4").opacity(colorScheme == .dark ? 0.08 : 0.05), 0.74, 0.82, 0.22)
-                    ]
-                    
-                    for (index, (color, baseX, baseY, baseRadius)) in blobs.enumerated() {
-                        let offset = Double(index) * 0.8
-                        let x = size.width * (baseX + 0.05 * sin(time * 0.15 + offset))
-                        let y = size.height * (baseY + 0.04 * cos(time * 0.12 + offset))
-                        let radius = min(size.width, size.height) * baseRadius
-                        
-                        let gradient = Gradient(colors: [color, color.opacity(0)])
-                        context.fill(
-                            Path(ellipseIn: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)),
-                            with: .radialGradient(gradient, center: CGPoint(x: x, y: y), startRadius: 0, endRadius: radius)
-                        )
-                    }
-                }
-            }
-            .blur(radius: 60)
-        }
-    }
-}
-
-private struct DashboardHeroMetric: Identifiable {
-    let label: String
-    let value: String
-    let icon: String
-    var id: String { label }
-}
-
-private struct DashboardHeroSummary: View {
-    let metrics: [DashboardHeroMetric]
-    @EnvironmentObject private var themeManager: ThemeManager
-    
-    var body: some View {
-        HStack(spacing: 10) {
-            ForEach(metrics) { metric in
-                HStack(spacing: 8) {
-                    Image(systemName: metric.icon)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(themeManager.gradient)
-                    Text(metric.value)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.primary)
-                    Text(metric.label)
-                        .font(.system(size: 12, weight: .regular, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.42), in: Capsule())
-            }
-            Spacer(minLength: 0)
-        }
+        LinearGradient(
+            colors: [
+                Color(.systemGroupedBackground),
+                themeManager.primaryColor.opacity(colorScheme == .dark ? 0.08 : 0.04),
+                Color(.systemGroupedBackground)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 }
 
@@ -1189,18 +1093,13 @@ private struct DashboardSectionHeader: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(themeManager.gradient.opacity(0.12))
-                    .frame(width: 34, height: 34)
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(themeManager.gradient)
-            }
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(themeManager.secondaryColor)
             
             Text(title)
-                .font(.system(size: 19, weight: .medium, design: .rounded))
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
         }
     }
@@ -1225,18 +1124,13 @@ private struct DashboardFeatureCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.5 : 0.48),
-                                Color.white.opacity(colorScheme == .dark ? 0.02 : 0.18)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                    .fill(Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.58 : 0.92))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.white.opacity(colorScheme == .dark ? 0.06 : 0.65), lineWidth: 1)
                     )
             )
-            .shadow(color: themeManager.primaryColor.opacity(colorScheme == .dark ? 0.05 : 0.03), radius: 18, x: 0, y: 10)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.12 : 0.04), radius: 12, x: 0, y: 6)
     }
 }
 
@@ -1393,39 +1287,6 @@ private struct HighlightBubble: View {
     }
 }
 
-private struct ProfileOrb: View {
-    let member: DashboardViewModel.MemberSummary?
-    
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.72))
-                    .frame(width: 68, height: 68)
-                
-                if let member, let avatarURL = member.avatarURL {
-                    AsyncImage(url: avatarURL) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        AvatarPlaceholder(initials: initials(for: member.displayName))
-                    }
-                    .frame(width: 56, height: 56)
-                    .clipShape(Circle())
-                } else {
-                    AvatarPlaceholder(initials: member.map { initials(for: $0.displayName) } ?? "??")
-                        .frame(width: 56, height: 56)
-                }
-            }
-            
-            Image(systemName: "sparkles")
-                .font(.system(size: 12, weight: .black))
-                .foregroundStyle(.white)
-                .padding(7)
-                .background(Color(hex: "f472b6"), in: Circle())
-        }
-    }
-}
-
 private struct DashboardFeatureCardBackground: View {
     let accent: Color
     @Environment(\.colorScheme) private var colorScheme
@@ -1491,47 +1352,26 @@ private struct QuickActionButton: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    ZStack {
-                        Circle()
-                            .fill(color.opacity(0.16))
-                            .frame(width: 52, height: 52)
-                        
-                        Image(systemName: icon)
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundStyle(color)
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.14))
+                        .frame(width: 48, height: 48)
+                
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(color)
                 }
-                
+
                 Text(title)
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
-                
-                Text(buttonSubtitle)
-                    .font(.system(size: 12, weight: .regular, design: .rounded))
-                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
-            .padding(18)
+            .padding(16)
             .background(DashboardFeatureCardBackground(accent: color))
         }
         .buttonStyle(ScaleButtonStyle())
-    }
-    
-    private var buttonSubtitle: String {
-        switch title {
-        case "New Event": return "Drop in a new plan"
-        case "Propose": return "Find a shared slot"
-        case "Invite": return "Pull more friends in"
-        default: return ""
-        }
     }
 }
 
