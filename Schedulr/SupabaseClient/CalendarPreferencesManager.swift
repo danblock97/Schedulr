@@ -6,6 +6,17 @@ struct CalendarPreferences: Codable, Equatable {
     var dedupAllDay: Bool
 }
 
+func isPublicHolidayEvent(title: String, calendarName: String?) -> Bool {
+    let normalizedCalendarName = (calendarName ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased()
+    
+    guard !normalizedCalendarName.isEmpty else { return false }
+    guard normalizedCalendarName != "schedulr" else { return false }
+    
+    return normalizedCalendarName.contains("holiday")
+}
+
 final class CalendarPreferencesManager {
     static let shared = CalendarPreferencesManager()
     private init() {}
@@ -30,5 +41,3 @@ final class CalendarPreferencesManager {
         _ = try await client.from("user_settings").upsert(row, onConflict: "user_id").execute()
     }
 }
-
-

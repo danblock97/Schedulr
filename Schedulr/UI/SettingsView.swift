@@ -178,8 +178,8 @@ struct SettingsView: View {
         SettingsSectionCard(title: "Calendar", icon: "calendar") {
             VStack(spacing: 14) {
                 SettingsToggleRow(
-                    title: "Hide holidays & birthdays",
-                    subtitle: "Filters common holiday and birthday calendars",
+                    title: "Hide public holidays",
+                    subtitle: "Filters calendars such as UK bank holidays",
                     isOn: Binding(
                         get: { viewModel.calendarPrefs.hideHolidays },
                         set: { newVal in

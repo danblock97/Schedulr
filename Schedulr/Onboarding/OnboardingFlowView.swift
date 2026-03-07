@@ -1210,7 +1210,7 @@ private struct CalendarStepView: View {
                 switch calendarSync.authorizationStatus {
                 case .notDetermined:
                             StatusBadge(text: "We'll ask for permission", icon: "hand.raised", color: .secondary)
-                case .authorized:
+                case .authorized, .fullAccess:
                     if calendarSync.syncEnabled && !calendarSync.upcomingEvents.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                                     Text("UPCOMING EVENTS")

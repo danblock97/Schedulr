@@ -7,19 +7,33 @@ final class EventKitEventManager {
     private init() {}
 
     enum EKError: Error { case notAuthorized }
+    
+    private func hasReadableEventAccess(_ status: EKAuthorizationStatus) -> Bool {
+        if #available(iOS 17.0, *) {
+            return status == .fullAccess || status == .authorized
+        }
+        return status == .authorized
+    }
 
     func ensureAccess() async throws {
         let status = EKEventStore.authorizationStatus(for: .event)
-        switch status {
-        case .authorized: return
-        case .notDetermined:
+        if hasReadableEventAccess(status) {
+            return
+        }
+        if status == .notDetermined {
             let granted = try await withCheckedThrowingContinuation { (c: CheckedContinuation<Bool, Error>) in
-                store.requestAccess(to: .event) { granted, err in
-                    if let err { c.resume(throwing: err) } else { c.resume(returning: granted) }
+                if #available(iOS 17.0, *) {
+                    store.requestFullAccessToEvents { granted, err in
+                        if let err { c.resume(throwing: err) } else { c.resume(returning: granted) }
+                    }
+                } else {
+                    store.requestAccess(to: .event) { granted, err in
+                        if let err { c.resume(throwing: err) } else { c.resume(returning: granted) }
+                    }
                 }
             }
             if !granted { throw EKError.notAuthorized }
-        default:
+        } else {
             throw EKError.notAuthorized
         }
     }
@@ -303,5 +317,4 @@ final class EventKitEventManager {
         )
     }
 }
-
 

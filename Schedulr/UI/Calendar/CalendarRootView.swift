@@ -634,11 +634,7 @@ struct CalendarRootView: View {
     private func applyHolidayFilter(to list: [CalendarEventWithUser]) -> [CalendarEventWithUser] {
         guard preferences.hideHolidays else { return list }
         return list.filter { ev in
-            let name = (ev.calendar_name ?? ev.title).lowercased()
-            let cal = (ev.calendar_name ?? "").lowercased()
-            let isHoliday = name.contains("holiday") || cal.contains("holiday")
-            let isBirthday = name.contains("birthday") || cal.contains("birthday")
-            return !(isHoliday || isBirthday)
+            !isPublicHolidayEvent(title: ev.title, calendarName: ev.calendar_name)
         }
     }
     
