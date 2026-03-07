@@ -62,6 +62,130 @@ enum MessageRole: String, Codable {
     case system
 }
 
+// MARK: - AI Communication Preferences
+
+enum AIResponseTone: String, Codable, CaseIterable, Identifiable, Hashable {
+    case neutral
+    case warm
+    case direct
+    case encouraging
+    case playful
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .neutral: return "Neutral"
+        case .warm: return "Warm"
+        case .direct: return "Direct"
+        case .encouraging: return "Encouraging"
+        case .playful: return "Playful"
+        }
+    }
+}
+
+enum AIResponseStyle: String, Codable, CaseIterable, Identifiable, Hashable {
+    case concise
+    case balanced
+    case detailed
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .concise: return "Concise"
+        case .balanced: return "Balanced"
+        case .detailed: return "Detailed"
+        }
+    }
+}
+
+enum AIResponseFormality: String, Codable, CaseIterable, Identifiable, Hashable {
+    case casual
+    case neutral
+    case formal
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .casual: return "Casual"
+        case .neutral: return "Neutral"
+        case .formal: return "Formal"
+        }
+    }
+}
+
+enum AIPersonalityTrait: String, Codable, CaseIterable, Identifiable, Hashable {
+    case calm
+    case cheerful
+    case thoughtful
+    case pragmatic
+    case witty
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .calm: return "Calm"
+        case .cheerful: return "Cheerful"
+        case .thoughtful: return "Thoughtful"
+        case .pragmatic: return "Pragmatic"
+        case .witty: return "Witty"
+        }
+    }
+}
+
+struct AICommunicationPreferences: Codable, Equatable {
+    var tone: AIResponseTone
+    var communicationStyle: AIResponseStyle
+    var formality: AIResponseFormality
+    var personalityTraits: [AIPersonalityTrait]
+    var customNote: String?
+
+    enum CodingKeys: String, CodingKey {
+        case tone
+        case communicationStyle = "communication_style"
+        case formality
+        case personalityTraits = "personality_traits"
+        case customNote = "custom_note"
+    }
+
+    static let maxPersonalityTraits = 3
+    static let maxCustomNoteLength = 160
+
+    static let `default` = AICommunicationPreferences(
+        tone: .warm,
+        communicationStyle: .balanced,
+        formality: .neutral,
+        personalityTraits: [.thoughtful],
+        customNote: nil
+    )
+
+    var sanitizedCustomNote: String? {
+        guard let customNote else { return nil }
+        let trimmed = customNote
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var normalized: AICommunicationPreferences {
+        var copy = self
+        var seenTraits = Set<AIPersonalityTrait>()
+        copy.personalityTraits = personalityTraits.filter { seenTraits.insert($0).inserted }
+        if copy.personalityTraits.count > Self.maxPersonalityTraits {
+            copy.personalityTraits = Array(copy.personalityTraits.prefix(Self.maxPersonalityTraits))
+        }
+        copy.customNote = sanitizedCustomNote
+        return copy
+    }
+
+    var hasCustomization: Bool {
+        normalized != Self.default
+    }
+}
+
 // MARK: - Query Models
 
 enum QueryType: String, Codable {

@@ -33,6 +33,7 @@ final class AIAssistantViewModel: ObservableObject {
     private let persistenceService = AIChatPersistenceService.shared
     private let dashboardViewModel: DashboardViewModel
     private let calendarManager: CalendarSyncManager
+    private var aiCommunicationPreferences: AICommunicationPreferences?
     
     init(dashboardViewModel: DashboardViewModel, calendarManager: CalendarSyncManager) {
         self.dashboardViewModel = dashboardViewModel
@@ -51,6 +52,10 @@ final class AIAssistantViewModel: ObservableObject {
         // Attempt to load an open draft/follow-up for quick resume
         Task {
             await loadDraftIfAvailable()
+        }
+
+        Task {
+            await loadAICommunicationPreferences()
         }
     }
     
@@ -440,6 +445,20 @@ final class AIAssistantViewModel: ObservableObject {
         }
         
         return true
+    }
+
+    private func loadAICommunicationPreferences() async {
+        guard let client = SupabaseManager.shared.client else { return }
+
+        do {
+            let session = try await client.auth.session
+            aiCommunicationPreferences = try await AICommunicationPreferencesManager.shared.load(for: session.user.id)
+        } catch {
+            #if DEBUG
+            print("[AIAssistantViewModel] Failed to load AI communication preferences: \(error)")
+            #endif
+            aiCommunicationPreferences = nil
+        }
     }
     
     private func handleListEventsQuery(query: AvailabilityQuery) async {
@@ -1018,22 +1037,24 @@ Omit fields that are not mentioned. Ensure user names match exactly to the avail
             }
             
             // Ask LLM for recommendation
+            let communicationStylePrompt = aiService.communicationStylePrompt(for: aiCommunicationPreferences)
             let systemPrompt = """
-            You are Scheduly. The user wants a recommendation (activity, restaurant, etc.).
-            User Query: "\(userMessage)"
-            
-            Context:
-            - Group members: \(foundNames.joined(separator: ", "))
-            - Availability: \(availableTimesText)
-            
-            Task:
-            1. Recommend 1-3 specific places or activities based on the user's query.
-            2. IMPORTANT: If the user did NOT specify a location (e.g. "dinner nearby", "good restaurant"), do NOT assume a city. Instead, give general types of places or ASK the user for their location (e.g. "Where are you looking to go?").
-            3. Suggest one of the available times for this activity.
-            4. Ask if they want to create an event for it.
-            
-            Keep it friendly and concise.
-            """
+You are Scheduly. The user wants a recommendation (activity, restaurant, etc.).
+User Query: "\(userMessage)"
+
+Context:
+- Group members: \(foundNames.joined(separator: ", "))
+- Availability: \(availableTimesText)
+
+Task:
+1. Recommend 1-3 specific places or activities based on the user's query.
+2. IMPORTANT: If the user did NOT specify a location (e.g. "dinner nearby", "good restaurant"), do NOT assume a city. Instead, give general types of places or ASK the user for their location (e.g. "Where are you looking to go?").
+3. Suggest one of the available times for this activity.
+4. Ask if they want to create an event for it.
+
+Keep it friendly and concise.
+\(communicationStylePrompt)
+"""
             
             let messagesForAI = [ChatMessage(role: .system, content: systemPrompt)]
             let responseText = try await aiService.chatCompletion(messages: messagesForAI)
@@ -1299,6 +1320,7 @@ What should I call it? You can also add a location, attendees, or notes if you l
     
     private func handleGeneralQuestion(question: String) async {
         // Build context for the AI
+        let communicationStylePrompt = aiService.communicationStylePrompt(for: aiCommunicationPreferences)
         let systemPrompt = """
 You are Scheduly, a friendly and helpful AI scheduling assistant for the Schedulr app. You help users:
 - Understand how to use the app
@@ -1307,6 +1329,7 @@ You are Scheduly, a friendly and helpful AI scheduling assistant for the Schedul
 - Answer questions about calendar syncing
 
 Be concise and friendly in your responses. If asked about availability, remind users they can ask questions like "Find me a date where John, Sarah & Mike are free for 5 hours between 12pm and 5pm".
+\(communicationStylePrompt)
 """
         
         // Build message history (keep last 10 messages for context)
@@ -1921,4 +1944,3 @@ Be concise and friendly in your responses. If asked about availability, remind u
         )
     }
 }
-
