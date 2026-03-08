@@ -408,6 +408,7 @@ struct AvailabilityPreviewCard: View {
     let onTap: () -> Void
     
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
     @State private var highlights: [EveryoneFreeHighlight] = []
     @State private var isLoading = false
     
@@ -514,10 +515,27 @@ struct AvailabilityPreviewCard: View {
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .lineLimit(1)
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(pillLabelColor)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.45), in: Capsule())
+        .background(pillBackgroundColor, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(pillBorderColor, lineWidth: 1)
+        )
+    }
+
+    private var pillLabelColor: Color {
+        colorScheme == .dark ? .white : Color.primary.opacity(0.72)
+    }
+
+    private var pillBackgroundColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.68)
+    }
+
+    private var pillBorderColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.6)
     }
 }
 

@@ -657,63 +657,36 @@ private struct LoadingBubble: View {
 
 private struct BubblyAIBackground: View {
     @ObservedObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 56, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.99, green: 0.95, blue: 0.91).opacity(0.96),
-                            Color(red: 0.97, green: 0.91, blue: 0.87).opacity(0.84)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(Color(.secondarySystemGroupedBackground).opacity(colorScheme == .dark ? 0.64 : 0.94))
                 .frame(width: 420, height: 260)
                 .offset(x: -100, y: -310)
                 .blur(radius: 48)
             
             Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            Color(red: 0.96, green: 0.75, blue: 0.65).opacity(0.22),
-                            Color(red: 0.96, green: 0.75, blue: 0.65).opacity(0.01)
-                        ],
-                        center: .center,
-                        startRadius: 60,
-                        endRadius: 180
-                    )
-                )
+                .fill(Color(red: 0.96, green: 0.75, blue: 0.65).opacity(colorScheme == .dark ? 0.12 : 0.18))
                 .frame(width: 280, height: 280)
                 .offset(x: 160, y: 200)
                 .blur(radius: 35)
             
             Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            themeManager.secondaryColor.opacity(0.12),
-                            themeManager.secondaryColor.opacity(0.01)
-                        ],
-                        center: .center,
-                        startRadius: 40,
-                        endRadius: 160
-                    )
-                )
+                .fill(themeManager.secondaryColor.opacity(colorScheme == .dark ? 0.08 : 0.12))
                 .frame(width: 240, height: 240)
                 .offset(x: -170, y: 220)
                 .blur(radius: 30)
 
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Color.white.opacity(0.26))
+                .fill(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.22))
                 .frame(width: 140, height: 88)
                 .rotationEffect(.degrees(-18))
                 .offset(x: 120, y: -240)
                 .blur(radius: 10)
         }
+        .allowsHitTesting(false)
     }
 }
 
@@ -821,6 +794,7 @@ private struct AIFeatureRow: View {
 
 private struct AIInlineUpgradePrompt: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
     let onUpgrade: () -> Void
     
     var body: some View {
@@ -864,23 +838,14 @@ private struct AIInlineUpgradePrompt: View {
         .padding(24)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(.systemBackground),
-                            Color(red: 0.99, green: 0.96, blue: 0.93)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(Color(.secondarySystemGroupedBackground).opacity(colorScheme == .dark ? 0.98 : 1))
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.8), lineWidth: 1.2)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.8), lineWidth: 1.2)
         )
-        .shadow(color: Color(red: 0.54, green: 0.36, blue: 0.30).opacity(0.12), radius: 16, x: 0, y: 8)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08), radius: 16, x: 0, y: 8)
     }
 }
 

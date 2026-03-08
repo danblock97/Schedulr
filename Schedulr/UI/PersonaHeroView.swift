@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PersonaHeroView: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.colorScheme) private var colorScheme
     let upcomingEvents: [CalendarEventWithUser]
     let userName: String?
 
@@ -12,7 +13,7 @@ struct PersonaHeroView: View {
     var body: some View {
         heroCard
             .padding(.horizontal, 20)
-            .frame(height: 232)
+            .frame(minHeight: 232)
     }
 
     private var heroCard: some View {
@@ -51,22 +52,13 @@ struct PersonaHeroView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(.systemBackground),
-                                Color(red: 0.99, green: 0.96, blue: 0.94)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color(.secondarySystemGroupedBackground).opacity(colorScheme == .dark ? 0.98 : 1))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .stroke(Color.white.opacity(0.85), lineWidth: 1)
+                    .stroke(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.85), lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 8)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.16 : 0.06), radius: 14, x: 0, y: 8)
         }
         .buttonStyle(.plain)
         .disabled(!isPro)

@@ -1148,14 +1148,32 @@ private struct DashboardCard<Content: View>: View {
 
 private struct FilterPill: View {
     let text: String
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .medium, design: .rounded))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(labelColor)
+            .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(Color.white.opacity(0.65), in: Capsule())
+            .background(backgroundColor, in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(borderColor, lineWidth: 1)
+            )
+    }
+
+    private var labelColor: Color {
+        colorScheme == .dark ? .white : Color.primary.opacity(0.7)
+    }
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.78)
+    }
+
+    private var borderColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.7)
     }
 }
 
@@ -1489,7 +1507,7 @@ private struct EventCard: View {
                         .foregroundStyle(.tertiary)
                 }
                 
-                HStack(spacing: 8) {
+                FlowLayout(spacing: 8, lineSpacing: 8) {
                     EventTag(text: formatTimeOnly(event), icon: "clock")
                     if let name = memberName {
                         EventTag(text: name, icon: "person.fill")
@@ -1501,6 +1519,7 @@ private struct EventCard: View {
                         EventTag(text: "All day", icon: "sun.max.fill")
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -1517,6 +1536,7 @@ private struct EventCard: View {
 private struct EventTag: View {
     let text: String
     let icon: String
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         HStack(spacing: 6) {
@@ -1525,10 +1545,28 @@ private struct EventTag: View {
             Text(text)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(labelColor)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.45), in: Capsule())
+        .background(backgroundColor, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(borderColor, lineWidth: 1)
+        )
+    }
+
+    private var labelColor: Color {
+        colorScheme == .dark ? .white : Color.primary.opacity(0.72)
+    }
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.68)
+    }
+
+    private var borderColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.6)
     }
 }
 
@@ -1587,12 +1625,13 @@ private struct MemberCard: View {
                         }
                     }
                     
-                    HStack(spacing: 8) {
+                    FlowLayout(spacing: 8, lineSpacing: 8) {
                         EventTag(text: member.role.capitalized, icon: "person.fill")
                         if let joinedAt = member.joinedAt {
                             EventTag(text: "Joined \(relativeLabel(joinedAt))", icon: "clock.arrow.circlepath")
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 
                 Spacer()
