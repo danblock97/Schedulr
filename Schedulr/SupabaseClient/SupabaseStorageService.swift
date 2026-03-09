@@ -105,7 +105,7 @@ actor SupabaseStorageService {
             .remove(paths: [filePath])
     }
 
-    /// Uploads a group avatar keyed by group ID. Policies restrict writes to group owners.
+    /// Uploads a group avatar keyed by group ID. Policies restrict writes to group members.
     func uploadGroupAvatar(
         data: Data,
         groupId: UUID,

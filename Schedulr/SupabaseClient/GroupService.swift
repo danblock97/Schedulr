@@ -127,11 +127,11 @@ final class GroupService {
         return count ?? 0
     }
     
-    /// Rename a group (only allowed by owner)
+    /// Rename a group (allowed by any group member)
     /// - Parameters:
     ///   - groupId: The group ID
     ///   - newName: The new name for the group
-    /// - Throws: Error if rename fails (user not owner, invalid name, etc.)
+    /// - Throws: Error if rename fails (user not a member, invalid name, etc.)
     nonisolated func renameGroup(groupId: UUID, newName: String) async throws {
         let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -169,26 +169,26 @@ final class GroupService {
         NotificationService.shared.notifyGroupRenamed(groupId: groupId, newName: trimmedName, renamedByUserId: currentUserId)
     }
 
-    /// Set or clear a group's avatar (only allowed by owner)
+    /// Set or clear a group's avatar (allowed by any group member)
     /// - Parameters:
     ///   - groupId: The group ID
     ///   - avatarURL: The public avatar URL, or nil to clear it
     nonisolated func setGroupAvatar(groupId: UUID, avatarURL: URL?) async throws {
         struct SetGroupAvatarParams: Encodable {
             let p_group_id: UUID
-            let p_avatar_url: String?
+            let p_avatar_url: String
         }
 
         try await client.database.rpc(
             "set_group_avatar",
             params: SetGroupAvatarParams(
                 p_group_id: groupId,
-                p_avatar_url: avatarURL?.absoluteString
+                p_avatar_url: avatarURL?.absoluteString ?? ""
             )
         ).execute()
     }
 
-    /// Upload and persist a group's avatar URL (only allowed by owner)
+    /// Upload and persist a group's avatar URL (allowed by any group member)
     /// - Parameters:
     ///   - groupId: The group ID
     ///   - imageData: JPEG image data
