@@ -315,7 +315,7 @@ struct GroupDashboardView: View {
                             Label("Create New Group", systemImage: "plus.circle.fill")
                         }
                         
-                        if currentGroup != nil, isOwner {
+                        if currentGroup != nil {
                             Divider()
                             Button {
                                 showGroupSettings = true
@@ -323,17 +323,19 @@ struct GroupDashboardView: View {
                                 Label("Group Settings", systemImage: "person.3.sequence.fill")
                             }
 
-                            if memberCount == 1 {
-                                Button(role: .destructive) {
-                                    showDeleteGroupConfirmation = true
-                                } label: {
-                                    Label("Delete Group", systemImage: "trash.fill")
-                                }
-                            } else {
-                                Button(role: .destructive) {
-                                    showDeleteGroupInfo = true
-                                } label: {
-                                    Label("Delete Group", systemImage: "trash.fill")
+                            if isOwner {
+                                if memberCount == 1 {
+                                    Button(role: .destructive) {
+                                        showDeleteGroupConfirmation = true
+                                    } label: {
+                                        Label("Delete Group", systemImage: "trash.fill")
+                                    }
+                                } else {
+                                    Button(role: .destructive) {
+                                        showDeleteGroupInfo = true
+                                    } label: {
+                                        Label("Delete Group", systemImage: "trash.fill")
+                                    }
                                 }
                             }
                         }
@@ -1745,7 +1747,11 @@ private struct GroupAvatarView: View {
                     case .success(let image):
                         image
                             .resizable()
+                            .interpolation(.high)
+                            .antialiased(true)
                             .scaledToFill()
+                            .frame(width: size, height: size)
+                            .clipped()
                     case .empty:
                         ProgressView()
                     case .failure:
@@ -1880,13 +1886,13 @@ private struct GroupSettingsSheet: View {
                 image: item.image,
                 aspectRatio: 1,
                 cropShape: .circle,
-                outputSize: CGSize(width: 512, height: 512),
+                outputSize: CGSize(width: 1024, height: 1024),
                 onCancel: {
                     pendingAvatarImage = nil
                     selectedPhotoItem = nil
                 },
                 onConfirm: { cropped in
-                    guard let data = cropped.jpegData(compressionQuality: 0.85) else { return }
+                    guard let data = cropped.jpegData(compressionQuality: 0.92) else { return }
                     pendingAvatarImage = nil
                     selectedPhotoItem = nil
                     Task { await uploadAvatar(data) }
