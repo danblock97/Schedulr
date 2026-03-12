@@ -2,7 +2,6 @@
 Config/Schedulr-Secrets.xcconfig
 Config/Schedulr-Debug-Secrets.xcconfig
 Config/Schedulr-Release-Secrets.xcconfig
-!.github/
 Supabase_Migrations/
 supabase/*
 !supabase/templates/
