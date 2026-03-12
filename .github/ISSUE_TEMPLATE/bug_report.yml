@@ -1,0 +1,77 @@
+name: Bug report
+description: Report a reproducible problem in Schedulr
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Schedulr. Please fill out the details below so we can reproduce the issue quickly.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A short summary of the bug.
+      placeholder: The app crashes when I open the monthly calendar after signing in.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Tell us exactly how to reproduce the problem.
+      placeholder: |
+        1. Open Schedulr
+        2. Sign in with Apple
+        3. Tap Calendar
+        4. Switch to Month view
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: I expected the month view to load normally.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: The app freezes for a second and then closes.
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+      description: If known, share the Schedulr version or build number.
+      placeholder: "e.g. 1.4.0 (52)"
+  - type: input
+    id: ios_version
+    attributes:
+      label: iOS version
+      placeholder: "e.g. iOS 18.3"
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: "e.g. iPhone 16 Pro"
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Often
+        - Sometimes
+        - Once
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Screenshots or logs
+      description: Paste any screenshots, videos, stack traces, or logs that may help.
+      placeholder: Add any extra debugging details here.
